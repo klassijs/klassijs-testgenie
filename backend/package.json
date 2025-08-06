@@ -1,0 +1,28 @@
+{
+  "name": "@gen-ai-qa-tool/backend",
+  "version": "1.0.0",
+  "description": "Backend server for AI-powered test automation platform",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "nodemon index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": ["backend", "api", "express", "openai", "test-automation"],
+  "author": "Test Automation Architect",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.21.2",
+    "cors": "^2.8.5",
+    "helmet": "^7.1.0",
+    "express-rate-limit": "^7.1.5",
+    "multer": "^1.4.5-lts.1",
+    "dotenv": "^16.3.1",
+    "axios": "^1.6.0",
+    "pdf-parse": "^1.1.1",
+    "mammoth": "^1.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+} 

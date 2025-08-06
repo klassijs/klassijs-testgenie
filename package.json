@@ -1,48 +1,37 @@
 {
-    "name": "openai_train_model",
-    "version": "1.0.0",
-    "description": "OpenAI Train Model using nodejs",
-    "main": "index.js",
-    "scripts": {
-        "start": "node src/index.js",
-        "lint": "eslint --fix .",
-        "lint:fix": "eslint --fix .",
-        "prettier": "prettier --check **/*.js",
-        "prettier:fix": "prettier --write **/*.js",
-        "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "gen-ai-qa-tool",
+  "version": "1.0.0",
+  "description": "AI-powered test automation platform for generating Cucumber test cases",
+  "creator": {
+    "name": "Larry Goddard",
+    "linkedin": "https://linkedin.com/in/larryg",
+    "youtube": "https://youtube.com/@LarryG_01"
+  },
+  "contributors": [
+    {
+      "name": "Carlos Bermejo",
+      "github": "https://github.com/carlosbermejop"
     },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/dhavalsoni9989/openai_train_model.git"
-    },
-    "keywords": [
-        "openai",
-        "node",
-        "node.js",
-        "express",
-        "api",
-        "jest",
-        "travis",
-        "eslint",
-        "prettier"
-    ],
-    "author": "dhavalsoni9989@gmail.com",
-    "license": "ISC",
-    "bugs": {
-        "url": "https://github.com/klassijs/openai_train_model/issues"
-    },
-    "homepage": "https://github.com/dhavalsoni9989/openai_train_model#readme",
-    "dependencies": {
-        "dotenv": "^16.0.3",
-        "express": "^4.18.2",
-        "express-rate-limit": "^6.7.0",
-        "openai": "^3.1.0",
-        "swagger-jsdoc": "^6.2.8",
-        "swagger-ui-express": "^4.6.2"
-    },
-    "devDependencies": {
-        "@typescript-eslint/eslint-plugin": "^5.53.0",
-        "eslint-config-prettier": "^8.6.0",
-        "eslint-plugin-prettier": "^4.2.1"
+    {
+      "name": "Arthur East",
+      "github": "https://github.com/arthureast"
     }
-}
+  ],
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"pnpm run server\" \"pnpm run client\"",
+    "server": "pnpm --filter @gen-ai-qa-tool/backend run dev",
+    "client": "pnpm --filter @gen-ai-qa-tool/frontend run start",
+    "build": "pnpm --filter @gen-ai-qa-tool/frontend run build",
+    "install-all": "pnpm install",
+    "start": "pnpm --filter @gen-ai-qa-tool/backend run start",
+    "build:all": "pnpm --filter @gen-ai-qa-tool/frontend run build",
+    "test": "pnpm --filter @gen-ai-qa-tool/frontend run test"
+  },
+  "keywords": ["test-automation", "cucumber", "gherkin", "ai", "openai", "monorepo"],
+  "author": "Test Automation Architect",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+} 
