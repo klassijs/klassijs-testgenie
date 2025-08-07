@@ -257,15 +257,4 @@ pnpm run client
 
 ## License
 
-MIT License - see LICENSE file for details
-
-## Support
-
-For issues and questions:
-1. Check the troubleshooting section
-2. Review the API documentation
-3. Create an issue in the repository
-
----
-
-**Built with ❤️ for Test Automation Architects** 
+MIT License - see LICENSE file for details - &copy; 2025 [Larry Goddard](https://www.linkedin.com/in/larryg)
