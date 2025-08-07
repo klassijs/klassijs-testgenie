@@ -1,5 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap } from 'lucide-react';
+import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap, GitBranch } from 'lucide-react';
 import axios from 'axios';
 import TestOutput from './TestOutput';
 
@@ -954,36 +954,36 @@ const TestGenerator = () => {
 
         {/* Import from Jira Section */}
         <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
-            📋 Alternative: Import from Jira
-          </h3>
+                      <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <img src="/jira-icon.svg" alt="Jira" style={{ width: '18px', height: '18px' }} />
+              Import from Jira
+            </h3>
           <p style={{ marginBottom: '1rem', color: '#4a5568', fontSize: '0.9rem' }}>
-            Don't have documents? Import test cases directly from your Jira issues.
+            Import Epics, Stories, Tasks and Bugs directly from your Jira Projects.
           </p>
-          <button 
-            className="btn btn-secondary"
-            onClick={() => {
-              setShowJiraImport(true);
-              setJiraStep('connect');
-              setJiraConfig({
-                projectKey: '',
-                issueTypes: [],
-                selectedIssues: []
-              });
-            }}
-            title="Import test cases from Jira"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '8px',
-              padding: '12px 20px',
-              fontSize: '0.9rem',
-              fontWeight: '500'
-            }}
-          >
-            <Download size={18} />
-            Import from Jira
-          </button>
+                      <button 
+              className="btn btn-secondary"
+              onClick={() => {
+                setShowJiraImport(true);
+                setJiraStep('connect');
+                setJiraConfig({
+                  projectKey: '',
+                  issueTypes: [],
+                  selectedIssues: []
+                });
+              }}
+              title="Import test cases from Jira"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '8px',
+                padding: '12px 20px',
+                fontSize: '0.9rem',
+                fontWeight: '500'
+              }}
+            >
+              Import from Jira
+            </button>
         </div>
 
         {/* Document Analysis Results */}
@@ -1787,34 +1787,34 @@ const TestGenerator = () => {
                     <small>Choose the project containing your test cases</small>
                   </div>
                   
-                  <div className="form-group">
-                    <label>Issue Types</label>
-                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
-                      {['Story', 'Bug', 'Task', 'Epic'].map((type) => (
-                        <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                          <input
-                            type="checkbox"
-                            checked={jiraConfig.issueTypes.includes(type)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setJiraConfig(prev => ({ 
-                                  ...prev, 
-                                  issueTypes: [...prev.issueTypes, type] 
-                                }));
-                              } else {
-                                setJiraConfig(prev => ({ 
-                                  ...prev, 
-                                  issueTypes: prev.issueTypes.filter(t => t !== type) 
-                                }));
-                              }
-                            }}
-                          />
-                          {type}
-                        </label>
-                      ))}
+                                      <div className="form-group">
+                      <label>Issue Types</label>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                        {['Epic', 'Story', 'Task', 'Bug'].map((type) => (
+                          <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                            <input
+                              type="checkbox"
+                              checked={jiraConfig.issueTypes.includes(type)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setJiraConfig(prev => ({ 
+                                    ...prev, 
+                                    issueTypes: [...prev.issueTypes, type] 
+                                  }));
+                                } else {
+                                  setJiraConfig(prev => ({ 
+                                    ...prev, 
+                                    issueTypes: prev.issueTypes.filter(t => t !== type) 
+                                  }));
+                                }
+                              }}
+                            />
+                            {type}
+                          </label>
+                        ))}
+                      </div>
+                      <small>Select which issue types to import</small>
                     </div>
-                    <small>Select which issue types to import</small>
-                  </div>
                   
                   <div className="modal-footer">
                     <button

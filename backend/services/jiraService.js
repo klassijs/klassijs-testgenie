@@ -152,8 +152,8 @@ function convertJiraIssueToGherkin(issue) {
   const featureName = issue.summary || 'Test Feature';
   const description = typeof issue.description === 'string' ? issue.description : '';
   
-  // Extract scenarios from description
-  const scenarios = extractScenariosFromDescription(description, issue.summary);
+  // Create scenarios from the Jira ticket content
+  const scenarios = createScenariosFromJiraContent(issue.summary, description, issue.key);
   
   // Build Gherkin content
   let gherkinContent = `Feature: ${featureName}\n`;
@@ -161,29 +161,90 @@ function convertJiraIssueToGherkin(issue) {
   gherkinContent += `  I want to ${issue.summary?.toLowerCase() || 'perform actions'}\n`;
   gherkinContent += `  So that I can achieve my goals\n\n`;
   
-  if (scenarios.length === 0) {
-    // Create default scenario if none found
-    gherkinContent += `Scenario: ${issue.summary || 'Default scenario'}\n`;
-    gherkinContent += `  Given I am on the application\n`;
-    gherkinContent += `  When I perform the required action\n`;
-    gherkinContent += `  Then I should see the expected result\n`;
-  } else {
-    // Add extracted scenarios
-    scenarios.forEach((scenario, index) => {
-      gherkinContent += `Scenario: ${scenario.title}\n`;
-      scenario.steps.forEach(step => {
-        gherkinContent += `  ${step}\n`;
-      });
-      if (index < scenarios.length - 1) {
-        gherkinContent += '\n';
-      }
+  // Add created scenarios
+  scenarios.forEach((scenario, index) => {
+    gherkinContent += `Scenario: ${scenario.title}\n`;
+    scenario.steps.forEach(step => {
+      gherkinContent += `  ${step}\n`;
     });
-  }
+    if (index < scenarios.length - 1) {
+      gherkinContent += '\n';
+    }
+  });
   
   return {
     title: featureName,
     content: gherkinContent
   };
+}
+
+// Create scenarios from Jira ticket content
+function createScenariosFromJiraContent(summary, description, issueKey) {
+  const scenarios = [];
+  
+  // Create main scenario from the ticket summary
+  const mainScenario = {
+    title: summary || `Test ${issueKey}`,
+    steps: []
+  };
+  
+  // Add basic steps based on the summary
+  mainScenario.steps.push(`Given I am on the application`);
+  
+  // Try to extract action from summary
+  const action = extractActionFromSummary(summary);
+  if (action) {
+    mainScenario.steps.push(`When I ${action}`);
+  } else {
+    mainScenario.steps.push(`When I perform the required action`);
+  }
+  
+  mainScenario.steps.push(`Then I should see the expected result`);
+  
+  scenarios.push(mainScenario);
+  
+  // If there's a description, try to create additional scenarios
+  if (description) {
+    const additionalScenarios = extractScenariosFromDescription(description, summary);
+    scenarios.push(...additionalScenarios);
+  }
+  
+  return scenarios;
+}
+
+// Extract action from Jira summary
+function extractActionFromSummary(summary) {
+  if (!summary) return null;
+  
+  const lowerSummary = summary.toLowerCase();
+  
+  // Common action patterns
+  if (lowerSummary.includes('login') || lowerSummary.includes('sign in')) {
+    return 'login to the application';
+  }
+  if (lowerSummary.includes('logout') || lowerSummary.includes('sign out')) {
+    return 'logout from the application';
+  }
+  if (lowerSummary.includes('create') || lowerSummary.includes('add')) {
+    return 'create a new item';
+  }
+  if (lowerSummary.includes('edit') || lowerSummary.includes('update')) {
+    return 'edit the item';
+  }
+  if (lowerSummary.includes('delete') || lowerSummary.includes('remove')) {
+    return 'delete the item';
+  }
+  if (lowerSummary.includes('search') || lowerSummary.includes('find')) {
+    return 'search for the item';
+  }
+  if (lowerSummary.includes('view') || lowerSummary.includes('see')) {
+    return 'view the details';
+  }
+  if (lowerSummary.includes('navigate') || lowerSummary.includes('go to')) {
+    return 'navigate to the page';
+  }
+  
+  return null;
 }
 
 // Extract scenarios from Jira description
@@ -249,6 +310,7 @@ async function importJiraIssues(selectedIssues) {
     }
 
     const features = [];
+    const skippedIssues = [];
     
     for (const issueKey of selectedIssues) {
       console.log('Fetching issue:', issueKey);
@@ -288,16 +350,22 @@ async function importJiraIssues(selectedIssues) {
         console.log('Processed issue:', issue);
         
         const feature = convertJiraIssueToGherkin(issue);
-        features.push(feature);
+        features.push(feature); // Always add since we create scenarios from Jira content
       }
     }
     
-    console.log('Import completed, features:', features.length);
+    console.log('Import completed, features:', features.length, 'skipped:', skippedIssues.length);
+    
+    let message = `Successfully imported ${features.length} Jira tickets as Gherkin features`;
+    if (skippedIssues.length > 0) {
+      message += `. Skipped ${skippedIssues.length} issues due to errors`;
+    }
     
     return {
       success: true,
       features: features,
-      message: `Successfully imported ${features.length} issues from Jira`
+      message: message,
+      skippedIssues: skippedIssues
     };
   } catch (error) {
     console.error('Failed to import Jira issues:', error.message);
