@@ -49,7 +49,7 @@ npm install -g pnpm
 
 ```bash
 git clone <repository-url>
-cd genAiQaTool
+cd klassijs-AI
 pnpm run install-all
 ```
 
@@ -157,7 +157,7 @@ Feature: User Login
 ## Project Structure
 
 ```
-genAiQaTool/
+klassijs-AI/
 ├── frontend/              # React frontend
 │   ├── src/
 │   │   ├── components/    # React components
