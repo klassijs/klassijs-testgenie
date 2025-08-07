@@ -5,6 +5,7 @@ const fs = require('fs');
 const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, isAzureOpenAIConfigured } = require('../services/openaiService');
 const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, isZephyrConfigured } = require('../services/zephyrService');
+const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
 const axios = require('axios'); // Added axios for the debug endpoint
 
 const router = express.Router();
@@ -482,6 +483,124 @@ router.post('/push-to-zephyr', async (req, res) => {
       error: errorMessage,
       details: error.message,
       suggestion: suggestion
+    });
+  }
+});
+
+// Jira Import endpoints
+
+// Test Jira connection
+router.post('/jira/test-connection', async (req, res) => {
+  try {
+    const result = await testJiraConnection();
+
+    if (result.success) {
+      // Get projects after successful connection
+      const projectsResult = await getJiraProjects();
+      
+      res.json({
+        success: true,
+        message: result.message,
+        user: result.user,
+        projects: projectsResult.success ? projectsResult.projects : []
+      });
+    } else {
+      res.status(400).json({
+        error: 'Jira connection failed',
+        details: result.error,
+        suggestion: 'Please check your Jira environment variables (JIRA_BASE_URL, JIRA_EMAIL, JIRA_API_TOKEN)'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error testing Jira connection:', error);
+    res.status(500).json({ 
+      error: 'Failed to test Jira connection',
+      details: error.message,
+      suggestion: 'Please check your network connection and try again'
+    });
+  }
+});
+
+// Fetch Jira issues
+router.post('/jira/fetch-issues', async (req, res) => {
+  try {
+    const { projectKey, issueTypes } = req.body;
+
+    if (!projectKey || !issueTypes || issueTypes.length === 0) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Project key and issue types are required',
+        suggestion: 'Please provide project key and select issue types'
+      });
+    }
+
+    const result = await getJiraIssues(projectKey, issueTypes);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        issues: result.issues,
+        message: `Found ${result.issues.length} issues in project ${projectKey}`
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to fetch Jira issues',
+        details: result.error,
+        suggestion: 'Please check your project key and issue types'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error fetching Jira issues:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch Jira issues',
+      details: error.message,
+      suggestion: 'Please check your network connection and try again'
+    });
+  }
+});
+
+// Import Jira issues
+router.post('/jira/import-issues', async (req, res) => {
+  try {
+    const { selectedIssues } = req.body;
+    
+    console.log('Import Jira issues request:', { selectedIssues });
+
+    if (!selectedIssues || selectedIssues.length === 0) {
+      console.log('Missing selectedIssues in request');
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Selected issues are required',
+        suggestion: 'Please select issues to import'
+      });
+    }
+
+    const result = await importJiraIssues(selectedIssues);
+    
+    console.log('Import result:', result);
+
+    if (result.success) {
+      res.json({
+        success: true,
+        features: result.features,
+        message: result.message
+      });
+    } else {
+      res.status(400).json({
+        error: 'Failed to import Jira issues',
+        details: result.error,
+        suggestion: 'Please check your selected issues and try again'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error importing Jira issues:', error);
+    res.status(500).json({ 
+      error: 'Failed to import Jira issues',
+      details: error.message,
+      suggestion: 'Please check your network connection and try again'
     });
   }
 });

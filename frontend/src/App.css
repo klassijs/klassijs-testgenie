@@ -60,6 +60,12 @@ body {
   object-fit: contain;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
 /* Card Styles */
 .card {
   background: rgba(255, 255, 255, 0.95);
@@ -731,6 +737,15 @@ body {
   
   .header {
     padding: 1rem;
+  }
+  
+  .header-actions {
+    gap: 0.5rem;
+  }
+  
+  .header-actions .btn {
+    padding: 6px 12px;
+    font-size: 0.8rem;
   }
 }
 

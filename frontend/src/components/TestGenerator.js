@@ -53,8 +53,108 @@ const TestGenerator = () => {
   // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
   const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
 
+  // Jira import state
+  const [showJiraImport, setShowJiraImport] = useState(false);
+  const [jiraConfig, setJiraConfig] = useState({
+    projectKey: '',
+    issueTypes: [],
+    selectedIssues: []
+  });
+  const [jiraProjects, setJiraProjects] = useState([]);
+  const [jiraIssues, setJiraIssues] = useState([]);
+  const [isLoadingJira, setIsLoadingJira] = useState(false);
+  const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
+  const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
+
   // API base URL - can be configured via environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
+  // Jira import functions
+  const testJiraConnection = async () => {
+    setIsLoadingJira(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/jira/test-connection`);
+
+      if (response.data.success) {
+        setJiraProjects(response.data.projects || []);
+        setJiraStep('select');
+        setStatus({ type: 'success', message: 'Successfully connected to Jira!' });
+      } else {
+        setStatus({ type: 'error', message: response.data.error || 'Failed to connect to Jira' });
+      }
+    } catch (error) {
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to connect to Jira. Please check your environment configuration.' 
+      });
+    } finally {
+      setIsLoadingJira(false);
+    }
+  };
+
+  const fetchJiraIssues = async () => {
+    setIsLoadingJira(true);
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/jira/fetch-issues`, {
+        projectKey: jiraConfig.projectKey,
+        issueTypes: jiraConfig.issueTypes
+      });
+
+      if (response.data.success) {
+        setJiraIssues(response.data.issues || []);
+        setJiraStep('import');
+        setStatus({ type: 'success', message: `Found ${response.data.issues.length} issues in Jira` });
+      } else {
+        setStatus({ type: 'error', message: response.data.error || 'Failed to fetch Jira issues' });
+      }
+    } catch (error) {
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to fetch Jira issues' 
+      });
+    } finally {
+      setIsLoadingJira(false);
+    }
+  };
+
+  const importJiraIssues = async () => {
+    setIsLoadingJira(true);
+    try {
+      console.log('Frontend: Sending import request with selectedIssues:', jiraConfig.selectedIssues);
+      
+      const response = await axios.post(`${API_BASE_URL}/api/jira/import-issues`, {
+        selectedIssues: jiraConfig.selectedIssues
+      });
+
+      console.log('Frontend: Import response:', response.data);
+
+      if (response.data.success) {
+        // Convert imported issues to feature tabs
+        const importedFeatures = response.data.features.map((feature, index) => ({
+          title: feature.title,
+          content: feature.content,
+          id: `jira-import-${index}`
+        }));
+
+        setFeatureTabs(importedFeatures);
+        setEditableFeatures({});
+        setEditingFeatures({});
+        setActiveTab(0);
+        setShowJiraImport(false);
+        setStatus({ type: 'success', message: `Successfully imported ${importedFeatures.length} test cases from Jira!` });
+      } else {
+        setStatus({ type: 'error', message: response.data.error || 'Failed to import Jira issues' });
+      }
+    } catch (error) {
+      console.error('Frontend: Import error:', error.response?.data);
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to import Jira issues' 
+      });
+    } finally {
+      setIsLoadingJira(false);
+    }
+  };
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -852,6 +952,40 @@ const TestGenerator = () => {
           )}
         </div>
 
+        {/* Import from Jira Section */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
+            📋 Alternative: Import from Jira
+          </h3>
+          <p style={{ marginBottom: '1rem', color: '#4a5568', fontSize: '0.9rem' }}>
+            Don't have documents? Import test cases directly from your Jira issues.
+          </p>
+          <button 
+            className="btn btn-secondary"
+            onClick={() => {
+              setShowJiraImport(true);
+              setJiraStep('connect');
+              setJiraConfig({
+                projectKey: '',
+                issueTypes: [],
+                selectedIssues: []
+              });
+            }}
+            title="Import test cases from Jira"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '12px 20px',
+              fontSize: '0.9rem',
+              fontWeight: '500'
+            }}
+          >
+            <Download size={18} />
+            Import from Jira
+          </button>
+        </div>
+
         {/* Document Analysis Results */}
         {featureTabs.length > 0 && (
           <div className="analysis-results">
@@ -890,6 +1024,7 @@ const TestGenerator = () => {
                   </>
                 )}
               </button>
+
             </div>
           </div>
         )}
@@ -1529,6 +1664,256 @@ const TestGenerator = () => {
                 </button>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Jira Import Modal */}
+      {showJiraImport && (
+        <div className="modal-overlay" onClick={() => setShowJiraImport(false)}>
+          <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Import from Jira</h3>
+              <button 
+                className="modal-close" 
+                onClick={() => setShowJiraImport(false)}
+              >
+                ×
+              </button>
+            </div>
+            
+            <div className="modal-body">
+              {/* Step 1: Connect to Jira */}
+              {jiraStep === 'connect' && (
+                <div>
+                  <h4 style={{ marginBottom: '1rem', color: '#2d3748' }}>Step 1: Connect to Jira</h4>
+                  <p style={{ marginBottom: '1.5rem', color: '#4a5568', fontSize: '0.9rem' }}>
+                    Using your configured Jira credentials from environment variables.
+                  </p>
+                  
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-primary"
+                      onClick={testJiraConnection}
+                      disabled={isLoadingJira}
+                    >
+                      {isLoadingJira ? (
+                        <>
+                          <div className="spinner small"></div>
+                          <span>Connecting...</span>
+                        </>
+                      ) : (
+                        'Test Connection'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 2: Select Project and Issues */}
+              {jiraStep === 'select' && (
+                <div>
+                  <h4 style={{ marginBottom: '1rem', color: '#2d3748' }}>Step 2: Select Project and Issues</h4>
+                  
+                  <div className="form-group">
+                    <label htmlFor="jiraProject">Project *</label>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <div style={{ flex: 1, position: 'relative' }} className="jira-project-dropdown-container">
+                        <input
+                          type="text"
+                          placeholder={jiraProjects.length === 0 ? 'Loading projects...' : 'Click to select project...'}
+                          value={jiraConfig.projectKey ? jiraProjects.find(p => p.key === jiraConfig.projectKey)?.name || '' : ''}
+                          onClick={() => setShowJiraProjectDropdown(!showJiraProjectDropdown)}
+                          readOnly
+                          disabled={jiraProjects.length === 0}
+                          style={{ 
+                            width: '100%',
+                            padding: '0.75rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.375rem',
+                            fontSize: '0.875rem',
+                            backgroundColor: '#ffffff',
+                            cursor: 'pointer'
+                          }}
+                        />
+                        {showJiraProjectDropdown && (
+                          <div style={{
+                            position: 'absolute',
+                            top: '100%',
+                            left: 0,
+                            right: 0,
+                            backgroundColor: 'white',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.375rem',
+                            maxHeight: '300px',
+                            overflowY: 'auto',
+                            zIndex: 9999,
+                            boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                            marginTop: '2px'
+                          }}>
+                            <div style={{
+                              padding: '0.5rem',
+                              borderBottom: '1px solid #e5e7eb',
+                              backgroundColor: '#f9fafb',
+                              fontSize: '0.75rem',
+                              color: '#6b7280'
+                            }}>
+                              Select a project ({jiraProjects.length} available)
+                            </div>
+                            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                              {jiraProjects.map((project) => (
+                                <div
+                                  key={project.key}
+                                  style={{
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    borderBottom: '1px solid #f3f4f6',
+                                    backgroundColor: jiraConfig.projectKey === project.key ? '#e3f2fd' : 'transparent'
+                                  }}
+                                  onClick={() => {
+                                    setJiraConfig(prev => ({ ...prev, projectKey: project.key }));
+                                    setShowJiraProjectDropdown(false);
+                                  }}
+                                >
+                                  {project.name} ({project.key})
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                    {jiraProjects.length === 0 && <small>Loading projects...</small>}
+                    <small>Choose the project containing your test cases</small>
+                  </div>
+                  
+                  <div className="form-group">
+                    <label>Issue Types</label>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
+                      {['Story', 'Bug', 'Task', 'Epic'].map((type) => (
+                        <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <input
+                            type="checkbox"
+                            checked={jiraConfig.issueTypes.includes(type)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setJiraConfig(prev => ({ 
+                                  ...prev, 
+                                  issueTypes: [...prev.issueTypes, type] 
+                                }));
+                              } else {
+                                setJiraConfig(prev => ({ 
+                                  ...prev, 
+                                  issueTypes: prev.issueTypes.filter(t => t !== type) 
+                                }));
+                              }
+                            }}
+                          />
+                          {type}
+                        </label>
+                      ))}
+                    </div>
+                    <small>Select which issue types to import</small>
+                  </div>
+                  
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setJiraStep('connect')}
+                    >
+                      Back
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={fetchJiraIssues}
+                      disabled={isLoadingJira || !jiraConfig.projectKey || jiraConfig.issueTypes.length === 0}
+                    >
+                      {isLoadingJira ? (
+                        <>
+                          <div className="spinner small"></div>
+                          <span>Fetching Issues...</span>
+                        </>
+                      ) : (
+                        'Fetch Issues'
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Step 3: Select Issues to Import */}
+              {jiraStep === 'import' && (
+                <div>
+                  <h4 style={{ marginBottom: '1rem', color: '#2d3748' }}>Step 3: Select Issues to Import</h4>
+                  
+                  <div style={{ maxHeight: '300px', overflowY: 'auto', border: '1px solid #e2e8f0', borderRadius: '6px', padding: '12px' }}>
+                    {jiraIssues.map((issue) => (
+                      <label key={issue.key} style={{ 
+                        display: 'flex', 
+                        alignItems: 'flex-start', 
+                        gap: '8px', 
+                        padding: '8px', 
+                        borderBottom: '1px solid #f1f5f9',
+                        cursor: 'pointer'
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={jiraConfig.selectedIssues.includes(issue.key)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setJiraConfig(prev => ({ 
+                                ...prev, 
+                                selectedIssues: [...prev.selectedIssues, issue.key] 
+                              }));
+                            } else {
+                              setJiraConfig(prev => ({ 
+                                ...prev, 
+                                selectedIssues: prev.selectedIssues.filter(k => k !== issue.key) 
+                              }));
+                            }
+                          }}
+                        />
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: '500', color: '#2d3748' }}>
+                            {issue.key}: {issue.summary}
+                          </div>
+                          <div style={{ fontSize: '0.8rem', color: '#718096', marginTop: '4px' }}>
+                            {typeof issue.description === 'string' ? issue.description.substring(0, 100) + '...' : 'No description available'}
+                          </div>
+                        </div>
+                      </label>
+                    ))}
+                  </div>
+                  
+                  <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#4a5568' }}>
+                    Selected: {jiraConfig.selectedIssues.length} of {jiraIssues.length} issues
+                  </div>
+                  
+                  <div className="modal-footer">
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => setJiraStep('select')}
+                    >
+                      Back
+                    </button>
+                    <button
+                      className="btn btn-primary"
+                      onClick={importJiraIssues}
+                      disabled={isLoadingJira || jiraConfig.selectedIssues.length === 0}
+                    >
+                      {isLoadingJira ? (
+                        <>
+                          <div className="spinner small"></div>
+                          <span>Importing...</span>
+                        </>
+                      ) : (
+                        `Import ${jiraConfig.selectedIssues.length} Issues`
+                      )}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
