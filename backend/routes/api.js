@@ -489,7 +489,7 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
 // Zephyr Scale Direct Push endpoint
 router.post('/push-to-zephyr', async (req, res) => {
   try {
-    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId } = req.body;
+    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None' } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -507,7 +507,7 @@ router.post('/push-to-zephyr', async (req, res) => {
       });
     }
 
-    const result = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId);
+    const result = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable);
 
     res.json(result);
 

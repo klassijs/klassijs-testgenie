@@ -184,7 +184,7 @@ function convertToZephyrFormat(content, featureName = 'Test Feature') {
 }
 
 // Push test cases directly to Zephyr Scale
-async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null) {
+async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None') {
   if (!isZephyrConfigured) {
     throw new Error('Zephyr Scale is not configured');
   }
@@ -306,7 +306,11 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     const testCaseData = {
       name: testCaseName && testCaseName.trim() ? `${testCaseName.trim()} - ${scenario.name}` : `${featureName} - ${scenario.name}`,
       projectKey: targetProjectKey,
-      status: 'Draft'
+      status: status,
+      priority: 'Medium', // Default priority
+      customFields: {
+        'isAutomatable': isAutomatable
+      }
     };
 
     // Add folder ID if specified
@@ -361,6 +365,137 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         console.log('=== TEST SCRIPT API RESPONSE ===');
         console.log(JSON.stringify(testScriptResponse.data, null, 2));
         console.log('=== END TEST SCRIPT API RESPONSE ===');
+        
+        // Update the test case status
+        try {
+          console.log(`📝 Updating status for ${zephyrResponse.data.key} to: ${status}`);
+          
+          // Try different approaches for status update
+          const statusUpdateData = {
+            id: zephyrResponse.data.id,
+            key: zephyrResponse.data.key,
+            name: testCaseData.name,
+            project: {
+              id: 177573
+            },
+            priority: {
+              id: 3233492
+            },
+            status: {
+              id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : 3233490
+            },
+            customFields: {
+              'isAutomatable': isAutomatable,
+              'isAutomated': null
+            }
+          };
+          
+          console.log('=== STATUS UPDATE DATA BEING SENT ===');
+          console.log(JSON.stringify(statusUpdateData, null, 2));
+          console.log('=== END STATUS UPDATE DATA ===');
+          
+          const statusUpdateResponse = await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, statusUpdateData, {
+            headers: {
+              'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+              'Content-Type': 'application/json'
+            },
+            timeout: 30000
+          });
+          
+          console.log(`✅ Successfully updated status for ${zephyrResponse.data.key}`);
+          console.log('=== STATUS UPDATE API RESPONSE ===');
+          console.log(JSON.stringify(statusUpdateResponse.data, null, 2));
+          console.log('=== END STATUS UPDATE API RESPONSE ===');
+          
+        } catch (statusError) {
+          console.error(`❌ Failed to update status for ${zephyrResponse.data.key}:`, statusError.message);
+          if (statusError.response) {
+            console.error('Status Update API Error Status:', statusError.response.status);
+            console.error('Status Update API Error Response:', JSON.stringify(statusError.response.data, null, 2));
+          }
+          
+          // Try alternative approaches for status update
+          try {
+            console.log(`🔄 Trying alternative status update approaches for ${zephyrResponse.data.key}`);
+            
+            // Try approach 1: Only status field
+            try {
+              console.log(`🔄 Approach 1: Status only`);
+              const statusOnlyData = { 
+                id: zephyrResponse.data.id,
+                key: zephyrResponse.data.key,
+                name: testCaseData.name,
+                project: { id: 177573 },
+                priority: { id: 3233492 },
+                status: { id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : 3233490 }
+              };
+              await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, statusOnlyData, {
+                headers: {
+                  'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 30000
+              });
+              console.log(`✅ Successfully updated status (approach 1) for ${zephyrResponse.data.key}`);
+            } catch (approach1Error) {
+              console.error(`❌ Approach 1 failed:`, approach1Error.message);
+              
+              // Try approach 2: Different status field name
+              try {
+                console.log(`🔄 Approach 2: Different status field name`);
+                const statusFieldData = { 
+                  id: zephyrResponse.data.id,
+                  key: zephyrResponse.data.key,
+                  name: testCaseData.name,
+                  project: { id: 177573 },
+                  priority: { id: 3233492 },
+                  status: { id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : 3233490 }
+                };
+                await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, statusFieldData, {
+                  headers: {
+                    'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+                    'Content-Type': 'application/json'
+                  },
+                  timeout: 30000
+                });
+                console.log(`✅ Successfully updated status (approach 2) for ${zephyrResponse.data.key}`);
+              } catch (approach2Error) {
+                console.error(`❌ Approach 2 failed:`, approach2Error.message);
+                
+                // Try approach 3: Custom fields only
+                try {
+                  console.log(`🔄 Approach 3: Custom fields only`);
+                  const customFieldsData = {
+                    customFields: {
+                      'isAutomatable': isAutomatable,
+                      'isAutomated': null
+                    }
+                  };
+                  
+                  await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, customFieldsData, {
+                    headers: {
+                      'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+                      'Content-Type': 'application/json'
+                    },
+                    timeout: 30000
+                  });
+                  
+                  console.log(`✅ Successfully updated custom fields for ${zephyrResponse.data.key}`);
+                  
+                } catch (customFieldsError) {
+                  console.error(`❌ Approach 3 failed:`, customFieldsError.message);
+                  if (customFieldsError.response) {
+                    console.error('Custom Fields API Error Status:', customFieldsError.response.status);
+                    console.error('Custom Fields API Error Response:', JSON.stringify(customFieldsError.response.data, null, 2));
+                  }
+                }
+              }
+            }
+            
+          } catch (alternativeError) {
+            console.error(`❌ All alternative approaches failed for ${zephyrResponse.data.key}:`, alternativeError.message);
+          }
+        }
         
       } catch (scriptError) {
         console.error(`❌ Failed to add test script to ${zephyrResponse.data.key}:`, scriptError.message);

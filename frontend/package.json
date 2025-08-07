@@ -1,5 +1,5 @@
 {
-  "name": "@gen-ai-qa-tool/frontend",
+  "name": "@klassijs-ai/frontend",
   "version": "1.0.0",
   "description": "Frontend React application for AI-powered test automation platform",
   "private": true,

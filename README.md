@@ -200,7 +200,7 @@ genAiQaTool/
 pnpm run test
 
 # Backend tests (when implemented)
-pnpm --filter @gen-ai-qa-tool/backend run test
+pnpm --filter @klassijs-ai/backend run test
 ```
 
 ### Building

@@ -1,5 +1,5 @@
 {
-  "name": "gen-ai-qa-tool",
+  "name": "klassijs-ai",
   "version": "1.0.0",
   "description": "AI-powered test automation platform for generating Cucumber test cases",
   "creator": {
@@ -20,13 +20,13 @@
   "private": true,
   "scripts": {
     "dev": "concurrently \"pnpm run server\" \"pnpm run client\"",
-    "server": "pnpm --filter @gen-ai-qa-tool/backend run dev",
-    "client": "pnpm --filter @gen-ai-qa-tool/frontend run start",
-    "build": "pnpm --filter @gen-ai-qa-tool/frontend run build",
+    "server": "pnpm --filter @klassijs-ai/backend run dev",
+    "client": "pnpm --filter @klassijs-ai/frontend run start",
+    "build": "pnpm --filter @klassijs-ai/frontend run build",
     "install-all": "pnpm install",
-    "start": "pnpm --filter @gen-ai-qa-tool/backend run start",
-    "build:all": "pnpm --filter @gen-ai-qa-tool/frontend run build",
-    "test": "pnpm --filter @gen-ai-qa-tool/frontend run test"
+    "start": "pnpm --filter @klassijs-ai/backend run start",
+    "build:all": "pnpm --filter @klassijs-ai/frontend run build",
+    "test": "pnpm --filter @klassijs-ai/frontend run test"
   },
   "keywords": ["test-automation", "cucumber", "gherkin", "ai", "openai", "monorepo"],
   "author": "Test Automation Architect",

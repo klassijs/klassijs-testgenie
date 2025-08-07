@@ -1,5 +1,5 @@
 {
-  "name": "@gen-ai-qa-tool/backend",
+  "name": "@klassijs-ai/backend",
   "version": "1.0.0",
   "description": "Backend server for AI-powered test automation platform",
   "main": "index.js",

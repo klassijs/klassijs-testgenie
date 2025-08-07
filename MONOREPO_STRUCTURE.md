@@ -42,14 +42,14 @@ genAiQaTool/
 - **Dependencies**: Only development tools like `concurrently`
 
 ### Frontend Package (`frontend/`)
-- **Name**: `@gen-ai-qa-tool/frontend`
+- **Name**: `@klassijs-ai/frontend`
 - **Purpose**: React application for the UI
 - **Port**: 3000 (default)
 - **Dependencies**: React, Axios, Lucide React, React Syntax Highlighter
 - **Scripts**: `start`, `build`, `test`, `eject`
 
 ### Backend Package (`backend/`)
-- **Name**: `@gen-ai-qa-tool/backend`
+- **Name**: `@klassijs-ai/backend`
 - **Purpose**: Express API server with Azure OpenAI integration
 - **Port**: 5000 (default)
 - **Dependencies**: Express, OpenAI, Helmet, CORS, Rate Limiting
@@ -96,8 +96,8 @@ genAiQaTool/
 pnpm install
 
 # Run specific package
-pnpm --filter @gen-ai-qa-tool/frontend run start
-pnpm --filter @gen-ai-qa-tool/backend run dev
+pnpm --filter @klassijs-ai/frontend run start
+pnpm --filter @klassijs-ai/backend run dev
 
 # Run from root (convenience)
 pnpm run dev        # Both frontend and backend
@@ -155,7 +155,7 @@ pnpm run build:all
 pnpm run test
 
 # Backend tests (when implemented)
-pnpm --filter @gen-ai-qa-tool/backend run test
+pnpm --filter @klassijs-ai/backend run test
 ```
 
 ## Adding New Services
@@ -184,7 +184,7 @@ packages:
 ```json
 {
   "scripts": {
-    "new-service": "pnpm --filter @gen-ai-qa-tool/new-service run dev"
+    "new-service": "pnpm --filter @klassijs-ai/new-service run dev"
   }
 }
 ```

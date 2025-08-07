@@ -55,9 +55,9 @@ body {
 }
 
 .logo-icon {
-  width: 2rem;
-  height: 2rem;
-  color: #667eea;
+  width: 3rem;
+  height: 3rem;
+  object-fit: contain;
 }
 
 /* Card Styles */
