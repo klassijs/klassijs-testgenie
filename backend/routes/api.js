@@ -378,56 +378,7 @@ router.get('/zephyr-projects', async (req, res) => {
   }
 });
 
-// Debug endpoint to test Zephyr Scale connectivity
-router.get('/zephyr-debug', async (req, res) => {
-  try {
-    console.log('=== ZEPHYR DEBUG ENDPOINT CALLED ===');
-    console.log('Testing Zephyr Scale API connectivity...');
-    
-    // Test projects endpoint
-    console.log('Testing /projects endpoint...');
-    const projectsResponse = await axios.get(`${ZEPHYR_BASE_URL}/projects`, {
-      headers: {
-        'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      }
-    });
-    console.log('Projects response:', JSON.stringify(projectsResponse.data, null, 2));
-    
-    // Test folders endpoint for QAE project
-    console.log('Testing /folders endpoint for QAE project...');
-    const foldersResponse = await axios.get(`${ZEPHYR_BASE_URL}/folders`, {
-      headers: {
-        'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      params: {
-        projectKey: 'QAE'
-      }
-    });
-    console.log('Folders response:', JSON.stringify(foldersResponse.data, null, 2));
-    
-    res.json({
-      success: true,
-      message: 'Zephyr Scale API connectivity test completed',
-      projects: projectsResponse.data,
-      folders: foldersResponse.data,
-      qaeFolders: await getTestFolders('QAE'),
-      metadata: {
-        timestamp: new Date().toISOString()
-      }
-    });
-    
-  } catch (error) {
-    console.error('Zephyr debug error:', error);
-    res.status(500).json({
-      error: 'Zephyr Scale API connectivity test failed',
-      details: error.message,
-      response: error.response?.data
-    });
-  }
 
-});
 
 // Get Zephyr Scale test folders for a project
 router.get('/zephyr-folders/:projectKey', async (req, res) => {
@@ -489,7 +440,7 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
 // Zephyr Scale Direct Push endpoint
 router.post('/push-to-zephyr', async (req, res) => {
   try {
-    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None' } = req.body;
+    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None', testCaseIds = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -507,7 +458,7 @@ router.post('/push-to-zephyr', async (req, res) => {
       });
     }
 
-    const result = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable);
+    const result = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseIds);
 
     res.json(result);
 

@@ -17,8 +17,7 @@ const TestGenerator = () => {
   const [uploadedFiles, setUploadedFiles] = useState([]);
   const [isDragOver, setIsDragOver] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
-  const [editableTests, setEditableTests] = useState('');
+
   const [activeTab, setActiveTab] = useState(0);
   const [featureTabs, setFeatureTabs] = useState([]);
   const [editableFeatures, setEditableFeatures] = useState({});
@@ -47,6 +46,12 @@ const TestGenerator = () => {
     message: '',
     status: 'idle' // idle, pushing, success, error
   });
+  
+  // Track which tabs have been pushed to Zephyr
+  const [pushedTabs, setPushedTabs] = useState(new Set());
+  
+  // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
+  const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
 
   // API base URL - can be configured via environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -84,17 +89,7 @@ const TestGenerator = () => {
       });
 
       if (response.data.success) {
-        console.log(`Raw content from backend for ${fileObj.name}:`, {
-          contentLength: response.data.content.length,
-          contentPreview: response.data.content.substring(0, 500) + '...'
-        });
-        
         const sections = processDocumentSections(response.data.content, fileObj.name);
-        console.log(`Processed ${fileObj.name}:`, {
-          contentLength: response.data.content.length,
-          sectionsCount: sections.length,
-          sections: sections
-        });
         setUploadedFiles(prev => 
           prev.map(f => 
             f.id === fileObj.id 
@@ -111,12 +106,9 @@ const TestGenerator = () => {
             originalContent: section.content
           }));
           
-          console.log(`Creating ${newFeatures.length} new features:`, newFeatures.map(f => f.title));
-          
           // Add new features to existing tabs
           setFeatureTabs(prev => {
             const updatedTabs = [...prev, ...newFeatures];
-            console.log(`Updated feature tabs:`, updatedTabs.map(tab => tab.title));
             return updatedTabs;
           });
           
@@ -162,25 +154,7 @@ const TestGenerator = () => {
 
   // Function to process document content into sections
   const processDocumentSections = (content, fileName) => {
-    console.log(`Processing sections for ${fileName}:`, {
-      contentLength: content.length,
-      contentPreview: content.substring(0, 500) + '...'
-    });
-    
-    // Log the full content structure for debugging
-    console.log('=== FULL CONTENT STRUCTURE ===');
-    console.log(content);
-    console.log('=== END CONTENT ===');
-    
-    // Log line-by-line analysis
     const lines = content.split('\n');
-    console.log('=== LINE-BY-LINE ANALYSIS ===');
-    lines.forEach((line, index) => {
-      if (line.trim().length > 0) {
-        console.log(`Line ${index + 1}: "${line}"`);
-      }
-    });
-    console.log('=== END LINE ANALYSIS ===');
     
     const sections = [];
     let currentSection = '';
@@ -231,14 +205,12 @@ const TestGenerator = () => {
       }
       
       if (isHeader) {
-        console.log(`Found potential header: "${line}"`);
         // Save previous section if exists
         if (currentSection.trim()) {
           sections.push({
             title: currentSectionTitle || `Feature ${sections.length + 1}`,
             content: currentSection.trim()
           });
-          console.log(`Added section: "${currentSectionTitle || `Feature ${sections.length}`}" with ${currentSection.trim().length} chars`);
         }
         
         // Start new section
@@ -255,12 +227,11 @@ const TestGenerator = () => {
         title: currentSectionTitle || `Feature ${sections.length + 1}`,
         content: currentSection.trim()
       });
-      console.log(`Added final section: "${currentSectionTitle || `Feature ${sections.length}`}" with ${currentSection.trim().length} chars`);
     }
     
     // If we still have no sections, try to split by content blocks
     if (sections.length <= 1 && content.length > 500) {
-      console.log('No clear sections found, attempting to split by content blocks...');
+      
       const contentBlocks = content.split(/\n\s*\n\s*\n/); // Split by multiple newlines
       
       if (contentBlocks.length > 1) {
@@ -275,7 +246,6 @@ const TestGenerator = () => {
               title: title,
               content: block.trim()
             });
-            console.log(`Added content block section: "${title}" with ${block.trim().length} chars`);
           }
         });
       }
@@ -283,8 +253,6 @@ const TestGenerator = () => {
     
     // If still not enough sections, try more aggressive splitting
     if (sections.length <= 3 && content.length > 1000) {
-      console.log('Still not enough sections, trying aggressive splitting...');
-      
       // Try splitting by any line that looks like it could be a section header
       const aggressiveBlocks = content.split(/\n\s*\n/); // Split by double newlines
       
@@ -310,32 +278,22 @@ const TestGenerator = () => {
               title: title,
               content: block.trim()
             });
-            console.log(`Added aggressive section: "${title}" with ${block.trim().length} chars`);
           }
         });
       }
     }
     
-    console.log(`Total sections created: ${sections.length}`);
-    sections.forEach((section, index) => {
-      console.log(`Section ${index + 1}: "${section.title}" (${section.content.length} chars)`);
-    });
-    
     return sections;
   };
 
   const handleFileUpload = useCallback((event) => {
-    console.log('handleFileUpload called with:', event);
-    
     // Extract files from the event
     const files = event.target.files;
-    console.log('files from event:', files);
     
     if (!files || files.length === 0) return;
 
     // Handle both FileList and single file cases
     const fileArray = files instanceof FileList ? Array.from(files) : [files];
-    console.log('fileArray:', fileArray);
 
     const newFiles = fileArray.map(file => ({
       id: Date.now() + Math.random(),
@@ -344,8 +302,6 @@ const TestGenerator = () => {
       file: file,
       status: 'uploading'
     }));
-
-    console.log('newFiles:', newFiles);
     setUploadedFiles(prev => [...prev, ...newFiles]);
 
     // Process each file
@@ -400,23 +356,13 @@ const TestGenerator = () => {
     setStatus(null);
     
     try {
-      console.log('Generating tests for feature tabs:', featureTabs.map(f => ({
-        title: f.title,
-        contentLength: f.content.length
-      })));
-      
       let allTests = '';
       const generatedFeatures = [];
       
       // Generate tests for each feature tab
       for (const feature of featureTabs) {
-        console.log(`Generating tests for feature: "${feature.title}"`);
-        console.log(`Content length: ${feature.content.length} characters`);
-        console.log(`Content preview: ${feature.content.substring(0, 200)}...`);
-        
         // Skip features with insufficient content
         if (feature.content.length < 100) {
-          console.log(`Skipping feature "${feature.title}" - content too short (${feature.content.length} chars)`);
           continue;
         }
         
@@ -438,8 +384,6 @@ const TestGenerator = () => {
           });
           allTests += `\n\n# ${feature.title}\n`;
           allTests += response.data.content;
-        } else {
-          console.error(`Failed to generate tests for feature: ${feature.title}`, response.data);
         }
       }
       
@@ -459,7 +403,6 @@ const TestGenerator = () => {
         setStatus({ type: 'error', message: 'Failed to generate test cases from document sections' });
       }
     } catch (error) {
-      console.error('Error generating tests:', error);
       let errorMessage = 'Failed to generate test cases';
       let suggestion = 'Please try again';
       
@@ -524,7 +467,6 @@ const TestGenerator = () => {
         setStatus({ type: 'error', message: response.data.error || 'Failed to refine test cases' });
       }
     } catch (error) {
-      console.error('Error refining tests:', error);
       setStatus({ type: 'error', message: 'Failed to refine test cases. Please try again.' });
     } finally {
       setIsLoading(false);
@@ -535,10 +477,10 @@ const TestGenerator = () => {
     setContent('');
     setContext('');
     setGeneratedTests('');
-    setEditableTests('');
+
     setUploadedFiles([]);
     setShowModal(false);
-    setIsEditing(false);
+
     setActiveTab(0);
     setFeatureTabs([]);
     setEditableFeatures({});
@@ -555,9 +497,7 @@ const TestGenerator = () => {
   };
 
   // Helper function to get current content (edited or original)
-  const getCurrentContent = () => {
-    return isEditing ? editableTests : generatedTests;
-  };
+
 
 
 
@@ -615,7 +555,7 @@ const TestGenerator = () => {
   };
 
   // Updated pushToZephyr function
-  const pushToZephyr = async (content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = '', status = 'Draft', isAutomatable = 'None') => {
+  const pushToZephyr = async (content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = '', status = 'Draft', isAutomatable = 'None', testCaseId = null) => {
     try {
       // Parse content to count scenarios
       const lines = content.split('\n');
@@ -687,7 +627,8 @@ const TestGenerator = () => {
         testCaseName: testCaseName,
         folderId: folderId || null,
         status: status,
-        isAutomatable: isAutomatable
+        isAutomatable: isAutomatable,
+        testCaseId: testCaseId
       });
 
       // Clear the progress interval
@@ -781,12 +722,17 @@ const TestGenerator = () => {
         const response = await axios.get(`${API_BASE_URL}/api/loading-images`);
         if (response.data.success) {
           setLoadingImages(response.data.images);
-          console.log('Loaded loading images:', response.data.images);
         } else {
-          console.error('Failed to load loading images:', response.data.error);
+          // Fallback to static images if API fails
+          const fallbackImages = [
+            { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
+            { image: "Google's Updated Spam Policy - Repeated_.jpeg", title: "Creating Test Scenarios" },
+            { image: "Paperwork Robot Stock Illustrations_.png", title: "Adding Edge Cases" },
+            { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
+          ];
+          setLoadingImages(fallbackImages);
         }
       } catch (error) {
-        console.error('Error fetching loading images:', error);
         // Fallback to static images if API fails
         const fallbackImages = [
           { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1135,15 +1081,16 @@ const TestGenerator = () => {
                       setEditingFeatures(prev => ({ ...prev, [activeTab]: true }));
                     }
                   }}
-                  title={editingFeatures[activeTab] ? "Save changes" : "Edit current feature"}
+                  disabled={pushedTabs.has(activeTab)}
+                  title={pushedTabs.has(activeTab) ? "Cannot edit after pushing to Zephyr" : (editingFeatures[activeTab] ? "Save changes" : "Edit current feature")}
                 >
                   {editingFeatures[activeTab] ? "Save" : "Edit"}
                 </button>
                 <button 
                   className="btn btn-secondary"
                   onClick={refineTests}
-                  disabled={isLoading}
-                  title="Refine and improve the current feature"
+                  disabled={isLoading || pushedTabs.has(activeTab)}
+                  title={pushedTabs.has(activeTab) ? "Cannot refine after pushing to Zephyr" : "Refine and improve the current feature"}
                 >
                   {isLoading ? (
                     <>
@@ -1172,7 +1119,7 @@ const TestGenerator = () => {
                 {featureTabs.map((feature, index) => (
                   <button
                     key={index}
-                    className={`tab-button ${activeTab === index ? 'active' : ''}`}
+                    className={`tab-button ${activeTab === index ? 'active' : ''} ${pushedTabs.has(index) ? 'pushed' : ''}`}
                     onClick={() => setActiveTab(index)}
                   >
                     {feature.title}
@@ -1184,7 +1131,7 @@ const TestGenerator = () => {
             {/* Feature Content */}
             {featureTabs.length > 0 && (
               <div className="feature-content">
-                {editingFeatures[activeTab] ? (
+                {editingFeatures[activeTab] && !pushedTabs.has(activeTab) ? (
                   <textarea
                     value={editableFeatures[activeTab] || ''}
                     onChange={(e) => setEditableFeatures(prev => ({
@@ -1195,7 +1142,22 @@ const TestGenerator = () => {
                     placeholder="Edit your test cases here..."
                   />
                 ) : (
-                  <TestOutput content={editableFeatures[activeTab] || featureTabs[activeTab]?.content || ''} />
+                  <>
+                    {pushedTabs.has(activeTab) && (
+                      <div style={{ 
+                        padding: '12px', 
+                        backgroundColor: '#f0f9ff', 
+                        border: '1px solid #0ea5e9', 
+                        borderRadius: '6px', 
+                        marginBottom: '12px',
+                        fontSize: '14px',
+                        color: '#0369a1'
+                      }}>
+                        ✅ This test case has been pushed to Zephyr Scale. Any changes must be made directly in Zephyr.
+                      </div>
+                    )}
+                    <TestOutput content={editableFeatures[activeTab] || featureTabs[activeTab]?.content || ''} />
+                  </>
                 )}
               </div>
             )}
@@ -1250,10 +1212,11 @@ const TestGenerator = () => {
                     });
                     setShowZephyrConfig(true);
                   }}
-                  title="Push current feature directly to Zephyr Scale"
+                  disabled={pushedTabs.has(activeTab)}
+                  title={pushedTabs.has(activeTab) ? "Already pushed to Zephyr - use Zephyr to make changes" : "Push current feature directly to Zephyr Scale"}
                 >
                   <ExternalLink size={16} />
-                  Push to Zephyr
+                  {pushedTabs.has(activeTab) ? "Already Pushed" : "Push to Zephyr"}
                 </button>
               </div>
             </div>
@@ -1474,13 +1437,20 @@ const TestGenerator = () => {
                       zephyrConfig.testCaseName,
                       zephyrConfig.folderId,
                       zephyrConfig.status,
-                      zephyrConfig.isAutomatable
+                      zephyrConfig.isAutomatable,
+                      zephyrTestCaseIds[activeTab] || null
                     );
                     
                     if (result) {
+                      // Add current tab to pushed tabs and store test case IDs
+                      setPushedTabs(prev => new Set([...prev, activeTab]));
+                      setZephyrTestCaseIds(prev => ({
+                        ...prev,
+                        [activeTab]: result.zephyrTestCaseIds || [result.zephyrTestCaseId]
+                      }));
                       setStatus({ 
                         type: 'success', 
-                        message: `Successfully pushed to Zephyr Scale! Test Case ID: ${result.zephyrTestCaseId}` 
+                        message: `Successfully ${zephyrTestCaseIds[activeTab] ? 'updated' : 'pushed'} to Zephyr Scale! ${result.zephyrTestCaseIds ? `${result.zephyrTestCaseIds.length} test cases` : 'Test Case ID: ' + result.zephyrTestCaseId}` 
                       });
                       setShowZephyrConfig(false);
                     }

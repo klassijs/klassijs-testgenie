@@ -10,11 +10,6 @@ const isAzureOpenAIConfigured = OPENAI_URL && OPENAI_DEVELOPMENT_ID && OPENAI_AP
 
 // Generate test cases using Azure OpenAI
 async function generateTestCases(content, context = '') {
-  console.log('=== GENERATE TEST CASES DEBUG ===');
-  console.log('Content length:', content.length);
-  console.log('Content preview:', content.substring(0, 500));
-  console.log('Context:', context);
-  console.log('=== END DEBUG ===');
   
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
@@ -36,7 +31,7 @@ async function generateTestCases(content, context = '') {
   
   const apiUrl = `${baseUrl}/openai/deployments/${OPENAI_DEVELOPMENT_ID}/chat/completions?api-version=${OPENAI_API_VERSION}`;
   
-  console.log(`Making Azure OpenAI request to: ${apiUrl}`);
+
 
   const messages = [
     {

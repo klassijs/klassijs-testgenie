@@ -845,6 +845,18 @@ body {
   font-weight: 600;
 }
 
+.tab-button.pushed {
+  color: #ffffff;
+  border-bottom-color: #059669;
+  background: #059669;
+  font-weight: 600;
+}
+
+.tab-button.pushed:hover {
+  background: #047857;
+  color: #ffffff;
+}
+
 /* Feature Content Area */
 .feature-content {
   flex: 1;
@@ -879,6 +891,15 @@ body {
   word-wrap: break-word;
   margin: 0;
   padding: 1.5rem;
+}
+
+.test-output-info {
+  color: #ffffff;
+  font-size: 0.875rem;
+  margin: 0;
+  padding: 1rem 1.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border-top: 1px solid rgba(255, 255, 255, 0.1);
 }
 
 .test-editor {

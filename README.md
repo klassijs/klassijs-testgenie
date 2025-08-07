@@ -1,4 +1,4 @@
-# AI-Powered Test Automation Platform
+# KlassiJS QA CHOMP!!! - AI Powered Test Case Generator
 
 A modern React + Node.js application that integrates with Azure OpenAI to generate high-quality Cucumber test cases in Gherkin syntax from user requirements, user stories, or any content.
 
