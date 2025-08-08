@@ -123,6 +123,32 @@ async function getTestFolders(projectKey) {
   }
 }
 
+// Get main folders (top-level folders with no parent)
+async function getMainFolders(projectKey) {
+  const allFolders = await getTestFolders(projectKey);
+  const mainFolders = allFolders.filter(folder => !folder.parentId);
+
+  return mainFolders;
+}
+
+// Get subfolders for a specific parent folder
+async function getSubfolders(projectKey, parentFolderId) {
+  const allFolders = await getTestFolders(projectKey);
+  const subfolders = allFolders.filter(folder => folder.parentId === parentFolderId);
+
+  return subfolders;
+}
+
+// Search folders by name across all levels
+async function searchFolders(projectKey, searchTerm) {
+  const allFolders = await getTestFolders(projectKey);
+  const searchLower = searchTerm.toLowerCase();
+  
+  return allFolders.filter(folder => 
+    folder.name && folder.name.toLowerCase().includes(searchLower)
+  );
+}
+
 // Convert Gherkin content to Zephyr Scale BDD-Gherkin Script format
 function convertToZephyrFormat(content, featureName = 'Test Feature') {
   const lines = content.split('\n');
@@ -579,5 +605,8 @@ module.exports = {
   pushToZephyr,
   getProjects,
   getTestFolders,
+  getMainFolders,
+  getSubfolders,
+  searchFolders,
   isZephyrConfigured
 }; 

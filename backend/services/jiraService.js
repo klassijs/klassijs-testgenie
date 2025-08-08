@@ -1,20 +1,13 @@
 const axios = require('axios');
 
-// Jira API Configuration from environment variables
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL;
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
 const isJiraConfigured = JIRA_BASE_URL && JIRA_EMAIL && JIRA_API_TOKEN;
 
-console.log('Jira configuration status:', {
-  hasBaseUrl: !!JIRA_BASE_URL,
-  hasEmail: !!JIRA_EMAIL,
-  hasApiToken: !!JIRA_API_TOKEN,
-  isConfigured: isJiraConfigured
-});
 
-// Test connection to Jira using environment credentials
+
 async function testJiraConnection() {
   try {
     if (!isJiraConfigured) {
@@ -299,10 +292,7 @@ function extractScenariosFromDescription(description, summary) {
 // Import Jira issues using environment credentials
 async function importJiraIssues(selectedIssues) {
   try {
-    console.log('Starting importJiraIssues with:', { selectedIssues, isJiraConfigured });
-    
     if (!isJiraConfigured) {
-      console.log('Jira not configured');
       return {
         success: false,
         error: 'Jira credentials not configured'
@@ -313,8 +303,6 @@ async function importJiraIssues(selectedIssues) {
     const skippedIssues = [];
     
     for (const issueKey of selectedIssues) {
-      console.log('Fetching issue:', issueKey);
-      
       // Fetch individual issue details
       const response = await axios.get(`${JIRA_BASE_URL}/rest/api/3/issue/${issueKey}`, {
         auth: {
@@ -330,14 +318,6 @@ async function importJiraIssues(selectedIssues) {
         timeout: 10000
       });
       
-      console.log('Jira API response for', issueKey, ':', {
-        status: response.status,
-        hasData: !!response.data,
-        hasFields: !!response.data?.fields,
-        summary: response.data?.fields?.summary,
-        description: response.data?.fields?.description
-      });
-      
       if (response.data) {
         const issue = {
           key: response.data.key,
@@ -347,14 +327,12 @@ async function importJiraIssues(selectedIssues) {
           status: response.data.fields.status.name
         };
         
-        console.log('Processed issue:', issue);
-        
         const feature = convertJiraIssueToGherkin(issue);
         features.push(feature); // Always add since we create scenarios from Jira content
       }
     }
     
-    console.log('Import completed, features:', features.length, 'skipped:', skippedIssues.length);
+
     
     let message = `Successfully imported ${features.length} Jira tickets as Gherkin features`;
     if (skippedIssues.length > 0) {

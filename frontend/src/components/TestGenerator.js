@@ -15,8 +15,10 @@ const TestGenerator = () => {
   const [processingFile, setProcessingFile] = useState(null);
   const [status, setStatus] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
+
   const [isDragOver, setIsDragOver] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [extractedRequirements, setExtractedRequirements] = useState('');
 
   const [activeTab, setActiveTab] = useState(0);
   const [featureTabs, setFeatureTabs] = useState([]);
@@ -37,6 +39,18 @@ const TestGenerator = () => {
   const [loadingFolders, setLoadingFolders] = useState(false);
   const [showFolderDropdown, setShowFolderDropdown] = useState(false);
   const [folderSearch, setFolderSearch] = useState('');
+  const [showProjectDropdown, setShowProjectDropdown] = useState(false);
+  const [projectSearch, setProjectSearch] = useState('');
+  
+  // Hierarchical folder navigation state
+  const [folderNavigation, setFolderNavigation] = useState({
+    currentLevel: 'main', // 'main', 'subfolder', 'search'
+    parentFolderId: null,
+    parentFolderName: '',
+    breadcrumb: []
+  });
+  const [searchMode, setSearchMode] = useState(false);
+  const [expandedFolders, setExpandedFolders] = useState(new Set());
   
   // Zephyr push progress state
   const [showZephyrProgress, setShowZephyrProgress] = useState(false);
@@ -65,6 +79,7 @@ const TestGenerator = () => {
   const [isLoadingJira, setIsLoadingJira] = useState(false);
   const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
   const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
+  const [jiraProjectSearch, setJiraProjectSearch] = useState('');
 
   // API base URL - can be configured via environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -120,13 +135,9 @@ const TestGenerator = () => {
   const importJiraIssues = async () => {
     setIsLoadingJira(true);
     try {
-      console.log('Frontend: Sending import request with selectedIssues:', jiraConfig.selectedIssues);
-      
       const response = await axios.post(`${API_BASE_URL}/api/jira/import-issues`, {
         selectedIssues: jiraConfig.selectedIssues
       });
-
-      console.log('Frontend: Import response:', response.data);
 
       if (response.data.success) {
         // Convert imported issues to feature tabs
@@ -146,7 +157,6 @@ const TestGenerator = () => {
         setStatus({ type: 'error', message: response.data.error || 'Failed to import Jira issues' });
       }
     } catch (error) {
-      console.error('Frontend: Import error:', error.response?.data);
       setStatus({ 
         type: 'error', 
         message: error.response?.data?.error || 'Failed to import Jira issues' 
@@ -162,13 +172,16 @@ const TestGenerator = () => {
       if (showFolderDropdown && !event.target.closest('.folder-dropdown-container')) {
         setShowFolderDropdown(false);
       }
+      if (showProjectDropdown && !event.target.closest('.project-dropdown-container')) {
+        setShowProjectDropdown(false);
+      }
     };
 
     document.addEventListener('mousedown', handleClickOutside);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
     };
-  }, [showFolderDropdown]);
+  }, [showFolderDropdown, showProjectDropdown]);
 
   // File upload handlers
   const processFile = useCallback(async (fileObj) => {
@@ -189,42 +202,64 @@ const TestGenerator = () => {
       });
 
       if (response.data.success) {
-        const sections = processDocumentSections(response.data.content, fileObj.name);
+
         setUploadedFiles(prev => 
           prev.map(f => 
             f.id === fileObj.id 
-              ? { ...f, status: 'completed', content: response.data.content, sections: sections }
+              ? { ...f, status: 'completed', content: response.data.content }
               : f
           )
         );
         
-        // Create feature tabs from sections immediately
-        if (sections.length > 0) {
-          const newFeatures = sections.map(section => ({
-            title: section.title,
-            content: section.content,
-            originalContent: section.content
-          }));
-          
-          // Add new features to existing tabs
-          setFeatureTabs(prev => {
-            const updatedTabs = [...prev, ...newFeatures];
-            return updatedTabs;
+        // Automatically extract requirements from the document content
+        let requirementsResponse = null;
+        try {
+          requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
+            content: response.data.content, 
+            context: context 
           });
           
-          // Initialize editable features for new sections
-          setEditableFeatures(prev => {
-            const editableFeaturesObj = {};
-            newFeatures.forEach((feature, index) => {
-              const globalIndex = (prev?.length || 0) + index;
-              editableFeaturesObj[globalIndex] = feature.content;
-            });
-            return { ...prev, ...editableFeaturesObj };
-          });
-          
-          setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and created ${sections.length} features!` });
-        } else {
-          setStatus({ type: 'success', message: `Successfully processed ${fileObj.name}!` });
+          if (requirementsResponse.data.success) {
+            setExtractedRequirements(requirementsResponse.data.content);
+            
+            // Create feature tabs from extracted requirements
+            const requirementsContent = requirementsResponse.data.content;
+            
+            // Parse the requirements table to extract individual requirements
+            const requirements = parseRequirementsTable(requirementsContent);
+            
+            if (requirements.length > 0) {
+              const newFeatures = requirements.map((req, index) => ({
+                title: req.id || `REQ-${String(index + 1).padStart(3, '0')}`,
+                content: `Requirement: ${req.requirement}\n\nAcceptance Criteria: ${req.acceptanceCriteria}`,
+                originalContent: req.requirement
+              }));
+              
+              // Add new features to existing tabs
+              setFeatureTabs(prev => {
+                const updatedTabs = [...prev, ...newFeatures];
+                return updatedTabs;
+              });
+              
+              // Initialize editable features for new sections
+              setEditableFeatures(prev => {
+                const editableFeaturesObj = {};
+                newFeatures.forEach((feature, index) => {
+                  const globalIndex = (prev?.length || 0) + index;
+                  editableFeaturesObj[globalIndex] = feature.content;
+                });
+                return { ...prev, ...editableFeaturesObj };
+              });
+              
+              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name}, extracted ${requirements.length} requirements, and created feature tabs!` });
+            } else {
+              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
+            }
+          } else {
+            setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
+          }
+        } catch (requirementsError) {
+          setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
         }
       } else {
         setUploadedFiles(prev => 
@@ -252,138 +287,59 @@ const TestGenerator = () => {
     }
   }, [API_BASE_URL, context]);
 
-  // Function to process document content into sections
-  const processDocumentSections = (content, fileName) => {
-    const lines = content.split('\n');
+  // Function to parse requirements table and extract individual requirements
+  const parseRequirementsTable = (requirementsContent) => {
+    const requirements = [];
+    const lines = requirementsContent.split('\n');
     
-    const sections = [];
-    let currentSection = '';
-    let currentSectionTitle = '';
-
-    // Enhanced section detection patterns
-    const sectionPatterns = [
-      /^#+\s+(.+)$/, // Markdown headers
-      /^(.+):\s*$/, // Lines ending with colon
-      /^(.+)\s*[-–—]\s*$/, // Lines with dashes
-      /^(.+)\s*[=]{3,}$/, // Lines with equals signs
-      /^(.+)\s*[-]{3,}$/, // Lines with dashes
-      /^[A-Z][A-Z\s]+$/, // ALL CAPS lines (potential headers)
-      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s*$/, // Title Case lines
-      /^[0-9]+\.\s+(.+)$/, // Numbered sections
-      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s*[-–—]\s*$/, // Title with dashes
-      /^[A-Z][a-z]+(\s+[A-Z][a-z]+)*\s*[:]\s*$/, // Title with colon
-    ];
-
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i].trim();
-      
-      // Check if this line is a section header
-      let isHeader = false;
-      let headerText = '';
-      
-      for (const pattern of sectionPatterns) {
-        const match = line.match(pattern);
-        if (match && line.length > 3 && line.length < 100) { // Reasonable header length
-          isHeader = true;
-          headerText = match[1] || line;
-          break;
-        }
+    let inTable = false;
+    let tableLines = [];
+    
+    // Find the table section
+    for (const line of lines) {
+      if (line.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
+        inTable = true;
+        continue;
       }
       
-      // Additional checks for potential headers
-      if (!isHeader && line.length > 5 && line.length < 80) {
-        // Check for lines that might be headers based on context
-        const nextLine = lines[i + 1]?.trim() || '';
-        const prevLine = lines[i - 1]?.trim() || '';
-        
-        // If line is followed by empty line or different content, it might be a header
-        if ((nextLine === '' || nextLine.startsWith('  ') || nextLine.startsWith('\t')) && 
-            (prevLine === '' || prevLine.endsWith('.') || prevLine.endsWith(':'))) {
-          isHeader = true;
-          headerText = line;
+      if (inTable) {
+        if (line.trim() === '' || !line.includes('|')) {
+          break; // End of table
         }
-      }
-      
-      if (isHeader) {
-        // Save previous section if exists
-        if (currentSection.trim()) {
-          sections.push({
-            title: currentSectionTitle || `Feature ${sections.length + 1}`,
-            content: currentSection.trim()
-          });
-        }
-        
-        // Start new section
-        currentSectionTitle = headerText;
-        currentSection = line + '\n';
-      } else {
-        currentSection += line + '\n';
+        tableLines.push(line);
       }
     }
     
-    // Add the last section
-    if (currentSection.trim()) {
-      sections.push({
-        title: currentSectionTitle || `Feature ${sections.length + 1}`,
-        content: currentSection.trim()
-      });
-    }
-    
-    // If we still have no sections, try to split by content blocks
-    if (sections.length <= 1 && content.length > 500) {
+    // Parse table rows
+    for (const line of tableLines) {
+      const columns = line.split('|').map(col => col.trim()).filter(col => col);
       
-      const contentBlocks = content.split(/\n\s*\n\s*\n/); // Split by multiple newlines
-      
-      if (contentBlocks.length > 1) {
-        sections.length = 0; // Clear existing sections
-        contentBlocks.forEach((block, index) => {
-          if (block.trim().length > 50) { // Only add blocks with substantial content
-            const blockLines = block.trim().split('\n');
-            const firstLine = blockLines[0]?.trim() || '';
-            const title = firstLine.length < 100 ? firstLine : `Feature ${index + 1}`;
-            
-            sections.push({
-              title: title,
-              content: block.trim()
-            });
-          }
+      if (columns.length >= 3) {
+        const [id, requirement, acceptanceCriteria] = columns;
+        
+        // Skip header row and separator rows
+        if (id.toLowerCase().includes('requirement id') || 
+            id.toLowerCase().includes('id') ||
+            id === '---' ||
+            id.includes('---') ||
+            requirement.includes('---') ||
+            acceptanceCriteria.includes('---') ||
+            id === '' ||
+            requirement === '' ||
+            acceptanceCriteria === '' ||
+            line.trim().match(/^[\s\-|]+$/)) {
+          continue;
+        }
+        
+        requirements.push({
+          id: id,
+          requirement: requirement,
+          acceptanceCriteria: acceptanceCriteria
         });
       }
     }
     
-    // If still not enough sections, try more aggressive splitting
-    if (sections.length <= 3 && content.length > 1000) {
-      // Try splitting by any line that looks like it could be a section header
-      const aggressiveBlocks = content.split(/\n\s*\n/); // Split by double newlines
-      
-      if (aggressiveBlocks.length > sections.length) {
-        sections.length = 0; // Clear existing sections
-        aggressiveBlocks.forEach((block, index) => {
-          if (block.trim().length > 30) { // Lower threshold for more sections
-            const blockLines = block.trim().split('\n');
-            const firstLine = blockLines[0]?.trim() || '';
-            
-            // Try to find a good title from the first few lines
-            let title = `Feature ${index + 1}`;
-            for (let i = 0; i < Math.min(3, blockLines.length); i++) {
-              const line = blockLines[i].trim();
-              if (line.length > 3 && line.length < 80 && 
-                  (line.match(/^[A-Z]/) || line.match(/^[0-9]+\./))) {
-                title = line;
-                break;
-              }
-            }
-            
-            sections.push({
-              title: title,
-              content: block.trim()
-            });
-          }
-        });
-      }
-    }
-    
-    return sections;
+    return requirements;
   };
 
   const handleFileUpload = useCallback((event) => {
@@ -395,6 +351,9 @@ const TestGenerator = () => {
     // Handle both FileList and single file cases
     const fileArray = files instanceof FileList ? Array.from(files) : [files];
 
+
+
+    // Process each file
     const newFiles = fileArray.map(file => ({
       id: Date.now() + Math.random(),
       name: file.name,
@@ -444,10 +403,12 @@ const TestGenerator = () => {
     handleFileUpload(mockEvent);
   }, [handleFileUpload]);
 
+  // Remove the separate extractRequirements function - it will be integrated into document processing
+
   const generateTests = async () => {
-    // Check if we have feature tabs (analyzed sections)
-    if (featureTabs.length === 0) {
-      setStatus({ type: 'error', message: 'No analyzed sections available. Please upload and analyze documents first.' });
+    // Check if we have content to generate tests from
+    if (!content.trim()) {
+      setStatus({ type: 'error', message: 'No content in the text area. Please insert requirements or enter content first.' });
       return;
     }
     
@@ -456,51 +417,62 @@ const TestGenerator = () => {
     setStatus(null);
     
     try {
-      let allTests = '';
+      // Parse requirements from the content
+      const requirements = parseRequirementsTable(content);
+      
+      if (requirements.length === 0) {
+        setStatus({ type: 'error', message: 'No requirements found in the content. Please ensure you have a requirements table with Requirement ID, Business Requirement, and Acceptance Criteria columns.' });
+        return;
+      }
+      
+      // Generate tests for each requirement
       const generatedFeatures = [];
       
-      // Generate tests for each feature tab
-      for (const feature of featureTabs) {
-        // Skip features with insufficient content
-        if (feature.content.length < 100) {
-          continue;
-        }
-        
-        // Prepare enhanced content with more context
-        const enhancedContent = `Section: ${feature.title}\n\n${feature.content}`;
+      for (const req of requirements) {
+        const testContent = `REQUIREMENT TO TEST:
+Requirement ID: ${req.id}
+Business Requirement: ${req.requirement}
+Acceptance Criteria: ${req.acceptanceCriteria}
+
+GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
         
         const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
-          content: enhancedContent, 
+          content: testContent, 
           context: context 
         });
         
         if (response.data.success) {
-          const featureTitle = feature.title;
-          const featureContent = response.data.content;
           generatedFeatures.push({
-            title: featureTitle,
-            content: featureContent,
-            originalContent: feature.content
+            title: req.id,
+            content: response.data.content,
+            requirement: req.requirement,
+            acceptanceCriteria: req.acceptanceCriteria
           });
-          allTests += `\n\n# ${feature.title}\n`;
-          allTests += response.data.content;
+        } else {
+          console.error(`Failed to generate tests for ${req.id}`);
         }
       }
       
       if (generatedFeatures.length > 0) {
-        setGeneratedTests(allTests.trim());
+        // Set the feature tabs
         setFeatureTabs(generatedFeatures);
         setActiveTab(0);
-        // Initialize editable features
+        
+        // Set editable features
         const editableFeaturesObj = {};
         generatedFeatures.forEach((feature, index) => {
           editableFeaturesObj[index] = feature.content;
         });
         setEditableFeatures(editableFeaturesObj);
+        
+        // Set overall generated tests (combined)
+        const allTests = generatedFeatures.map(f => f.content).join('\n\n');
+        setGeneratedTests(allTests);
+        
         setShowModal(true);
-        setStatus({ type: 'success', message: `Generated ${generatedFeatures.length} feature files from document sections!` });
+        setStatus({ type: 'success', message: `Generated test cases for ${generatedFeatures.length} requirements!` });
       } else {
-        setStatus({ type: 'error', message: 'Failed to generate test cases from document sections' });
+        setStatus({ type: 'error', message: 'Failed to generate test cases for any requirements' });
       }
     } catch (error) {
       let errorMessage = 'Failed to generate test cases';
@@ -577,10 +549,9 @@ const TestGenerator = () => {
     setContent('');
     setContext('');
     setGeneratedTests('');
-
+    setExtractedRequirements('');
     setUploadedFiles([]);
     setShowModal(false);
-
     setActiveTab(0);
     setFeatureTabs([]);
     setEditableFeatures({});
@@ -595,6 +566,8 @@ const TestGenerator = () => {
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
+
+
 
   // Helper function to get current content (edited or original)
 
@@ -644,6 +617,101 @@ const TestGenerator = () => {
     }
   };
 
+  // Fetch all folders and organize them hierarchically
+  const fetchAllFolders = async (projectKey) => {
+    if (!projectKey) {
+      setZephyrFolders([]);
+      return;
+    }
+
+    try {
+      setLoadingFolders(true);
+      const response = await axios.get(`${API_BASE_URL}/api/zephyr-folders/${projectKey}`);
+      if (response.data.success) {
+        console.log('All folders fetched:', response.data.folders);
+        setZephyrFolders(response.data.folders);
+        setFolderNavigation({
+          currentLevel: 'main',
+          parentFolderId: null,
+          parentFolderName: '',
+          breadcrumb: []
+        });
+        setSearchMode(false);
+      }
+    } catch (error) {
+      console.error('Error fetching all folders:', error);
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to fetch folders' 
+      });
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
+
+
+
+  // Build folder tree structure
+  const buildFolderTree = (folders) => {
+    const folderMap = new Map();
+    const rootFolders = [];
+    
+    // Create a map of all folders
+    folders.forEach(folder => {
+      folderMap.set(folder.id, { ...folder, children: [] });
+    });
+    
+    // Build the tree structure
+    folders.forEach(folder => {
+      if (folder.parentId && folderMap.has(folder.parentId)) {
+        folderMap.get(folder.parentId).children.push(folderMap.get(folder.id));
+      } else {
+        rootFolders.push(folderMap.get(folder.id));
+      }
+    });
+    
+    return rootFolders;
+  };
+
+  // Toggle folder expansion
+  const toggleFolderExpansion = (folderId) => {
+    setExpandedFolders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(folderId)) {
+        newSet.delete(folderId);
+      } else {
+        newSet.add(folderId);
+      }
+      return newSet;
+    });
+  };
+
+  // Search folders across all levels
+  const searchFolders = async (projectKey, searchTerm) => {
+    if (!projectKey || !searchTerm.trim()) return;
+    
+    try {
+      setLoadingFolders(true);
+      const response = await axios.get(`${API_BASE_URL}/api/zephyr-search-folders/${projectKey}?searchTerm=${encodeURIComponent(searchTerm.trim())}`);
+      if (response.data.success) {
+        setZephyrFolders(response.data.folders);
+        setFolderNavigation(prev => ({
+          ...prev,
+          currentLevel: 'search'
+        }));
+        setSearchMode(true);
+      }
+    } catch (error) {
+      console.error('Error searching folders:', error);
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to search folders' 
+      });
+    } finally {
+      setLoadingFolders(false);
+    }
+  };
+
   // Handle project selection
   const handleProjectChange = (projectKey) => {
     setZephyrConfig(prev => ({
@@ -651,7 +719,7 @@ const TestGenerator = () => {
       projectKey: projectKey,
       folderId: '' // Reset folder when project changes
     }));
-    fetchZephyrFolders(projectKey);
+    fetchAllFolders(projectKey); // Fetch all folders to show hierarchy
   };
 
   // Updated pushToZephyr function
@@ -927,12 +995,37 @@ const TestGenerator = () => {
           {isProcessing ? (
             <div className="processing-indicator">
               <div className="spinner"></div>
-              <p className="processing-text">
-                Processing {processingFile}...
-              </p>
-              <p className="processing-hint">
-                Analyzing document content and extracting sections...
-              </p>
+              <div style={{ textAlign: 'center', marginTop: '1rem' }}>
+                <h4 style={{ color: '#2d3748', marginBottom: '0.5rem' }}>
+                  📄 Document Analysis in Progress
+                </h4>
+                <p className="processing-text" style={{ color: '#4a5568', marginBottom: '0.5rem' }}>
+                  Analyzing: {processingFile}
+                </p>
+                <div style={{ 
+                  background: '#f7fafc', 
+                  padding: '1rem', 
+                  borderRadius: '8px', 
+                  border: '1px solid #e2e8f0',
+                  marginTop: '1rem'
+                }}>
+                  <h5 style={{ color: '#2d3748', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                    🔍 What's happening:
+                  </h5>
+                  <ul style={{ 
+                    color: '#4a5568', 
+                    fontSize: '0.85rem', 
+                    margin: '0', 
+                    paddingLeft: '1.5rem',
+                    lineHeight: '1.5'
+                  }}>
+                    <li>Extracting text content from document</li>
+                    <li>Identifying business requirements and acceptance criteria</li>
+                    <li>Structuring requirements in table format</li>
+                    <li>Preparing for test case generation</li>
+                  </ul>
+                </div>
+              </div>
             </div>
           ) : (
             <>
@@ -952,6 +1045,356 @@ const TestGenerator = () => {
           )}
         </div>
 
+        {/* Uploaded Files Display */}
+        {uploadedFiles.length > 0 && (
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              📄 Uploaded Files
+            </h3>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {uploadedFiles.map((file) => (
+                <div key={file.id} style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  padding: '0.75rem',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '6px',
+                  backgroundColor: '#f8f9fa'
+                }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <span style={{ fontSize: '0.9rem', fontWeight: '500', color: '#2d3748' }}>
+                      {file.name}
+                    </span>
+                    <span style={{ fontSize: '0.8rem', color: '#718096' }}>
+                      ({formatFileSize(file.size)})
+                    </span>
+                    {file.status === 'processing' && (
+                      <span style={{ fontSize: '0.8rem', color: '#3182ce' }}>
+                        ⏳ Processing...
+                      </span>
+                    )}
+                    {file.status === 'completed' && (
+                      <span style={{ fontSize: '0.8rem', color: '#38a169' }}>
+                        ✅ Completed
+                      </span>
+                    )}
+                    {file.status === 'failed' && (
+                      <span style={{ fontSize: '0.8rem', color: '#e53e3e' }}>
+                        ❌ Failed
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => removeFile(file.id)}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: '#e53e3e',
+                      cursor: 'pointer',
+                      padding: '0.25rem',
+                      borderRadius: '4px',
+                      fontSize: '0.8rem'
+                    }}
+                    title="Remove file"
+                  >
+                    ✕
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Extracted Requirements Display */}
+        {extractedRequirements && (
+          <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <FileText size={18} />
+              Extracted Business Requirements
+            </h3>
+            <div className="requirements-content">
+              <div className="requirements-display" style={{
+                background: 'white',
+                border: '1px solid #e2e8f0',
+                borderRadius: '8px',
+                padding: '2rem',
+                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
+                fontFamily: 'Georgia, "Times New Roman", serif',
+                lineHeight: '1.6',
+                color: '#2d3748'
+              }}>
+                {(() => {
+                  // Parse the markdown table and convert to Word-like table format
+                  const lines = extractedRequirements.split('\n');
+                  const wordDocument = [];
+                  
+                  // Add title
+                  wordDocument.push(
+                    <div key="title" style={{
+                      textAlign: 'center',
+                      marginBottom: '2rem',
+                      borderBottom: '2px solid #2d3748',
+                      paddingBottom: '1rem'
+                    }}>
+                      <h1 style={{
+                        fontSize: '24px',
+                        fontWeight: 'bold',
+                        color: '#2d3748',
+                        margin: '0',
+                        fontFamily: 'Georgia, "Times New Roman", serif'
+                      }}>
+                        Business Requirements Document
+                      </h1>
+                      <p style={{
+                        fontSize: '12px',
+                        color: '#718096',
+                        margin: '0.5rem 0 0 0',
+                        fontStyle: 'italic'
+                      }}>
+                        Generated on {new Date().toLocaleDateString()}
+                      </p>
+                    </div>
+                  );
+                  
+                  // Process table content
+                  let inTable = false;
+                  let tableRows = [];
+                  
+                  for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    
+                    if (trimmedLine.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
+                      inTable = true;
+                      continue;
+                    }
+                    
+                    if (inTable) {
+                      if (trimmedLine === '' || !trimmedLine.includes('|')) {
+                        break;
+                      }
+                      
+                      const columns = trimmedLine.split('|').map(col => col.trim()).filter(col => col);
+                      if (columns.length >= 3) {
+                        const [id, requirement, acceptanceCriteria] = columns;
+                        
+                        // Skip header and separator rows
+                        if (id.toLowerCase().includes('requirement id') || 
+                            id === '---' || 
+                            id.includes('---') ||
+                            requirement.includes('---') ||
+                            acceptanceCriteria.includes('---')) {
+                          continue;
+                        }
+                        
+                        tableRows.push({ id, requirement, acceptanceCriteria });
+                      }
+                    }
+                  }
+                  
+                  // Add table in Word-like format
+                  if (tableRows.length > 0) {
+                    wordDocument.push(
+                      <div key="table" style={{ marginBottom: '2rem' }}>
+                        <h2 style={{
+                          fontSize: '18px',
+                          fontWeight: 'bold',
+                          color: '#2d3748',
+                          marginBottom: '1rem',
+                          borderBottom: '1px solid #e2e8f0',
+                          paddingBottom: '0.5rem'
+                        }}>
+                          Requirements Table
+                        </h2>
+                        <table style={{
+                          width: '100%',
+                          borderCollapse: 'collapse',
+                          border: '1px solid #2d3748',
+                          fontFamily: 'Georgia, "Times New Roman", serif'
+                        }}>
+                          <thead>
+                            <tr style={{ backgroundColor: '#f7fafc' }}>
+                              <th style={{
+                                border: '1px solid #2d3748',
+                                padding: '12px',
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                                fontSize: '14px',
+                                color: '#2d3748',
+                                backgroundColor: '#e2e8f0'
+                              }}>
+                                Requirement ID
+                              </th>
+                              <th style={{
+                                border: '1px solid #2d3748',
+                                padding: '12px',
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                                fontSize: '14px',
+                                color: '#2d3748',
+                                backgroundColor: '#e2e8f0'
+                              }}>
+                                Business Requirement
+                              </th>
+                              <th style={{
+                                border: '1px solid #2d3748',
+                                padding: '12px',
+                                textAlign: 'left',
+                                fontWeight: 'bold',
+                                fontSize: '14px',
+                                color: '#2d3748',
+                                backgroundColor: '#e2e8f0'
+                              }}>
+                                Acceptance Criteria
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {tableRows.map((row, index) => (
+                              <tr key={index} style={{
+                                backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa'
+                              }}>
+                                <td style={{
+                                  border: '1px solid #2d3748',
+                                  padding: '12px',
+                                  fontSize: '13px',
+                                  fontWeight: 'bold',
+                                  color: '#2d3748',
+                                  verticalAlign: 'top',
+                                  width: '15%'
+                                }}>
+                                  {row.id}
+                                </td>
+                                <td style={{
+                                  border: '1px solid #2d3748',
+                                  padding: '12px',
+                                  fontSize: '13px',
+                                  color: '#4a5568',
+                                  verticalAlign: 'top',
+                                  width: '35%'
+                                }}>
+                                  {row.requirement}
+                                </td>
+                                <td style={{
+                                  border: '1px solid #2d3748',
+                                  padding: '12px',
+                                  fontSize: '13px',
+                                  color: '#4a5568',
+                                  verticalAlign: 'top',
+                                  width: '50%',
+                                  fontStyle: 'italic'
+                                }}>
+                                  {row.acceptanceCriteria}
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    );
+                  }
+                  
+                  // Add any additional content
+                  const additionalContent = lines.filter(line => 
+                    !line.includes('|') && 
+                    line.trim() !== '' && 
+                    !line.includes('Requirement ID') &&
+                    !line.includes('---')
+                  );
+                  
+                  if (additionalContent.length > 0) {
+                    wordDocument.push(
+                      <div key="additional" style={{ marginTop: '2rem' }}>
+                        <h2 style={{
+                          fontSize: '18px',
+                          fontWeight: 'bold',
+                          color: '#2d3748',
+                          marginBottom: '1rem',
+                          borderBottom: '1px solid #e2e8f0',
+                          paddingBottom: '0.5rem'
+                        }}>
+                          Additional Information
+                        </h2>
+                        {additionalContent.map((content, index) => (
+                          <p key={index} style={{
+                            marginBottom: '0.75rem',
+                            fontSize: '14px',
+                            lineHeight: '1.6'
+                          }}>
+                            {content}
+                          </p>
+                        ))}
+                      </div>
+                    );
+                  }
+                  
+                  return wordDocument;
+                })()}
+              </div>
+              
+              {/* Action buttons at the bottom */}
+              <div className="requirements-actions" style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
+                <button
+                  className="btn btn-primary"
+                  onClick={() => {
+                    setContent(extractedRequirements);
+                    setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
+                  }}
+                  title="Insert requirements into the main content area"
+                >
+                  <FileText size={16} />
+                  Insert Requirements
+                </button>
+                <button
+                  className="btn btn-info"
+                  onClick={() => {
+                    navigator.clipboard.writeText(extractedRequirements);
+                    setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
+                  }}
+                  title="Copy requirements to clipboard"
+                >
+                  <Copy size={16} />
+                  Copy
+                </button>
+                <button
+                  className="btn btn-success"
+                  onClick={async () => {
+                    try {
+                      // Generate Word document using backend API
+                      const response = await axios.post(`${API_BASE_URL}/api/generate-word-doc`, {
+                        content: extractedRequirements,
+                        title: 'Business Requirements'
+                      }, {
+                        responseType: 'blob'
+                      });
+                      
+                      const blob = new Blob([response.data], { 
+                        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+                      });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = 'business-requirements.docx';
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      setStatus({ type: 'success', message: 'Requirements downloaded as Word document!' });
+                    } catch (error) {
+                      console.error('Error generating Word document:', error);
+                      setStatus({ type: 'error', message: 'Failed to generate Word document. Please try again.' });
+                    }
+                  }}
+                  title="Download requirements as Word document"
+                >
+                  <Download size={16} />
+                  Download
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Import from Jira Section */}
         <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
                       <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -962,7 +1405,7 @@ const TestGenerator = () => {
             Import Epics, Stories, Tasks and Bugs directly from your Jira Projects.
           </p>
                       <button 
-              className="btn btn-secondary"
+              className="btn btn-primary"
               onClick={() => {
                 setShowJiraImport(true);
                 setJiraStep('connect');
@@ -976,126 +1419,16 @@ const TestGenerator = () => {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
-                padding: '12px 20px',
-                fontSize: '0.9rem',
-                fontWeight: '500'
+                gap: '8px'
               }}
             >
               Import from Jira
             </button>
         </div>
 
-        {/* Document Analysis Results */}
-        {featureTabs.length > 0 && (
-          <div className="analysis-results">
-            <h3>📋 Document Analysis Results</h3>
-            <div className="sections-list">
-              {featureTabs.map((feature, index) => (
-                <div key={index} className="section-item">
-                  <div className="section-header">
-                    <h4><FileText size={16} /> {feature.title}</h4>
-                    <span className="section-count">
-                      {feature.content.split('\n').filter(line => line.trim().startsWith('Scenario:')).length} scenarios
-                    </span>
-                  </div>
-                  <div className="section-preview">
-                    {feature.content.split('\n').slice(0, 5).join('\n')}
-                    {feature.content.split('\n').length > 5 && '...'}
-                  </div>
-                </div>
-              ))}
-            </div>
-            <div className="analysis-actions">
-              <button 
-                className="btn btn-secondary"
-                onClick={generateTests}
-                disabled={isGenerating}
-              >
-                {isGenerating ? (
-                  <>
-                    <div className="spinner small"></div>
-                    <span>Generating Test Cases...</span>
-                  </>
-                ) : (
-                  <>
-                    <Zap size={16} />
-                    Generate Test Cases
-                  </>
-                )}
-              </button>
 
-            </div>
-          </div>
-        )}
 
-        {/* File List */}
-        {uploadedFiles.length > 0 && (
-          <div className="file-list">
-            <h3>Uploaded Files</h3>
-            {uploadedFiles.map((file) => (
-              <div key={file.id} className={`file-item ${file.status}`}>
-                <div className="file-info">
-                  <div className="file-header">
-                    <span className="file-name">{file.name}</span>
-                    <span className="file-size">{formatFileSize(file.size)}</span>
-                  </div>
-                  
-                  {file.status === 'uploading' && (
-                    <div className="file-status">
-                      <div className="spinner small"></div>
-                      <span>Uploading...</span>
-                    </div>
-                  )}
-                  
-                  {file.status === 'processing' && (
-                    <div className="file-status">
-                      <div className="spinner small"></div>
-                      <span>Processing...</span>
-                    </div>
-                  )}
-                  
-                  {file.status === 'completed' && (
-                    <div className="file-status success">
-                      <CheckCircle size={16} />
-                      <span>Processed successfully</span>
-                    </div>
-                  )}
-                  
-                  {file.status === 'failed' && (
-                    <div className="file-status error">
-                      <XCircle size={16} />
-                      <span>Failed: {file.error}</span>
-                    </div>
-                  )}
-                </div>
-                
-                <div className="file-actions">
-                  {file.status === 'completed' && (
-                    <>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => removeFile(file.id)}
-                        title="Remove file"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    </>
-                  )}
-                  {file.status === 'failed' && (
-                    <button
-                      className="btn btn-secondary btn-sm"
-                      onClick={() => removeFile(file.id)}
-                      title="Remove file"
-                    >
-                      <Trash2 size={14} />
-                    </button>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
+
       </div>
 
       {/* Input Section */}
@@ -1109,7 +1442,7 @@ const TestGenerator = () => {
           <label className="form-label">Requirements / User Story / Content</label>
           <textarea
             className="form-textarea"
-            placeholder="Enter your requirements, user stories, or any content you want to convert to Cucumber test cases... (Content from uploaded documents will be automatically added here)"
+            placeholder="Enter your requirements, user stories, or any content you want to convert to Cucumber test cases..."
             value={content}
             onChange={(e) => setContent(e.target.value)}
             rows={6}
@@ -1131,7 +1464,7 @@ const TestGenerator = () => {
           <button
             className="btn btn-primary"
             onClick={generateTests}
-            disabled={isLoading || (!content.trim() && uploadedFiles.length === 0)}
+            disabled={isLoading || !content.trim()}
           >
             {isLoading ? (
               <>
@@ -1146,8 +1479,10 @@ const TestGenerator = () => {
             )}
           </button>
           
+
+          
           <button
-            className="btn btn-secondary"
+            className="btn btn-danger"
             onClick={clearAll}
             disabled={isLoading}
           >
@@ -1156,7 +1491,7 @@ const TestGenerator = () => {
           
           {/* Temporary test button */}
           <button
-            className="btn btn-secondary"
+            className="btn btn-primary"
             onClick={() => {
               if (generatedTests && generatedTests.trim()) {
                 setShowModal(true);
@@ -1166,20 +1501,22 @@ const TestGenerator = () => {
             }}
             disabled={isLoading || !generatedTests || !generatedTests.trim()}
           >
-            Test Display
+            View Generated Test
           </button>
         </div>
       </div>
 
+
+
       {/* Instructions */}
       {/* Empty State */}
-      {!generatedTests && (
+      {!generatedTests && !extractedRequirements && (
         <div className="card">
           <h3 className="card-title">How to Use</h3>
           <div className="text-center">
             <p className="mb-2">
               Upload documents (PDF, DOCX, TXT, etc.) or enter your requirements in the text area above. 
-              The AI will analyze your documents and generate comprehensive Cucumber test cases in Gherkin syntax.
+              The AI will automatically extract business requirements and generate comprehensive Cucumber test cases in Gherkin syntax.
             </p>
           </div>
         </div>
@@ -1196,7 +1533,7 @@ const TestGenerator = () => {
               </h2>
               <div className="modal-actions">
                 <button 
-                  className="btn btn-secondary"
+                  className="btn btn-info"
                   onClick={() => {
                     const currentFeature = featureTabs[activeTab];
                     const isCurrentlyEditing = editingFeatures[activeTab];
@@ -1219,10 +1556,20 @@ const TestGenerator = () => {
                   disabled={pushedTabs.has(activeTab)}
                   title={pushedTabs.has(activeTab) ? "Cannot edit after pushing to Zephyr" : (editingFeatures[activeTab] ? "Save changes" : "Edit current feature")}
                 >
-                  {editingFeatures[activeTab] ? "Save" : "Edit"}
+                  {editingFeatures[activeTab] ? (
+                    <>
+                      <CheckCircle size={16} />
+                      Save
+                    </>
+                  ) : (
+                    <>
+                      <Edit size={16} />
+                      Edit
+                    </>
+                  )}
                 </button>
                 <button 
-                  className="btn btn-secondary"
+                  className="btn btn-warning"
                   onClick={refineTests}
                   disabled={isLoading || pushedTabs.has(activeTab)}
                   title={pushedTabs.has(activeTab) ? "Cannot refine after pushing to Zephyr" : "Refine and improve the current feature"}
@@ -1301,7 +1648,7 @@ const TestGenerator = () => {
             <div className="modal-footer">
               <div className="export-actions">
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-success"
                   onClick={() => {
                     const currentContent = editableFeatures[activeTab] || featureTabs[activeTab]?.content || '';
                     const currentFeature = featureTabs[activeTab];
@@ -1322,7 +1669,7 @@ const TestGenerator = () => {
                   Download
                 </button>
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-info"
                   onClick={() => {
                     const currentContent = editableFeatures[activeTab] || featureTabs[activeTab]?.content || '';
                     navigator.clipboard.writeText(currentContent);
@@ -1335,7 +1682,7 @@ const TestGenerator = () => {
                 </button>
 
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-primary"
                   onClick={() => {
                     const currentFeature = featureTabs[activeTab];
                     setZephyrConfig({
@@ -1376,20 +1723,119 @@ const TestGenerator = () => {
             <div className="modal-body">
               <div className="form-group">
                 <label htmlFor="projectKey">Project *</label>
-                <select
-                  id="projectKey"
-                  value={zephyrConfig.projectKey}
-                  onChange={(e) => handleProjectChange(e.target.value)}
-                  required
-                  disabled={loadingProjects}
-                >
-                  <option value="">Select a project...</option>
-                  {zephyrProjects.map((project) => (
-                    <option key={project.key} value={project.key}>
-                      {project.name} ({project.key})
-                    </option>
-                  ))}
-                </select>
+                <div style={{ position: 'relative' }} className="project-dropdown-container">
+                  <input
+                    type="text"
+                    placeholder="Click to select project..."
+                    value={zephyrConfig.projectKey ? (() => {
+                      const project = zephyrProjects.find(p => p.key === zephyrConfig.projectKey);
+                      return project && project.name ? `${project.name} (${zephyrConfig.projectKey})` : zephyrConfig.projectKey;
+                    })() : ''}
+                    onClick={() => setShowProjectDropdown(!showProjectDropdown)}
+                    readOnly
+                    required
+                    disabled={loadingProjects}
+                    style={{ 
+                      width: '100%',
+                      padding: '0.75rem',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      fontSize: '0.875rem',
+                      backgroundColor: '#ffffff',
+                      cursor: 'pointer'
+                    }}
+                  />
+                  {showProjectDropdown && (
+                    <div style={{
+                      position: 'absolute',
+                      top: '100%',
+                      left: 0,
+                      right: 0,
+                      backgroundColor: 'white',
+                      border: '1px solid #d1d5db',
+                      borderRadius: '0.375rem',
+                      maxHeight: '300px',
+                      overflowY: 'auto',
+                      zIndex: 9999,
+                      boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
+                      marginTop: '2px'
+                    }}>
+                      <div style={{
+                        padding: '0.5rem',
+                        borderBottom: '1px solid #e5e7eb',
+                        backgroundColor: '#f9fafb',
+                        fontSize: '0.75rem',
+                        color: '#6b7280'
+                      }}>
+                        Select a project ({zephyrProjects.filter(project => 
+                          (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                          (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
+                        ).length} available)
+                      </div>
+                      <div style={{
+                        padding: '0.5rem',
+                        borderBottom: '1px solid #e5e7eb',
+                        backgroundColor: '#f9fafb'
+                      }}>
+                        <input
+                          type="text"
+                          placeholder="Search projects..."
+                          value={projectSearch}
+                          onChange={(e) => setProjectSearch(e.target.value)}
+                          style={{
+                            width: '100%',
+                            padding: '0.5rem',
+                            border: '1px solid #d1d5db',
+                            borderRadius: '0.25rem',
+                            fontSize: '0.75rem',
+                            backgroundColor: '#ffffff'
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                      </div>
+                      <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
+                        <div
+                          style={{
+                            padding: '0.5rem',
+                            cursor: 'pointer',
+                            borderBottom: '1px solid #f3f4f6',
+                            backgroundColor: zephyrConfig.projectKey === '' ? '#e3f2fd' : 'transparent'
+                          }}
+                          onClick={() => {
+                            handleProjectChange('');
+                            setShowProjectDropdown(false);
+                            setProjectSearch(''); // Clear search when option is selected
+                          }}
+                        >
+                          Select a project...
+                        </div>
+                        {zephyrProjects
+                          .filter(project => 
+                            (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                            (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
+                          )
+                          .map((project) => (
+                            <div
+                              key={project.key}
+                              style={{
+                                padding: '0.5rem',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #f3f4f6',
+                                backgroundColor: zephyrConfig.projectKey === project.key ? '#e3f2fd' : 'transparent'
+                              }}
+                              onClick={() => {
+                                handleProjectChange(project.key);
+                                setShowProjectDropdown(false);
+                                setProjectSearch(''); // Clear search when project is selected
+                              }}
+                            >
+                              {project.name} ({project.key})
+                            </div>
+                          ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
                 {loadingProjects && <small>Loading projects...</small>}
                 <small>Choose the project where you want to create the test case</small>
               </div>
@@ -1429,6 +1875,63 @@ const TestGenerator = () => {
                         boxShadow: '0 4px 6px rgba(0, 0, 0, 0.1)',
                         marginTop: '2px'
                       }}>
+                        {/* Breadcrumb Navigation */}
+                        {folderNavigation.breadcrumb.length > 0 && (
+                          <div style={{
+                            padding: '0.5rem',
+                            borderBottom: '1px solid #e5e7eb',
+                            backgroundColor: '#f0f9ff',
+                            fontSize: '0.75rem',
+                            color: '#0369a1'
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
+                              <span
+                                style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                                onClick={() => {
+                                  fetchAllFolders(zephyrConfig.projectKey);
+                                  setFolderSearch('');
+                                }}
+                              >
+                                📁 Main Folders
+                              </span>
+                              {folderNavigation.breadcrumb.map((crumb, index) => (
+                                <span key={crumb.id}>
+                                  <span style={{ margin: '0 4px', color: '#6b7280' }}>›</span>
+                                  <span
+                                    style={{ 
+                                      cursor: 'pointer', 
+                                      textDecoration: index === folderNavigation.breadcrumb.length - 1 ? 'none' : 'underline',
+                                      fontWeight: index === folderNavigation.breadcrumb.length - 1 ? 'bold' : 'normal'
+                                    }}
+                                    onClick={() => {
+                                      if (index < folderNavigation.breadcrumb.length - 1) {
+                                        // Navigate to this breadcrumb level
+                                        const targetBreadcrumb = folderNavigation.breadcrumb[index];
+                                        const newBreadcrumb = folderNavigation.breadcrumb.slice(0, index + 1);
+                                        setFolderNavigation(prev => ({
+                                          ...prev,
+                                          currentLevel: 'subfolder',
+                                          parentFolderId: targetBreadcrumb.id,
+                                          parentFolderName: targetBreadcrumb.name,
+                                          breadcrumb: newBreadcrumb
+                                        }));
+                                        // Navigate to the selected breadcrumb level
+                                        const targetFolders = zephyrFolders.filter(folder => 
+                                          folder.parentId === targetBreadcrumb.id
+                                        );
+                                        setZephyrFolders(targetFolders);
+                                      }
+                                    }}
+                                  >
+                                    📂 {crumb.name}
+                                  </span>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Header with current level info */}
                         <div style={{
                           padding: '0.5rem',
                           borderBottom: '1px solid #e5e7eb',
@@ -1436,8 +1939,80 @@ const TestGenerator = () => {
                           fontSize: '0.75rem',
                           color: '#6b7280'
                         }}>
-                          Select a folder ({zephyrFolders.length} available)
+                          {searchMode ? (
+                            `🔍 Search Results (${zephyrFolders.filter(folder => 
+                              folder.name.toLowerCase().includes(folderSearch.toLowerCase()) ||
+                              String(folder.id).toLowerCase().includes(folderSearch.toLowerCase())
+                            ).length} found)`
+                          ) : (
+                            `📁 All Folders (${zephyrFolders.filter(folder => 
+                              folder.name.toLowerCase().includes(folderSearch.toLowerCase()) ||
+                              String(folder.id).toLowerCase().includes(folderSearch.toLowerCase())
+                            ).length} available)`
+                          )}
                         </div>
+
+                        {/* Search and Navigation Controls */}
+                        <div style={{
+                          padding: '0.5rem',
+                          borderBottom: '1px solid #e5e7eb',
+                          backgroundColor: '#f9fafb',
+                          display: 'flex',
+                          gap: '8px'
+                        }}>
+                          <input
+                            type="text"
+                            placeholder="Search folders..."
+                            value={folderSearch}
+                            onChange={(e) => {
+                              setFolderSearch(e.target.value);
+                              if (e.target.value.trim()) {
+                                searchFolders(zephyrConfig.projectKey, e.target.value);
+                              } else if (folderNavigation.currentLevel === 'search') {
+                                // Return to previous level when search is cleared
+                                if (folderNavigation.currentLevel === 'subfolder') {
+                                  // Return to subfolder view
+                                  const subfolders = zephyrFolders.filter(folder => 
+                                    folder.parentId === folderNavigation.parentFolderId
+                                  );
+                                  setZephyrFolders(subfolders);
+                                } else {
+                                  fetchAllFolders(zephyrConfig.projectKey);
+                                }
+                              }
+                            }}
+                            style={{
+                              flex: 1,
+                              padding: '0.5rem',
+                              border: '1px solid #d1d5db',
+                              borderRadius: '0.25rem',
+                              fontSize: '0.75rem',
+                              backgroundColor: '#ffffff'
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                          {folderNavigation.currentLevel === 'subfolder' && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                fetchAllFolders(zephyrConfig.projectKey);
+                                setFolderSearch('');
+                              }}
+                              style={{
+                                padding: '0.5rem',
+                                border: '1px solid #d1d5db',
+                                borderRadius: '0.25rem',
+                                fontSize: '0.75rem',
+                                backgroundColor: '#ffffff',
+                                cursor: 'pointer'
+                              }}
+                              title="Back to main folders"
+                            >
+                              ← Back
+                            </button>
+                          )}
+                        </div>
+
                         <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
                           <div
                             style={{
@@ -1449,27 +2024,137 @@ const TestGenerator = () => {
                             onClick={() => {
                               setZephyrConfig(prev => ({ ...prev, folderId: '' }));
                               setShowFolderDropdown(false);
+                              setFolderSearch('');
+                              setSearchMode(false);
+                              setFolderNavigation({
+                                currentLevel: 'main',
+                                parentFolderId: null,
+                                parentFolderName: '',
+                                breadcrumb: []
+                              });
                             }}
                           >
                             No folder (optional)
                           </div>
-                          {zephyrFolders.map((folder) => (
-                            <div
-                              key={folder.id}
-                              style={{
-                                padding: '0.5rem',
-                                cursor: 'pointer',
-                                borderBottom: '1px solid #f3f4f6',
-                                backgroundColor: zephyrConfig.folderId === folder.id ? '#e3f2fd' : 'transparent'
-                              }}
-                              onClick={() => {
-                                setZephyrConfig(prev => ({ ...prev, folderId: folder.id }));
-                                setShowFolderDropdown(false);
-                              }}
-                            >
-                              {folder.name}
-                            </div>
-                          ))}
+                          {(() => {
+                            const renderFolderTree = (folders, level = 0) => {
+                              return folders.map((folder) => {
+                                const hasChildren = folder.children && folder.children.length > 0;
+                                const isExpanded = expandedFolders.has(folder.id);
+                                
+                                return (
+                                  <div key={folder.id}>
+                                    <div
+                                      style={{
+                                        padding: '0.5rem',
+                                        cursor: 'pointer',
+                                        borderBottom: '1px solid #f3f4f6',
+                                        backgroundColor: zephyrConfig.folderId === folder.id ? '#e3f2fd' : 'transparent',
+                                        display: 'flex',
+                                        justifyContent: 'space-between',
+                                        alignItems: 'center',
+                                        paddingLeft: `${0.5 + (level * 1.5)}rem`
+                                      }}
+                                      onClick={() => {
+                                        if (searchMode) {
+                                          // In search mode, select the folder
+                                          setZephyrConfig(prev => ({ ...prev, folderId: folder.id }));
+                                          setShowFolderDropdown(false);
+                                          setFolderSearch('');
+                                          setSearchMode(false);
+                                          setFolderNavigation({
+                                            currentLevel: 'main',
+                                            parentFolderId: null,
+                                            parentFolderName: '',
+                                            breadcrumb: []
+                                          });
+                                        } else {
+                                          // Select this folder
+                                          setZephyrConfig(prev => ({ ...prev, folderId: folder.id }));
+                                          setShowFolderDropdown(false);
+                                          setFolderSearch('');
+                                        }
+                                      }}
+                                    >
+                                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                        {hasChildren && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              toggleFolderExpansion(folder.id);
+                                            }}
+                                            style={{
+                                              background: 'none',
+                                              border: 'none',
+                                              cursor: 'pointer',
+                                              padding: '2px',
+                                              fontSize: '0.75rem',
+                                              color: '#6b7280'
+                                            }}
+                                            title={isExpanded ? 'Collapse' : 'Expand'}
+                                          >
+                                            {isExpanded ? '▼' : '▶'}
+                                          </button>
+                                        )}
+                                        {!hasChildren && level > 0 && (
+                                          <span style={{ width: '12px' }}></span>
+                                        )}
+                                        <span>{folder.name}</span>
+                                      </div>
+                                      {hasChildren && (
+                                        <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                                          <span style={{ fontSize: '0.75rem', color: '#6b7280' }}>📁</span>
+                                        </div>
+                                      )}
+                                    </div>
+                                    {hasChildren && isExpanded && (
+                                      <div>
+                                        {renderFolderTree(folder.children, level + 1)}
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              });
+                            };
+
+                            if (searchMode) {
+                              const filteredFolders = zephyrFolders.filter(folder => 
+                                folder.name.toLowerCase().includes(folderSearch.toLowerCase()) ||
+                                String(folder.id).toLowerCase().includes(folderSearch.toLowerCase())
+                              );
+                              return filteredFolders.map((folder) => (
+                                <div
+                                  key={folder.id}
+                                  style={{
+                                    padding: '0.5rem',
+                                    cursor: 'pointer',
+                                    borderBottom: '1px solid #f3f4f6',
+                                    backgroundColor: zephyrConfig.folderId === folder.id ? '#e3f2fd' : 'transparent',
+                                    display: 'flex',
+                                    justifyContent: 'space-between',
+                                    alignItems: 'center'
+                                  }}
+                                  onClick={() => {
+                                    setZephyrConfig(prev => ({ ...prev, folderId: folder.id }));
+                                    setShowFolderDropdown(false);
+                                    setFolderSearch('');
+                                    setSearchMode(false);
+                                    setFolderNavigation({
+                                      currentLevel: 'main',
+                                      parentFolderId: null,
+                                      parentFolderName: '',
+                                      breadcrumb: []
+                                    });
+                                  }}
+                                >
+                                  <span>{folder.name}</span>
+                                </div>
+                              ));
+                            } else {
+                              const folderTree = buildFolderTree(zephyrFolders);
+                              return renderFolderTree(folderTree);
+                            }
+                          })()}
                         </div>
                       </div>
                     )}
@@ -1549,9 +2234,10 @@ const TestGenerator = () => {
               
               <div className="modal-footer">
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-danger"
                   onClick={() => setShowZephyrConfig(false)}
                 >
+                  <X size={16} />
                   Cancel
                 </button>
                 <button
@@ -1703,7 +2389,7 @@ const TestGenerator = () => {
                           <span>Connecting...</span>
                         </>
                       ) : (
-                        'Test Connection'
+                        'Jira Connect'
                       )}
                     </button>
                   </div>
@@ -1758,26 +2444,57 @@ const TestGenerator = () => {
                               fontSize: '0.75rem',
                               color: '#6b7280'
                             }}>
-                              Select a project ({jiraProjects.length} available)
-                            </div>
-                            <div style={{ maxHeight: '250px', overflowY: 'auto' }}>
-                              {jiraProjects.map((project) => (
-                                <div
-                                  key={project.key}
+                              <div style={{ marginBottom: '0.5rem' }}>
+                                <input
+                                  type="text"
+                                  placeholder="Type to search projects..."
+                                  value={jiraProjectSearch}
+                                  onChange={(e) => setJiraProjectSearch(e.target.value)}
                                   style={{
+                                    width: '100%',
                                     padding: '0.5rem',
-                                    cursor: 'pointer',
-                                    borderBottom: '1px solid #f3f4f6',
-                                    backgroundColor: jiraConfig.projectKey === project.key ? '#e3f2fd' : 'transparent'
+                                    border: '1px solid #d1d5db',
+                                    borderRadius: '0.25rem',
+                                    fontSize: '0.75rem',
+                                    backgroundColor: 'white'
                                   }}
-                                  onClick={() => {
-                                    setJiraConfig(prev => ({ ...prev, projectKey: project.key }));
-                                    setShowJiraProjectDropdown(false);
-                                  }}
-                                >
-                                  {project.name} ({project.key})
-                                </div>
-                              ))}
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </div>
+                              <div style={{ fontSize: '0.75rem', color: '#6b7280' }}>
+                                {(() => {
+                                  const filteredProjects = jiraProjects.filter(project => 
+                                    project.name.toLowerCase().includes(jiraProjectSearch.toLowerCase()) ||
+                                    project.key.toLowerCase().includes(jiraProjectSearch.toLowerCase())
+                                  );
+                                  return `Showing ${filteredProjects.length} of ${jiraProjects.length} projects`;
+                                })()}
+                              </div>
+                            </div>
+                            <div style={{ maxHeight: '200px', overflowY: 'auto' }}>
+                              {jiraProjects
+                                .filter(project => 
+                                  project.name.toLowerCase().includes(jiraProjectSearch.toLowerCase()) ||
+                                  project.key.toLowerCase().includes(jiraProjectSearch.toLowerCase())
+                                )
+                                .map((project) => (
+                                  <div
+                                    key={project.key}
+                                    style={{
+                                      padding: '0.5rem',
+                                      cursor: 'pointer',
+                                      borderBottom: '1px solid #f3f4f6',
+                                      backgroundColor: jiraConfig.projectKey === project.key ? '#e3f2fd' : 'transparent'
+                                    }}
+                                    onClick={() => {
+                                      setJiraConfig(prev => ({ ...prev, projectKey: project.key }));
+                                      setShowJiraProjectDropdown(false);
+                                      setJiraProjectSearch(''); // Clear search when selecting
+                                    }}
+                                  >
+                                    {project.name} ({project.key})
+                                  </div>
+                                ))}
                             </div>
                           </div>
                         )}

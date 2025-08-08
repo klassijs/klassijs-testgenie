@@ -3,9 +3,10 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
-const { generateTestCases, refineTestCases, isAzureOpenAIConfigured } = require('../services/openaiService');
-const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, isZephyrConfigured } = require('../services/zephyrService');
+const { generateTestCases, refineTestCases, extractBusinessRequirements, isAzureOpenAIConfigured } = require('../services/openaiService');
+const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured } = require('../services/zephyrService');
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
+const { generateWordDocument } = require('../utils/docxGenerator');
 const axios = require('axios'); // Added axios for the debug endpoint
 
 const router = express.Router();
@@ -36,10 +37,8 @@ const upload = multer({
       isVisioFile(mimeType, extension);
 
     if (isSupported) {
-      console.log(`File accepted: ${file.originalname} (MIME: ${mimeType}, Ext: ${extension})`);
       cb(null, true);
     } else {
-      console.log(`File rejected: ${file.originalname} (MIME: ${mimeType}, Ext: ${extension})`);
       cb(new Error(`Invalid file type. Only PDF, DOCX, DOC, TXT, MD, RTF, ODT, images (JPG, PNG, GIF, etc.), Excel (XLS, XLSX), PowerPoint (PPT, PPTX), and Visio (VSD, VSDX) files are allowed.`), false);
     }
   }
@@ -100,7 +99,7 @@ router.get('/loading-images', (req, res) => {
       };
     });
     
-    console.log(`Found ${imageFiles.length} loading images:`, imageFiles);
+
     
     res.json({
       success: true,
@@ -131,10 +130,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     const content = await extractFileContent(req.file);
     
-    console.log(`Document analysis result for ${req.file.originalname}:`, {
-      contentLength: content.length,
-      contentPreview: content.substring(0, 300) + '...'
-    });
+
     
     if (!content || content.trim().length < 10) {
       return res.status(400).json({
@@ -295,6 +291,105 @@ router.post('/refine-tests', async (req, res) => {
   }
 });
 
+// Requirements extraction endpoint
+router.post('/extract-requirements', async (req, res) => {
+  try {
+    const { content, context = '' } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        error: 'Missing content',
+        details: 'No content provided for requirements extraction',
+        suggestion: 'Please provide valid content to extract requirements'
+      });
+    }
+
+    if (content.trim().length < 50) {
+      return res.status(400).json({
+        error: 'Insufficient content',
+        details: 'The provided content is too short to extract meaningful requirements',
+        suggestion: 'Please provide more detailed content for requirements extraction'
+      });
+    }
+
+    const extractedRequirements = await extractBusinessRequirements(content, context);
+
+    res.json({
+      success: true,
+      content: extractedRequirements.content,
+      message: extractedRequirements.message,
+      metadata: {
+        originalContentLength: content.length,
+        extractedContentLength: extractedRequirements.content.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error extracting requirements:', error);
+    
+    let errorMessage = 'Failed to extract business requirements';
+    let suggestion = 'Please try again with valid content';
+    let statusCode = 503;
+    
+    if (error.message.includes('Azure OpenAI is not configured')) {
+      errorMessage = 'Requirements extraction service unavailable';
+      suggestion = 'Please configure Azure OpenAI credentials to extract requirements';
+    } else if (error.message.includes('Content was filtered by Azure OpenAI safety filters')) {
+      errorMessage = 'Content flagged by safety filters';
+      suggestion = 'The document contains content that was flagged by AI safety filters. Please try uploading a different document or contact your administrator if you believe this is an error.';
+      statusCode = 400;
+    } else if (error.message.includes('context_length_exceeded') || error.message.includes('maximum context length')) {
+      errorMessage = 'Document too large for processing';
+      suggestion = 'The document is very large. The system will process the first portion. For complete analysis of large documents, consider splitting into smaller files or uploading sections separately.';
+      statusCode = 400;
+    } else if (error.message.includes('No content received from Azure OpenAI')) {
+      errorMessage = 'No response from AI service';
+      suggestion = 'The AI service did not return any content. Please try again or contact support if the issue persists.';
+    }
+    
+    res.status(statusCode).json({
+      error: errorMessage,
+      details: error.message,
+      suggestion: suggestion
+    });
+  }
+});
+
+// Word document generation endpoint
+router.post('/generate-word-doc', async (req, res) => {
+  try {
+    const { content, title = 'Business Requirements' } = req.body;
+
+    if (!content || !content.trim()) {
+      return res.status(400).json({
+        error: 'Missing content',
+        details: 'No content provided for Word document generation',
+        suggestion: 'Please provide valid content to generate Word document'
+      });
+    }
+
+    const docBuffer = await generateWordDocument(content, title);
+
+    res.set({
+      'Content-Type': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      'Content-Disposition': `attachment; filename="${title.replace(/[^a-zA-Z0-9]/g, '_')}.docx"`,
+      'Content-Length': docBuffer.length
+    });
+
+    res.send(docBuffer);
+
+  } catch (error) {
+    console.error('Error generating Word document:', error);
+    
+    res.status(500).json({ 
+      error: 'Failed to generate Word document',
+      details: error.message,
+      suggestion: 'Please try again with valid content'
+    });
+  }
+});
+
 // Zephyr Scale Export endpoint
 router.post('/export-zephyr', async (req, res) => {
   try {
@@ -438,6 +533,190 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
   }
 });
 
+// Get main folders (top-level folders) for a project
+router.get('/zephyr-main-folders/:projectKey', async (req, res) => {
+  try {
+    const { projectKey } = req.params;
+
+    if (!isZephyrConfigured) {
+      return res.status(503).json({
+        error: 'Zephyr Scale integration not configured',
+        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
+        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
+      });
+    }
+
+    if (!projectKey) {
+      return res.status(400).json({
+        error: 'Missing project key',
+        details: 'Project key is required to fetch main folders',
+        suggestion: 'Please provide a valid project key'
+      });
+    }
+
+    const mainFolders = await getMainFolders(projectKey);
+
+    res.json({
+      success: true,
+      folders: mainFolders,
+      projectKey: projectKey,
+      metadata: {
+        count: mainFolders.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching Zephyr Scale main folders:', error);
+    
+    let errorMessage = 'Failed to fetch main folders from Zephyr Scale';
+    let suggestion = 'Please check your Zephyr Scale credentials and try again';
+    
+    if (error.response) {
+      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
+      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
+    } else if (error.request) {
+      errorMessage = 'Network error connecting to Zephyr Scale';
+      suggestion = 'Please check your Zephyr Scale URL and network connection';
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: error.message,
+      suggestion: suggestion
+    });
+  }
+});
+
+// Get subfolders for a specific parent folder
+router.get('/zephyr-subfolders/:projectKey/:parentFolderId', async (req, res) => {
+  try {
+    const { projectKey, parentFolderId } = req.params;
+
+    if (!isZephyrConfigured) {
+      return res.status(503).json({
+        error: 'Zephyr Scale integration not configured',
+        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
+        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
+      });
+    }
+
+    if (!projectKey) {
+      return res.status(400).json({
+        error: 'Missing project key',
+        details: 'Project key is required to fetch subfolders',
+        suggestion: 'Please provide a valid project key'
+      });
+    }
+
+    if (!parentFolderId) {
+      return res.status(400).json({
+        error: 'Missing parent folder ID',
+        details: 'Parent folder ID is required to fetch subfolders',
+        suggestion: 'Please provide a valid parent folder ID'
+      });
+    }
+
+    const subfolders = await getSubfolders(projectKey, parentFolderId);
+
+    res.json({
+      success: true,
+      folders: subfolders,
+      projectKey: projectKey,
+      parentFolderId: parentFolderId,
+      metadata: {
+        count: subfolders.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error fetching Zephyr Scale subfolders:', error);
+    
+    let errorMessage = 'Failed to fetch subfolders from Zephyr Scale';
+    let suggestion = 'Please check your Zephyr Scale credentials and try again';
+    
+    if (error.response) {
+      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
+      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
+    } else if (error.request) {
+      errorMessage = 'Network error connecting to Zephyr Scale';
+      suggestion = 'Please check your Zephyr Scale URL and network connection';
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: error.message,
+      suggestion: suggestion
+    });
+  }
+});
+
+// Search folders across all levels
+router.get('/zephyr-search-folders/:projectKey', async (req, res) => {
+  try {
+    const { projectKey } = req.params;
+    const { searchTerm } = req.query;
+
+    if (!isZephyrConfigured) {
+      return res.status(503).json({
+        error: 'Zephyr Scale integration not configured',
+        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
+        suggestion: 'Set up Zephyr Scale credentials to enable folder search'
+      });
+    }
+
+    if (!projectKey) {
+      return res.status(400).json({
+        error: 'Missing project key',
+        details: 'Project key is required to search folders',
+        suggestion: 'Please provide a valid project key'
+      });
+    }
+
+    if (!searchTerm) {
+      return res.status(400).json({
+        error: 'Missing search term',
+        details: 'Search term is required to search folders',
+        suggestion: 'Please provide a search term'
+      });
+    }
+
+    const searchResults = await searchFolders(projectKey, searchTerm);
+
+    res.json({
+      success: true,
+      folders: searchResults,
+      projectKey: projectKey,
+      searchTerm: searchTerm,
+      metadata: {
+        count: searchResults.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error searching Zephyr Scale folders:', error);
+    
+    let errorMessage = 'Failed to search folders from Zephyr Scale';
+    let suggestion = 'Please check your Zephyr Scale credentials and try again';
+    
+    if (error.response) {
+      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
+      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
+    } else if (error.request) {
+      errorMessage = 'Network error connecting to Zephyr Scale';
+      suggestion = 'Please check your Zephyr Scale URL and network connection';
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage,
+      details: error.message,
+      suggestion: suggestion
+    });
+  }
+});
+
 // Zephyr Scale Direct Push endpoint
 router.post('/push-to-zephyr', async (req, res) => {
   try {
@@ -566,10 +845,7 @@ router.post('/jira/import-issues', async (req, res) => {
   try {
     const { selectedIssues } = req.body;
     
-    console.log('Import Jira issues request:', { selectedIssues });
-
     if (!selectedIssues || selectedIssues.length === 0) {
-      console.log('Missing selectedIssues in request');
       return res.status(400).json({
         error: 'Missing required fields',
         details: 'Selected issues are required',
@@ -578,8 +854,6 @@ router.post('/jira/import-issues', async (req, res) => {
     }
 
     const result = await importJiraIssues(selectedIssues);
-    
-    console.log('Import result:', result);
 
     if (result.success) {
       res.json({

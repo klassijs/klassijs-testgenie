@@ -463,12 +463,55 @@ body {
 .btn-secondary:hover {
   background: #edf2f7;
   border-color: #cbd5e0;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
   transform: none;
+}
+
+/* Additional button styles for consistency */
+.btn-success {
+  background: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+  color: white;
+}
+
+.btn-success:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(72, 187, 120, 0.3);
+}
+
+.btn-info {
+  background: linear-gradient(135deg, #4299e1 0%, #3182ce 100%);
+  color: white;
+}
+
+.btn-info:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(66, 153, 225, 0.3);
+}
+
+.btn-warning {
+  background: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+  color: white;
+}
+
+.btn-warning:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(237, 137, 54, 0.3);
+}
+
+.btn-danger {
+  background: linear-gradient(135deg, #f56565 0%, #e53e3e 100%);
+  color: white;
+}
+
+.btn-danger:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(245, 101, 101, 0.3);
 }
 
 /* Loading States */
@@ -1023,97 +1066,7 @@ body {
   z-index: 10000;
 }
 
-/* Document Analysis Results */
-.analysis-results {
-  background: rgba(255, 255, 255, 0.95);
-  backdrop-filter: blur(10px);
-  border-radius: 16px;
-  padding: 2rem;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  margin-bottom: 2rem;
-}
 
-.analysis-results h3 {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin-bottom: 1.5rem;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.sections-list {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
-}
-
-.section-item {
-  background: rgba(255, 255, 255, 0.8);
-  border-radius: 12px;
-  padding: 1.5rem;
-  border: 1px solid rgba(0, 0, 0, 0.1);
-  transition: all 0.2s ease;
-}
-
-.section-item:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-  transform: translateY(-2px);
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 1rem;
-}
-
-.section-header h4 {
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: #2d3748;
-  margin: 0;
-}
-
-.section-count {
-  background: #667eea;
-  color: white;
-  padding: 0.25rem 0.75rem;
-  border-radius: 20px;
-  font-size: 0.875rem;
-  font-weight: 500;
-}
-
-.section-preview {
-  background: #f8f9fa;
-  border-radius: 8px;
-  padding: 1rem;
-  font-family: 'Courier New', monospace;
-  font-size: 0.875rem;
-  color: #495057;
-  line-height: 1.5;
-  max-height: 120px;
-  overflow: hidden;
-  border: 1px solid #e9ecef;
-}
-
-.analysis-actions {
-  display: flex;
-  gap: 1rem;
-  justify-content: flex-start;
-  align-items: center;
-}
-
-.analysis-actions .btn {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.75rem 1.5rem;
-  font-weight: 500;
-}
 
 /* Test Generation Loading Overlay */
 .test-generation-overlay {
@@ -1311,4 +1264,81 @@ body {
   margin-top: 0.25rem;
   font-size: 0.75rem;
   color: #6b7280;
+}
+
+/* Requirements Display Styles */
+.requirements-content {
+  margin-top: 1rem;
+}
+
+.requirements-actions .btn-primary {
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  font-weight: 600;
+}
+
+.requirements-actions .btn-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.requirements-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.requirements-display {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 1rem;
+  max-height: 600px;
+  overflow-y: auto;
+}
+
+.requirements-text {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
+  font-size: 0.875rem;
+  line-height: 1.5;
+  color: #2d3748;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  margin: 0;
+}
+
+.requirements-text table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+.requirements-text th,
+.requirements-text td {
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.requirements-text th {
+  background: #f1f5f9;
+  font-weight: 600;
+  color: #1e293b;
+}
+
+.requirements-text td {
+  background: #ffffff;
+}
+
+@media (max-width: 768px) {
+  .requirements-actions {
+    flex-direction: column;
+  }
+  
+  .requirements-text {
+    font-size: 0.75rem;
+  }
 }

@@ -36,11 +36,11 @@ async function extractFileContent(file) {
     const originalName = file.originalname;
     const extension = path.extname(originalName);
 
-    console.log(`Processing file: ${originalName} (${mimeType}, ${buffer.length} bytes)`);
+  
 
     // Handle different file types
     if (mimeType === 'application/pdf') {
-      console.log(`Processing PDF document: ${originalName}`);
+  
       
       try {
         const pdfData = await pdfParse(buffer);
@@ -96,7 +96,7 @@ async function extractFileContent(file) {
           structuredContent += `\n\n### Table Content:\n${tableContent}\n`;
         }
         
-        console.log(`PDF processed successfully. Content length: ${structuredContent.length}`);
+
         return structuredContent.trim();
         
       } catch (error) {
@@ -111,7 +111,7 @@ async function extractFileContent(file) {
                mimeType === 'application/rtf' ||
                mimeType === 'application/vnd.oasis.opendocument.text') {
       
-      console.log(`Processing Word document: ${originalName}`);
+  
       
       // Enhanced Word document processing for complex content including flow diagrams
       try {
@@ -139,7 +139,7 @@ async function extractFileContent(file) {
             file.includes('word/drawings/')
           );
           
-          console.log(`Found ${embeddedFiles.length} embedded files in Word document`);
+  
           
           for (const embeddedFile of embeddedFiles) {
             try {
@@ -149,7 +149,7 @@ async function extractFileContent(file) {
                 extractedContent += `\n\nEmbedded Content (${embeddedFile}):\n${textContent}`;
               }
             } catch (error) {
-              console.log(`Could not extract content from embedded file: ${embeddedFile}`);
+
             }
           }
           
@@ -165,19 +165,19 @@ async function extractFileContent(file) {
                 extractedContent += `\n\nHeader Content:\n${textContent}`;
               }
             } catch (error) {
-              console.log(`Could not extract content from header: ${headerFile}`);
+  
             }
           }
           
           if (extractedContent.trim()) {
-            console.log(`Word document processed successfully. Content length: ${extractedContent.length}`);
+    
             return extractedContent.trim();
           }
         }
         
         // Fallback to mammoth for other Word formats
         const result = await mammoth.extractRawText({ buffer });
-        console.log(`Word document processed with mammoth. Content length: ${result.value.length}`);
+
         return result.value;
         
       } catch (error) {
@@ -189,7 +189,7 @@ async function extractFileContent(file) {
     } else if (isImageFile(mimeType, extension)) {
       return `[Image File: ${originalName}]\n\nThis is an image file that requires manual analysis or OCR processing to extract text content.`;
     } else if (isExcelFile(mimeType, extension)) {
-      console.log(`Processing Excel file: ${originalName}`);
+  
       
       try {
         const JSZip = require('jszip');
@@ -218,7 +218,7 @@ async function extractFileContent(file) {
           file.includes('xl/worksheets/sheet') && file.endsWith('.xml')
         );
         
-        console.log(`Found ${worksheetFiles.length} worksheets in Excel file`);
+
         
         for (const worksheetFile of worksheetFiles) {
           try {
@@ -256,7 +256,7 @@ async function extractFileContent(file) {
               }
             }
           } catch (error) {
-            console.log(`Could not extract content from worksheet: ${worksheetFile}`);
+
           }
         }
         
@@ -288,17 +288,17 @@ async function extractFileContent(file) {
         }
         
         if (extractedContent.trim()) {
-          console.log(`Excel file processed successfully. Content length: ${extractedContent.length}`);
+  
           return `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}`;
         } else {
           return `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that should be reviewed manually to create appropriate test cases based on the data relationships and business logic.`;
         }
       } catch (zipError) {
-        console.log(`Could not extract content from Excel file: ${zipError.message}`);
+
         return `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that requires manual analysis to create appropriate test cases.`;
       }
     } else if (isPowerPointFile(mimeType, extension)) {
-      console.log(`Processing PowerPoint file: ${originalName}`);
+  
       
       try {
         const JSZip = require('jszip');
@@ -322,7 +322,7 @@ async function extractFileContent(file) {
           file.includes('ppt/slides/slide') && file.endsWith('.xml')
         );
         
-        console.log(`Found ${slideFiles.length} slides in PowerPoint file`);
+
         
         for (let i = 0; i < slideFiles.length; i++) {
           const slideFile = slideFiles[i];
@@ -368,7 +368,7 @@ async function extractFileContent(file) {
             }
             
           } catch (error) {
-            console.log(`Could not extract content from slide: ${slideFile}`);
+
           }
         }
         
@@ -397,17 +397,17 @@ async function extractFileContent(file) {
         }
         
         if (extractedContent.trim()) {
-          console.log(`PowerPoint file processed successfully. Content length: ${extractedContent.length}`);
+  
           return `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}`;
         } else {
           return `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that should be reviewed manually to create appropriate test cases based on the presentation content and flow.`;
         }
       } catch (zipError) {
-        console.log(`Could not extract content from PowerPoint file: ${zipError.message}`);
+
         return `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that require manual analysis to create appropriate test cases.`;
       }
     } else if (isVisioFile(mimeType, extension)) {
-      console.log(`Processing Visio file: ${originalName}`);
+  
       
       try {
         // VSDX files are essentially ZIP files containing XML
@@ -417,109 +417,178 @@ async function extractFileContent(file) {
         
         let extractedContent = '';
         
-        // Extract all Visio-specific files
-        const visioFiles = Object.keys(zipContent.files).filter(file => 
-          file.includes('visio/') || file.includes('word/') || file.includes('xl/')
-        );
+
         
-        console.log(`Found ${visioFiles.length} files in Visio document`);
-        
-        // Extract diagram structure and pages
+        // Extract business requirements from diagram structure
         if (zipContent.files['visio/document.xml']) {
           const documentXml = await zipContent.files['visio/document.xml'].async('string');
           
-          // Extract page information
+          // Extract page information for business context
           const pageMatches = documentXml.match(/<Page[^>]*Name="([^"]*)"[^>]*>/g);
           if (pageMatches) {
-            extractedContent += `\n\n## Diagram Structure:\n`;
+            extractedContent += `\n\n## Business Process Pages:\n`;
             pageMatches.forEach((match, index) => {
               const nameMatch = match.match(/Name="([^"]*)"/);
               if (nameMatch) {
-                extractedContent += `Page ${index + 1}: ${nameMatch[1]}\n`;
-              }
-            });
-          }
-          
-          // Extract shape information
-          const shapeMatches = documentXml.match(/<Shape[^>]*>.*?<\/Shape>/gs);
-          if (shapeMatches) {
-            extractedContent += `\n\n### Diagram Elements:\n`;
-            shapeMatches.forEach(shape => {
-              const shapeText = shape.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (shapeText.length > 10) {
-                extractedContent += `- Shape: ${shapeText}\n`;
+                const pageName = nameMatch[1];
+                // Filter out technical page names and focus on business process names
+                if (!pageName.match(/^(Page|Sheet|Background|Layer)/i)) {
+                  extractedContent += `Business Process: ${pageName}\n`;
+                }
               }
             });
           }
         }
         
-        // Extract meaningful content from key files only
-        const keyFiles = ['visio/document.xml', 'visio/pages/page1.xml'];
+        // Extract business requirements from all pages
+        const pageFiles = Object.keys(zipContent.files).filter(file => 
+          file.includes('visio/pages/') && file.endsWith('.xml')
+        );
         
-        for (const filePath of keyFiles) {
-          if (zipContent.files[filePath]) {
-            try {
-              const xmlContent = await zipContent.files[filePath].async('string');
+
+        
+        for (const pageFile of pageFiles) {
+          try {
+            const pageXml = await zipContent.files[pageFile].async('string');
+            
+            // Extract business process elements and their relationships
+            const businessElements = [];
+            
+            // Extract shapes that represent business processes, systems, or actors
+            const shapeMatches = pageXml.match(/<Shape[^>]*>.*?<\/Shape>/gs);
+            if (shapeMatches) {
+              shapeMatches.forEach(shape => {
+                // Extract shape text and properties
+                const textMatches = shape.match(/<Text[^>]*>.*?<\/Text>/gs);
+                const nameMatches = shape.match(/Name="([^"]*)"/);
+                const typeMatches = shape.match(/Type="([^"]*)"/);
+                
+                if (textMatches || nameMatches) {
+                  const shapeText = textMatches ? 
+                    textMatches.map(text => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).join(' ') :
+                    (nameMatches ? nameMatches[1] : '');
+                  
+                  const shapeType = typeMatches ? typeMatches[1] : '';
+                  
+                  // Focus on business-relevant shapes
+                  if (shapeText.length > 3 && 
+                      !shapeText.match(/^(Shape|Text|Group|Container)/i) &&
+                      !shapeText.match(/^[0-9\s]+$/)) {
+                    
+                    businessElements.push({
+                      text: shapeText,
+                      type: shapeType,
+                      element: 'Business Process Component'
+                    });
+                  }
+                }
+              });
+            }
+            
+            // Extract connections that represent business flows
+            const connectionMatches = pageXml.match(/<Connect[^>]*>/g);
+            if (connectionMatches) {
+              connectionMatches.forEach(connection => {
+                const fromMatches = connection.match(/FromSheet="([^"]*)"/);
+                const toMatches = connection.match(/ToSheet="([^"]*)"/);
+                
+                if (fromMatches && toMatches) {
+                  businessElements.push({
+                    text: `Connection from ${fromMatches[1]} to ${toMatches[1]}`,
+                    type: 'Connection',
+                    element: 'Business Flow'
+                  });
+                }
+              });
+            }
+            
+            // Extract business requirements from the diagram elements
+            if (businessElements.length > 0) {
+              extractedContent += `\n\n### Business Requirements from Diagram:\n`;
               
-              // Extract meaningful text elements (labels, titles, descriptions)
-              const textMatches = xmlContent.match(/<Text[^>]*>.*?<\/Text>/gs);
+              // Group by element type for better organization
+              const processes = businessElements.filter(el => el.element === 'Business Process Component');
+              const flows = businessElements.filter(el => el.element === 'Business Flow');
+              
+              if (processes.length > 0) {
+                extractedContent += `\n#### Business Processes and Systems:\n`;
+                processes.forEach(process => {
+                  extractedContent += `- ${process.text}\n`;
+                });
+              }
+              
+              if (flows.length > 0) {
+                extractedContent += `\n#### Business Flows and Relationships:\n`;
+                flows.forEach(flow => {
+                  extractedContent += `- ${flow.text}\n`;
+                });
+              }
+              
+              // Generate business requirements based on the diagram structure
+              extractedContent += `\n#### Derived Business Requirements:\n`;
+              
+              // Create requirements based on process components
+              processes.forEach((process, index) => {
+                const requirementText = process.text.replace(/[^\w\s]/g, ' ').trim();
+                if (requirementText.length > 5) {
+                  extractedContent += `- The system should support ${requirementText.toLowerCase()}\n`;
+                }
+              });
+              
+              // Create requirements based on business flows
+              flows.forEach((flow, index) => {
+                const flowText = flow.text.replace(/[^\w\s]/g, ' ').trim();
+                if (flowText.length > 10) {
+                  extractedContent += `- The system should handle ${flowText.toLowerCase()}\n`;
+                }
+              });
+            }
+            
+          } catch (error) {
+
+          }
+        }
+        
+        // Extract any embedded text or notes that might contain business requirements
+        const embeddedFiles = Object.keys(zipContent.files).filter(file => 
+          file.includes('embeddings/') || file.includes('media/') || file.includes('word/')
+        );
+        
+        if (embeddedFiles.length > 0) {
+          extractedContent += `\n\n### Additional Business Context:\n`;
+          for (const embeddedFile of embeddedFiles) {
+            try {
+              const embeddedContent = await zipContent.files[embeddedFile].async('string');
+              // Extract meaningful text from embedded content
+              const textMatches = embeddedContent.match(/<Text[^>]*>.*?<\/Text>/gs);
               if (textMatches) {
                 const meaningfulTexts = textMatches
                   .map(text => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
-                  .filter(text => text.length > 3 && !text.match(/^[0-9\s]+$/)); // Filter out numbers and whitespace
+                  .filter(text => text.length > 10 && !text.match(/^[0-9\s]+$/));
                 
                 if (meaningfulTexts.length > 0) {
-                  extractedContent += `\n\n### Diagram Content:\n`;
                   meaningfulTexts.forEach(text => {
                     extractedContent += `- ${text}\n`;
                   });
                 }
               }
-              
-              // Extract only meaningful connections (business relationships)
-              const connectionMatches = xmlContent.match(/<Connect[^>]*>/g);
-              if (connectionMatches) {
-                const meaningfulConnections = connectionMatches
-                  .map(connection => connection.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
-                  .filter(connection => connection.length > 10); // Only longer, more meaningful connections
-                
-                if (meaningfulConnections.length > 0) {
-                  extractedContent += `\n\n### Business Relationships:\n`;
-                  meaningfulConnections.forEach(connection => {
-                    extractedContent += `- ${connection}\n`;
-                  });
-                }
-              }
-              
             } catch (error) {
-              console.log(`Could not extract content from Visio file: ${filePath}`);
+              // Skip embedded files that can't be read as text
             }
           }
         }
         
-        // Extract embedded content
-        const embeddedFiles = Object.keys(zipContent.files).filter(file => 
-          file.includes('embeddings/') || file.includes('media/')
-        );
-        
-        if (embeddedFiles.length > 0) {
-          extractedContent += `\n\n### Embedded Content:\n`;
-          embeddedFiles.forEach(embeddedFile => {
-            extractedContent += `- ${embeddedFile}\n`;
-          });
-        }
-        
         if (extractedContent.trim()) {
           const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}`;
-          console.log(`Visio file processed successfully. Content length: ${result.length}`);
+  
           return result;
         } else {
           const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file contains visual elements that require manual analysis. The diagram structure and relationships should be reviewed manually to create appropriate test cases.`;
-          console.log(`Visio file processed with fallback content. Content length: ${result.length}`);
+  
           return result;
         }
       } catch (zipError) {
-        console.log(`Could not extract content from Visio file: ${zipError.message}`);
+
         return `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file requires manual analysis. Please review the diagram structure and create test cases based on the visual elements and relationships shown.`;
       }
     } else {
