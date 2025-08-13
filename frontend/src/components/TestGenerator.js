@@ -148,11 +148,27 @@ const TestGenerator = () => {
         }));
 
         setFeatureTabs(importedFeatures);
-        setEditableFeatures({});
+        
+        // Initialize editable features for imported content
+        const importedEditableFeatures = {};
+        importedFeatures.forEach((feature, index) => {
+          importedEditableFeatures[index] = feature.content;
+        });
+        
+        setEditableFeatures(importedEditableFeatures);
         setEditingFeatures({});
         setActiveTab(0);
         setShowJiraImport(false);
+        setShowModal(true); // Show the modal to display imported features
         setStatus({ type: 'success', message: `Successfully imported ${importedFeatures.length} test cases from Jira!` });
+        
+        // Debug logging to verify the import
+        console.log('🔍 Jira Import Debug:', {
+          importedFeatures: importedFeatures,
+          importedEditableFeatures: importedEditableFeatures,
+          featureTabsLength: importedFeatures.length,
+          activeTab: 0
+        });
       } else {
         setStatus({ type: 'error', message: response.data.error || 'Failed to import Jira issues' });
       }
@@ -1523,13 +1539,13 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
       )}
 
       {/* Test Cases Modal */}
-      {showModal && generatedTests && generatedTests.trim() && (
+      {showModal && (generatedTests && generatedTests.trim() || featureTabs.length > 0) && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h2 className="modal-title">
                 <TestTube size={24} />
-                Generated Test Cases
+                {generatedTests && generatedTests.trim() ? 'Generated Test Cases' : 'Test Cases'}
               </h2>
               <div className="modal-actions">
                 <button 
@@ -1613,6 +1629,15 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
             {/* Feature Content */}
             {featureTabs.length > 0 && (
               <div className="feature-content">
+                {/* Debug info for imported features */}
+                {console.log('🔍 Feature Tabs Debug:', {
+                  featureTabsLength: featureTabs.length,
+                  activeTab: activeTab,
+                  currentFeature: featureTabs[activeTab],
+                  editableFeatures: editableFeatures,
+                  currentEditableContent: editableFeatures[activeTab]
+                })}
+                
                 {editingFeatures[activeTab] && !pushedTabs.has(activeTab) ? (
                   <textarea
                     value={editableFeatures[activeTab] || ''}
@@ -1639,6 +1664,14 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                       </div>
                     )}
                     <TestOutput content={editableFeatures[activeTab] || featureTabs[activeTab]?.content || ''} />
+                    
+                    {/* Debug info for TestOutput */}
+                    {console.log('🔍 TestOutput Debug:', {
+                      editableContent: editableFeatures[activeTab],
+                      featureContent: featureTabs[activeTab]?.content,
+                      finalContent: editableFeatures[activeTab] || featureTabs[activeTab]?.content || '',
+                      hasContent: !!(editableFeatures[activeTab] || featureTabs[activeTab]?.content)
+                    })}
                   </>
                 )}
               </div>

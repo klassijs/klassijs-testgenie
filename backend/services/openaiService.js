@@ -347,6 +347,7 @@ CRITICAL REQUIREMENTS:
 
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - When analyzing diagram content, focus on business processes, systems, actors, and flows
+- If the diagram is a flowchart, extract the requirements from the flowchart
 - Extract requirements from business process components and their relationships
 - Convert visual elements into functional requirements
 - Identify data flows, system integrations, and user interactions
