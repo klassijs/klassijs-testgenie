@@ -180,7 +180,7 @@ function createScenariosFromJiraContent(summary, description, issueKey) {
   
   // Create main scenario from the ticket summary
   const mainScenario = {
-    title: summary || `Test ${issueKey}`, // Don't duplicate the issue key if it's already in the feature name
+    title: `${issueKey}: ${summary}` || `Test ${issueKey}`, // Include issue key for traceability
     steps: []
   };
   
@@ -269,9 +269,9 @@ function extractScenariosFromDescription(description, summary, issueKey) {
         if (currentScenario) {
           scenarios.push(currentScenario);
         }
-        const scenarioTitle = trimmedLine.replace(/scenario:?\s*/i, '').trim() || summary || 'Test Scenario';
+        const scenarioTitle = `${issueKey}: ${trimmedLine.replace(/scenario:?\s*/i, '').trim()}` || `${issueKey}: ${summary}` || `Test ${issueKey}`;
         currentScenario = {
-          title: scenarioTitle, // Don't duplicate the issue key if it's already in the feature name
+          title: scenarioTitle, // Include issue key for traceability
           steps: []
         };
       } else if (currentScenario && (trimmedLine.toLowerCase().startsWith('given') ||

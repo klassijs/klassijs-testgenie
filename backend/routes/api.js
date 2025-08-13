@@ -759,12 +759,10 @@ router.post('/push-to-zephyr', async (req, res) => {
       });
     }
 
-    // Add Jira ticket to coverage for traceability
-    let traceabilityResult = null;
+    // Extract test case key from the response structure
     let testCaseKey = null;
     let testCaseId = null;
     
-    // Extract test case key from the response structure
     if (response.createdTestCases && response.createdTestCases.length > 0) {
       testCaseKey = response.createdTestCases[0].key;
       testCaseId = response.createdTestCases[0].id;
@@ -775,28 +773,6 @@ router.post('/push-to-zephyr', async (req, res) => {
       testCaseKey = response.zephyrTestCaseIds[0];
       testCaseId = response.zephyrTestCaseIds[0];
     }
-    
-    if (testCaseKey) {
-      traceabilityResult = await addJiraTicketToCoverage(
-        testCaseKey, 
-        jiraTicketKey, 
-        jiraBaseUrl
-      );
-    } else {
-      console.log('⚠️ Could not determine test case key for traceability linking');
-      traceabilityResult = {
-        success: false,
-        message: 'Could not determine test case key for traceability',
-        manualInstructions: {
-          testCaseKey: 'Unknown',
-          jiraTicketKey,
-          jiraUrl: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
-          steps: 'Test case created but traceability linking failed - check Zephyr Scale UI for the new test case'
-        }
-      };
-    }
-
-    console.log('📋 Jira traceability result:', traceabilityResult);
 
     // Get folder details for the response
     let folderName = 'Unknown';
@@ -818,9 +794,8 @@ router.post('/push-to-zephyr', async (req, res) => {
       message: `Test case "${testCaseName}" pushed to Zephyr Scale successfully!`,
       testCaseKey: testCaseKey || 'Unknown',
       testCaseId: testCaseId || 'Unknown',
-      folderId: folderId,
       folderName: folderName,
-      jiraTraceability: traceabilityResult
+      jiraTraceability: response.jiraTraceability || null
     });
 
   } catch (error) {

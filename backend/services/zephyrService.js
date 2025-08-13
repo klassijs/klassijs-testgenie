@@ -308,7 +308,7 @@ async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
     return {
       success: false,
       error: `Failed to add Jira ticket information: ${error.message}`,
-      manualInstructions: `Manually add Jira ticket ${jiraTicketKey} to coverage via Traceability tab > Issues section > Add existing issue`
+      manualInstructions: `Manually add Jira ticket ${jiraTicketKey} to coverage via Traceability tab > Issues section`
     };
   }
 }
@@ -321,114 +321,162 @@ async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) 
     jiraBaseUrl
   });
 
-  // Based on Zephyr Scale Cloud API documentation:
-  // - POST /testcases/{key}/issues - Creates issue links for traceability
-  // - This will appear in the Traceability tab > Issues section
-  
+  // Try web links endpoint first - this is the most reliable method
   try {
-    // Method 1: Create issue link (correct endpoint for traceability)
-    console.log('📤 Creating Jira ticket issue link via correct endpoint...');
+    console.log('📤 Adding Jira ticket via web links endpoint...');
     
-    const issueLinkData = {
-      issueKey: jiraTicketKey,
-      issueType: 'JIRA_TICKET',
-      description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`,
-      url: `${jiraBaseUrl}/browse/${jiraTicketKey}`
+    const webLinkData = {
+      title: `Jira Ticket: ${jiraTicketKey}`,
+      url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+      type: 'JIRA_TICKET',
+      description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`
     };
 
-    const issueLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/issues`, issueLinkData, {
+    // CORRECT ENDPOINT: /testcases/{key}/links/weblinks
+    const webLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/weblinks`, webLinkData, {
       headers: {
         'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
         'Content-Type': 'application/json'
       }
     });
 
-    console.log('✅ Jira ticket issue link created successfully:', {
-      status: issueLinkResponse.status,
-      data: issueLinkResponse.data,
-      method: 'issues endpoint (traceability)'
+    console.log('✅ Web link added successfully:', {
+      status: webLinkResponse.status,
+      data: webLinkResponse.data,
+      method: 'web links endpoint',
+      jiraTicketKey: jiraTicketKey
     });
 
     return {
       success: true,
-      method: 'issues',
-      message: `Jira ticket ${jiraTicketKey} added to traceability via issues endpoint`,
-      issueLinkId: issueLinkResponse.data.id,
-      data: issueLinkResponse.data
+      method: 'webLinks',
+      message: `Jira ticket ${jiraTicketKey} linked to test case via web links`,
+      data: webLinkResponse.data
     };
 
   } catch (error) {
-    console.log('❌ Issues endpoint failed:', {
+    console.log('❌ Web links endpoint failed:', {
       status: error.response?.status,
       message: error.response?.data?.message || error.message,
-      endpoint: `${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/issues`
+      endpoint: `${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/weblinks`
     });
 
-    // Fallback: Try web links endpoint
+    // Second attempt: Try to add directly to issues array
     try {
-      console.log('🔄 Fallback: Trying web links endpoint...');
+      console.log('🔄 Second attempt: Trying to add Jira ticket to issues array...');
       
-      const webLinkData = {
-        title: `Jira Ticket: ${jiraTicketKey}`,
-        url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
-        type: 'JIRA_TICKET',
-        description: `Jira ticket ${jiraTicketKey} linked for test coverage`
-      };
-
-      const webLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/weblinks`, webLinkData, {
+      // Get current test case to see the links structure
+      const currentTestCase = await axios.get(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}`, {
         headers: {
           'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
           'Content-Type': 'application/json'
         }
       });
 
-      console.log('✅ Jira ticket web link created successfully:', {
-        status: webLinkResponse.status,
-        data: webLinkResponse.data,
-        method: 'weblinks endpoint (fallback)'
+      if (currentTestCase.data && currentTestCase.data.links) {
+        console.log('📋 Current links structure:', currentTestCase.data.links);
+        
+        // Try different payload structures for the issues endpoint
+        const issuePayloads = [
+          // Structure 1: Simple key
+          { issueKey: jiraTicketKey },
+          // Structure 2: With URL
+          { issueKey: jiraTicketKey, url: `${jiraBaseUrl}/browse/${jiraTicketKey}` },
+          // Structure 3: With type
+          { issueKey: jiraTicketKey, type: 'JIRA_TICKET' },
+          // Structure 4: With full metadata
+          { 
+            issueKey: jiraTicketKey, 
+            url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+            type: 'JIRA_TICKET',
+            summary: `Jira ticket ${jiraTicketKey}`,
+            description: `Linked for test coverage and traceability`
+          }
+        ];
+
+        let issueSuccess = false;
+        let issueResponse = null;
+
+        for (let i = 0; i < issuePayloads.length; i++) {
+          try {
+            console.log(`📤 Trying issues payload structure ${i + 1}:`, issuePayloads[i]);
+            
+            issueResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/issues`, issuePayloads[i], {
+              headers: {
+                'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+                'Content-Type': 'application/json'
+              }
+            });
+
+            console.log(`✅ Issues endpoint worked with payload structure ${i + 1}:`, {
+              status: issueResponse.status,
+              data: issueResponse.data
+            });
+
+            issueSuccess = true;
+            break;
+
+          } catch (payloadError) {
+            console.log(`❌ Payload structure ${i + 1} failed:`, {
+              status: payloadError.response?.status,
+              message: payloadError.response?.data?.message || payloadError.message
+            });
+            
+            if (i === issuePayloads.length - 1) {
+              throw payloadError; // Re-throw the last error
+            }
+          }
+        }
+
+        if (issueSuccess && issueResponse) {
+          return {
+            success: true,
+            method: 'issues',
+            message: `Jira ticket ${jiraTicketKey} linked to test case via issues endpoint`,
+            data: issueResponse.data
+          };
+        } else {
+          throw new Error('All issue payload structures failed');
+        }
+
+      } else {
+        throw new Error('Test case does not have a links structure');
+      }
+
+    } catch (issueError) {
+      console.log('❌ Issues endpoint also failed:', {
+        status: issueError.response?.status,
+        message: issueError.response?.data?.message || issueError.message
       });
 
-      return {
-        success: true,
-        method: 'weblinks',
-        message: `Jira ticket ${jiraTicketKey} added via web links endpoint (fallback)`,
-        webLinkId: webLinkResponse.data.id,
-        fallback: true
-      };
-
-    } catch (webLinkError) {
-      console.log('❌ Web links endpoint also failed:', {
-        status: webLinkError.response?.status,
-        message: webLinkError.response?.data?.message || webLinkError.message
-      });
-
-      // Final fallback: Add as comment for manual traceability
+      // Fallback: Try to add as comment
       try {
-        console.log('🔄 Final fallback: Adding Jira ticket info as comment...');
+        console.log('🔄 Fallback: Adding Jira ticket info as comment...');
         
         const commentData = {
-          body: `Jira Ticket: ${jiraTicketKey}\nURL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\nThis test case is linked to Jira ticket ${jiraTicketKey} for traceability and coverage tracking.`
+          body: `Jira Ticket: ${jiraTicketKey}\nURL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\nAdd this ticket to coverage via Traceability tab > Issues section > Add existing issue`
         };
 
-        const commentResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/comments`, commentData, {
+        // CORRECT ENDPOINT: /testcases/{key}/links/comments
+        const commentResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/comments`, commentData, {
           headers: {
             'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
             'Content-Type': 'application/json'
           }
         });
 
-        console.log('✅ Jira ticket info added as comment:', {
+        console.log('✅ Comment added successfully:', {
           status: commentResponse.status,
           data: commentResponse.data,
-          method: 'comment fallback'
+          method: 'comment',
+          jiraTicketKey: jiraTicketKey
         });
 
         return {
           success: true,
           method: 'comment',
-          message: `Jira ticket ${jiraTicketKey} info added as comment for manual traceability`,
-          commentId: commentResponse.data.id,
-          fallback: true
+          message: `Jira ticket ${jiraTicketKey} information added for manual traceability`,
+          instructions: `Check the comment for steps to add ${jiraTicketKey} to coverage via Traceability tab > Issues section`
         };
 
       } catch (commentError) {
@@ -437,19 +485,19 @@ async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) 
           message: commentError.response?.data?.message || commentError.message
         });
 
-        // Final fallback: Manual instructions
         console.log('📋 MANUAL TRACEABILITY REQUIRED:');
-        console.log(`  - Test Case: ${testCaseKey}`);
-        console.log(`  - Jira Ticket: ${jiraTicketKey}`);
-        console.log(`  - Jira URL: ${jiraBaseUrl}/browse/${jiraTicketKey}`);
-        console.log(`  - Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue`);
-        
-        return { 
-          success: false, 
+        console.log('  - Test Case:', testCaseKey);
+        console.log('  - Jira Ticket:', jiraTicketKey);
+        console.log('  - Jira URL:', `${jiraBaseUrl}/browse/${jiraTicketKey}`);
+        console.log('  - Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue');
+
+        return {
+          success: false,
+          method: 'manual',
           message: 'All programmatic methods failed, manual addition required',
           manualInstructions: {
-            testCaseKey,
-            jiraTicketKey,
+            testCaseKey: testCaseKey,
+            jiraTicketKey: jiraTicketKey,
             jiraUrl: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
             steps: 'Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue'
           }
@@ -529,6 +577,72 @@ async function discoverTraceabilityEndpoints(projectKey) {
   }
 }
 
+// Search for existing Zephyr issues by Jira ticket key
+async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
+  console.log('🔍 Searching for existing Zephyr issue with Jira ticket:', jiraTicketKey);
+  
+  try {
+    // Search for issues in the project
+    const searchResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/issues`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      params: {
+        projectKey: projectKey,
+        maxResults: 100 // Search through more results
+      }
+    });
+    
+    if (searchResponse.data && searchResponse.data.issues) {
+      // Look for issues that contain the Jira ticket key
+      const matchingIssues = searchResponse.data.issues.filter(issue => {
+        return issue.key && issue.key.includes(jiraTicketKey) ||
+               issue.summary && issue.summary.includes(jiraTicketKey) ||
+               issue.description && issue.description.includes(jiraTicketKey);
+      });
+      
+      if (matchingIssues.length > 0) {
+        console.log('✅ Found matching Zephyr issues:', matchingIssues.map(issue => ({
+          id: issue.id,
+          key: issue.key,
+          summary: issue.summary
+        })));
+        
+        // Return the first matching issue
+        return {
+          success: true,
+          issue: matchingIssues[0],
+          message: `Found existing issue with ID: ${matchingIssues[0].id}`
+        };
+      } else {
+        console.log('❌ No matching Zephyr issues found for Jira ticket:', jiraTicketKey);
+        return {
+          success: false,
+          message: 'No existing Zephyr issue found for this Jira ticket'
+        };
+      }
+    } else {
+      console.log('❌ No issues found in project or invalid response format');
+      return {
+        success: false,
+        message: 'No issues found in project'
+      };
+    }
+    
+  } catch (error) {
+    console.log('❌ Failed to search for existing issues:', {
+      status: error.response?.status,
+      message: error.response?.data?.message || error.message
+    });
+    return {
+      success: false,
+      message: 'Failed to search for existing issues',
+      error: error.message
+    };
+  }
+}
+
 // Push test cases directly to Zephyr Scale
 async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None', testCaseIds = null, jiraTicketKey = null, jiraBaseUrl = null) {
   if (!isZephyrConfigured) {
@@ -550,6 +664,9 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
   });
 
   const targetProjectKey = projectKey || ZEPHYR_PROJECT_KEY;
+
+  // Initialize traceability result at function level
+  let traceabilityResult = null;
 
   // Parse content and extract individual scenarios with background steps
   const lines = content.split('\n');
@@ -1569,19 +1686,24 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
           // Add Jira ticket link for traceability if provided
           if (jiraTicketKey && jiraBaseUrl) {
             try {
-              console.log('�� Adding Jira ticket to coverage for traceability...');
-              const linkResult = await addJiraTicketToCoverage(zephyrResponse.data.key, jiraTicketKey, jiraBaseUrl);
+              console.log(' Adding Jira ticket to coverage for traceability...');
+              traceabilityResult = await addJiraTicketToCoverage(zephyrResponse.data.key, jiraTicketKey, jiraBaseUrl);
               
-              if (linkResult.success) {
-                console.log('✅ Jira ticket added to coverage:', linkResult.message);
+              if (traceabilityResult.success) {
+                console.log('✅ Jira ticket added to coverage:', traceabilityResult.message);
               } else {
-                console.log('⚠️  Jira ticket coverage linking failed:', linkResult.message);
-                if (linkResult.manualInstructions) {
-                  console.log('📋 Manual instructions:', linkResult.manualInstructions);
+                console.log('⚠️  Jira ticket coverage linking failed:', traceabilityResult.message);
+                if (traceabilityResult.manualInstructions) {
+                  console.log('📋 Manual instructions:', traceabilityResult.manualInstructions);
                 }
               }
             } catch (linkError) {
               console.log('❌ Error adding Jira ticket to coverage:', linkError.message);
+              traceabilityResult = {
+                success: false,
+                error: linkError.message,
+                message: 'Error occurred while adding Jira ticket to coverage'
+              };
             }
           }
           
@@ -1623,6 +1745,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     createdTestCases: createdTestCases,
     zephyrTestCaseIds: testCaseIds || (createdTestCases.length > 0 ? createdTestCases.map(tc => tc.key) : []),
     zephyrTestCaseId: testCaseIds ? testCaseIds[0] : (createdTestCases.length > 0 ? createdTestCases[0].key : null),
+    jiraTraceability: traceabilityResult,
     metadata: {
       originalContentLength: content.length,
       totalScenarios: scenarios.length,
@@ -1652,5 +1775,6 @@ module.exports = {
   isZephyrConfigured,
   addJiraTicketInfo,
   addJiraTicketToCoverage,
-  discoverTraceabilityEndpoints
+  discoverTraceabilityEndpoints,
+  findZephyrIssueByJiraKey
 }; 
