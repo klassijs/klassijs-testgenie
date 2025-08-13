@@ -4,7 +4,7 @@ const path = require('path');
 const fs = require('fs');
 const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, extractBusinessRequirements, isAzureOpenAIConfigured } = require('../services/openaiService');
-const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured } = require('../services/zephyrService');
+const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured, discoverTraceabilityEndpoints, addJiraTicketToCoverage } = require('../services/zephyrService');
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
 const { generateWordDocument } = require('../utils/docxGenerator');
 const axios = require('axios'); // Added axios for the debug endpoint
@@ -720,7 +720,7 @@ router.get('/zephyr-search-folders/:projectKey', async (req, res) => {
 // Zephyr Scale Direct Push endpoint
 router.post('/push-to-zephyr', async (req, res) => {
   try {
-    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None', testCaseIds = null } = req.body;
+    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None', testCaseIds = null, jiraTicketKey = null, jiraBaseUrl = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -738,9 +738,90 @@ router.post('/push-to-zephyr', async (req, res) => {
       });
     }
 
-    const result = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseIds);
+    const response = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseIds, jiraTicketKey, jiraBaseUrl);
 
-    res.json(result);
+    console.log('🔍 DEBUG: Response structure from pushToZephyr:', {
+      responseType: typeof response,
+      responseKeys: response ? Object.keys(response) : 'null/undefined',
+      responseData: response?.data,
+      responseSuccess: response?.success,
+      responseTestCaseKey: response?.testCaseKey,
+      createdTestCases: response?.createdTestCases,
+      zephyrTestCaseId: response?.zephyrTestCaseId,
+      zephyrTestCaseIds: response?.zephyrTestCaseIds
+    });
+
+    if (!response.success) {
+      return res.status(400).json({
+        error: 'Failed to push to Zephyr Scale',
+        details: response.error,
+        suggestion: 'Please try again with valid test content'
+      });
+    }
+
+    // Add Jira ticket to coverage for traceability
+    let traceabilityResult = null;
+    let testCaseKey = null;
+    let testCaseId = null;
+    
+    // Extract test case key from the response structure
+    if (response.createdTestCases && response.createdTestCases.length > 0) {
+      testCaseKey = response.createdTestCases[0].key;
+      testCaseId = response.createdTestCases[0].id;
+    } else if (response.zephyrTestCaseId) {
+      testCaseKey = response.zephyrTestCaseId;
+      testCaseId = response.zephyrTestCaseId;
+    } else if (response.zephyrTestCaseIds && response.zephyrTestCaseIds.length > 0) {
+      testCaseKey = response.zephyrTestCaseIds[0];
+      testCaseId = response.zephyrTestCaseIds[0];
+    }
+    
+    if (testCaseKey) {
+      traceabilityResult = await addJiraTicketToCoverage(
+        testCaseKey, 
+        jiraTicketKey, 
+        jiraBaseUrl
+      );
+    } else {
+      console.log('⚠️ Could not determine test case key for traceability linking');
+      traceabilityResult = {
+        success: false,
+        message: 'Could not determine test case key for traceability',
+        manualInstructions: {
+          testCaseKey: 'Unknown',
+          jiraTicketKey,
+          jiraUrl: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+          steps: 'Test case created but traceability linking failed - check Zephyr Scale UI for the new test case'
+        }
+      };
+    }
+
+    console.log('📋 Jira traceability result:', traceabilityResult);
+
+    // Get folder details for the response
+    let folderName = 'Unknown';
+    try {
+      const folderDetailsResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/folders/${folderId}`, {
+        headers: {
+          'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      folderName = folderDetailsResponse.data.name;
+    } catch (folderError) {
+      console.log('⚠️ Could not fetch folder details for response:', folderError.message);
+      folderName = `Folder ID: ${folderId}`;
+    }
+
+    res.json({
+      success: true,
+      message: `Test case "${testCaseName}" pushed to Zephyr Scale successfully!`,
+      testCaseKey: testCaseKey || 'Unknown',
+      testCaseId: testCaseId || 'Unknown',
+      folderId: folderId,
+      folderName: folderName,
+      jiraTraceability: traceabilityResult
+    });
 
   } catch (error) {
     console.error('Error pushing to Zephyr Scale:', error);
@@ -766,6 +847,114 @@ router.post('/push-to-zephyr', async (req, res) => {
   }
 });
 
+// Discover available Zephyr Scale traceability endpoints
+router.get('/zephyr/discover-endpoints/:projectKey', async (req, res) => {
+  try {
+    const { projectKey } = req.params;
+    
+    if (!projectKey) {
+      return res.status(400).json({ error: 'Project key is required' });
+    }
+
+    const result = await discoverTraceabilityEndpoints(projectKey);
+    
+    if (result.success) {
+      res.json({
+        success: true,
+        message: 'Endpoint discovery completed',
+        projectKey,
+        endpoints: result.endpoints
+      });
+    } else {
+      res.status(500).json({
+        error: 'Failed to discover endpoints',
+        details: result.error
+      });
+    }
+
+  } catch (error) {
+    console.error('Error discovering Zephyr endpoints:', error);
+    res.status(500).json({ 
+      error: 'Failed to discover endpoints',
+      details: error.message
+    });
+  }
+});
+
+// Test Zephyr Scale traceability endpoints
+router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
+  try {
+    const { projectKey } = req.params;
+    
+    if (!projectKey) {
+      return res.status(400).json({ error: 'Project key is required' });
+    }
+
+    console.log('🔍 Testing available endpoints for project:', projectKey);
+    
+    // Test common endpoint patterns
+    const testEndpoints = [
+      { name: 'testcases', url: `${process.env.ZEPHYR_BASE_URL}/testcases`, method: 'GET' },
+      { name: 'folders', url: `${process.env.ZEPHYR_BASE_URL}/folders`, method: 'GET' },
+      { name: 'coverage', url: `${process.env.ZEPHYR_BASE_URL}/coverage`, method: 'GET' },
+      { name: 'traceability', url: `${process.env.ZEPHYR_BASE_URL}/traceability`, method: 'GET' },
+      { name: 'issues', url: `${process.env.ZEPHYR_BASE_URL}/issues`, method: 'GET' },
+      { name: 'links', url: `${process.env.ZEPHYR_BASE_URL}/links`, method: 'GET' },
+      { name: 'weblinks', url: `${process.env.ZEPHYR_BASE_URL}/weblinks`, method: 'GET' },
+      { name: 'comments', url: `${process.env.ZEPHYR_BASE_URL}/comments`, method: 'GET' }
+    ];
+    
+    const results = [];
+    
+    for (const endpoint of testEndpoints) {
+      try {
+        const response = await axios({
+          method: endpoint.method,
+          url: endpoint.url,
+          headers: {
+            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          params: { projectKey, maxResults: 1 }
+        });
+        
+        results.push({
+          name: endpoint.name,
+          url: endpoint.url,
+          status: response.status,
+          available: true,
+          data: response.data
+        });
+        
+      } catch (error) {
+        results.push({
+          name: endpoint.name,
+          url: endpoint.url,
+          status: error.response?.status,
+          available: false,
+          error: error.response?.data?.message || error.message
+        });
+      }
+    }
+    
+    console.log('🔍 Endpoint test results:', results);
+    
+    res.json({
+      success: true,
+      message: 'Endpoint discovery completed',
+      projectKey,
+      results
+    });
+
+  } catch (error) {
+    console.error('Error testing Zephyr endpoints:', error);
+    res.status(500).json({ 
+      error: 'Failed to test endpoints',
+      details: error.message
+    });
+  }
+});
+
 // Jira Import endpoints
 
 // Test Jira connection
@@ -781,7 +970,8 @@ router.post('/jira/test-connection', async (req, res) => {
         success: true,
         message: result.message,
         user: result.user,
-        projects: projectsResult.success ? projectsResult.projects : []
+        projects: projectsResult.success ? projectsResult.projects : [],
+        jiraBaseUrl: process.env.JIRA_BASE_URL // Pass Jira base URL to frontend
       });
     } else {
       res.status(400).json({

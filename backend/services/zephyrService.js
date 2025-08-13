@@ -258,8 +258,279 @@ async function getFolderPath(folderId) {
   return folderPath.map(f => `${f.name}`).join(' / ');
 }
 
+// Add Jira ticket information to Zephyr test case for manual traceability
+async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
+  try {
+    console.log('🔗 Adding Jira ticket information for manual traceability:', {
+      testCaseKey: testCaseKey,
+      jiraTicketKey: jiraTicketKey,
+      jiraBaseUrl: jiraBaseUrl
+    });
+
+    // Add Jira ticket information as a comment for easy reference
+    // Users can then manually add the ticket to the coverage using Zephyr's UI
+    const commentData = {
+      body: `🔗 JIRA TICKET FOR TRACEABILITY\n\n` +
+            `Ticket: ${jiraTicketKey}\n` +
+            `URL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\n` +
+            `📋 TO ADD TO COVERAGE:\n` +
+            `1. Go to Traceability tab > Issues section\n` +
+            `2. Click "Add existing issue"\n` +
+            `3. Enter ticket number: ${jiraTicketKey}\n` +
+            `4. This will link the Jira ticket to this test case for coverage tracking\n\n` +
+            `This test case was imported from Jira ticket ${jiraTicketKey}.`
+    };
+
+    console.log('📤 Adding Jira ticket info as comment for manual traceability...');
+
+    const commentResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${testCaseKey}/comments`, commentData, {
+      headers: {
+        'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+
+    console.log('✅ Jira ticket info added as comment for manual traceability:', {
+      status: commentResponse.status,
+      data: commentResponse.data
+    });
+
+    return {
+      success: true,
+      method: 'comment',
+      message: `Jira ticket ${jiraTicketKey} information added for manual traceability`,
+      instructions: `Check the comment for steps to add ${jiraTicketKey} to coverage via Traceability tab > Issues section`
+    };
+
+  } catch (error) {
+    console.log('❌ Failed to add Jira ticket information:', error.message);
+    return {
+      success: false,
+      error: `Failed to add Jira ticket information: ${error.message}`,
+      manualInstructions: `Manually add Jira ticket ${jiraTicketKey} to coverage via Traceability tab > Issues section > Add existing issue`
+    };
+  }
+}
+
+// Add Jira ticket to Zephyr test case coverage programmatically
+async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) {
+  console.log('🔗 Adding Jira ticket to Zephyr coverage programmatically:', {
+    testCaseKey,
+    jiraTicketKey,
+    jiraBaseUrl
+  });
+
+  // Based on Zephyr Scale Cloud API documentation:
+  // - POST /testcases/{key}/issues - Creates issue links for traceability
+  // - This will appear in the Traceability tab > Issues section
+  
+  try {
+    // Method 1: Create issue link (correct endpoint for traceability)
+    console.log('📤 Creating Jira ticket issue link via correct endpoint...');
+    
+    const issueLinkData = {
+      issueKey: jiraTicketKey,
+      issueType: 'JIRA_TICKET',
+      description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`,
+      url: `${jiraBaseUrl}/browse/${jiraTicketKey}`
+    };
+
+    const issueLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/issues`, issueLinkData, {
+      headers: {
+        'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    console.log('✅ Jira ticket issue link created successfully:', {
+      status: issueLinkResponse.status,
+      data: issueLinkResponse.data,
+      method: 'issues endpoint (traceability)'
+    });
+
+    return {
+      success: true,
+      method: 'issues',
+      message: `Jira ticket ${jiraTicketKey} added to traceability via issues endpoint`,
+      issueLinkId: issueLinkResponse.data.id,
+      data: issueLinkResponse.data
+    };
+
+  } catch (error) {
+    console.log('❌ Issues endpoint failed:', {
+      status: error.response?.status,
+      message: error.response?.data?.message || error.message,
+      endpoint: `${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/issues`
+    });
+
+    // Fallback: Try web links endpoint
+    try {
+      console.log('🔄 Fallback: Trying web links endpoint...');
+      
+      const webLinkData = {
+        title: `Jira Ticket: ${jiraTicketKey}`,
+        url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+        type: 'JIRA_TICKET',
+        description: `Jira ticket ${jiraTicketKey} linked for test coverage`
+      };
+
+      const webLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/weblinks`, webLinkData, {
+        headers: {
+          'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      console.log('✅ Jira ticket web link created successfully:', {
+        status: webLinkResponse.status,
+        data: webLinkResponse.data,
+        method: 'weblinks endpoint (fallback)'
+      });
+
+      return {
+        success: true,
+        method: 'weblinks',
+        message: `Jira ticket ${jiraTicketKey} added via web links endpoint (fallback)`,
+        webLinkId: webLinkResponse.data.id,
+        fallback: true
+      };
+
+    } catch (webLinkError) {
+      console.log('❌ Web links endpoint also failed:', {
+        status: webLinkError.response?.status,
+        message: webLinkError.response?.data?.message || webLinkError.message
+      });
+
+      // Final fallback: Add as comment for manual traceability
+      try {
+        console.log('🔄 Final fallback: Adding Jira ticket info as comment...');
+        
+        const commentData = {
+          body: `Jira Ticket: ${jiraTicketKey}\nURL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\nThis test case is linked to Jira ticket ${jiraTicketKey} for traceability and coverage tracking.`
+        };
+
+        const commentResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/comments`, commentData, {
+          headers: {
+            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        });
+
+        console.log('✅ Jira ticket info added as comment:', {
+          status: commentResponse.status,
+          data: commentResponse.data,
+          method: 'comment fallback'
+        });
+
+        return {
+          success: true,
+          method: 'comment',
+          message: `Jira ticket ${jiraTicketKey} info added as comment for manual traceability`,
+          commentId: commentResponse.data.id,
+          fallback: true
+        };
+
+      } catch (commentError) {
+        console.log('❌ Comment fallback also failed:', {
+          status: commentError.response?.status,
+          message: commentError.response?.data?.message || commentError.message
+        });
+
+        // Final fallback: Manual instructions
+        console.log('📋 MANUAL TRACEABILITY REQUIRED:');
+        console.log(`  - Test Case: ${testCaseKey}`);
+        console.log(`  - Jira Ticket: ${jiraTicketKey}`);
+        console.log(`  - Jira URL: ${jiraBaseUrl}/browse/${jiraTicketKey}`);
+        console.log(`  - Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue`);
+        
+        return { 
+          success: false, 
+          message: 'All programmatic methods failed, manual addition required',
+          manualInstructions: {
+            testCaseKey,
+            jiraTicketKey,
+            jiraUrl: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+            steps: 'Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue'
+          }
+        };
+      }
+    }
+  }
+}
+
+// Discover available traceability endpoints in Zephyr Scale
+async function discoverTraceabilityEndpoints(projectKey) {
+  console.log('🔍 Discovering available traceability endpoints for project:', projectKey);
+  
+  try {
+    // Get project details to see what's available
+    const projectResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/projects/${projectKey}`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+    
+    console.log('📋 Project details:', {
+      id: projectResponse.data.id,
+      key: projectResponse.data.key,
+      name: projectResponse.data.name,
+      links: projectResponse.data.links
+    });
+    
+    // Try to discover what endpoints exist by testing common patterns
+    const testEndpoints = [
+      '/testcases',
+      '/folders',
+      '/coverage',
+      '/traceability',
+      '/issues',
+      '/links',
+      '/weblinks',
+      '/comments'
+    ];
+    
+    const discoveredEndpoints = [];
+    
+    for (const endpoint of testEndpoints) {
+      try {
+        const response = await axios.get(`${process.env.ZEPHYR_BASE_URL}${endpoint}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          },
+          params: { projectKey, maxResults: 1 }
+        });
+        
+        discoveredEndpoints.push({
+          endpoint,
+          status: response.status,
+          available: true,
+          data: response.data
+        });
+        
+      } catch (error) {
+        discoveredEndpoints.push({
+          endpoint,
+          status: error.response?.status,
+          available: false,
+          error: error.response?.data?.message || error.message
+        });
+      }
+    }
+    
+    console.log('🔍 Discovered endpoints:', discoveredEndpoints);
+    return { success: true, endpoints: discoveredEndpoints };
+    
+  } catch (error) {
+    console.log('❌ Failed to discover endpoints:', error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 // Push test cases directly to Zephyr Scale
-async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None', testCaseIds = null) {
+async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None', testCaseIds = null, jiraTicketKey = null, jiraBaseUrl = null) {
   if (!isZephyrConfigured) {
     throw new Error('Zephyr Scale is not configured');
   }
@@ -273,7 +544,9 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     folderIdType: typeof folderId,
     status,
     isAutomatable,
-    testCaseIds
+    testCaseIds,
+    jiraTicketKey,
+    jiraBaseUrl
   });
 
   const targetProjectKey = projectKey || ZEPHYR_PROJECT_KEY;
@@ -543,8 +816,39 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       }
 
       // Create test case first (without testScript)
+      // Fix the naming logic to prevent duplication
+      let testCaseDisplayName;
+      
+      if (testCaseName && testCaseName.trim()) {
+        // If test case name is provided, use: "Test Case Name - Scenario Name"
+        testCaseDisplayName = `${testCaseName.trim()} - ${scenario.name}`;
+      } else {
+        // If test case name is blank, be smart about naming to prevent duplication
+        if (featureName === scenario.name) {
+          // If feature name and scenario name are identical, just use the feature name
+          testCaseDisplayName = featureName;
+        } else if (featureName.includes(scenario.name)) {
+          // If feature name already contains the scenario name, just use the feature name
+          testCaseDisplayName = featureName;
+        } else {
+          // Otherwise, combine them: "Feature Name - Scenario Name"
+          testCaseDisplayName = `${featureName} - ${scenario.name}`;
+        }
+      }
+      
+      // Debug the naming logic
+      console.log('🔍 Test case naming debug:', {
+        testCaseName: testCaseName,
+        testCaseNameTrimmed: testCaseName ? testCaseName.trim() : 'null/undefined',
+        featureName: featureName,
+        scenarioName: scenario.name,
+        featureEqualsScenario: featureName === scenario.name,
+        featureContainsScenario: featureName.includes(scenario.name),
+        finalName: testCaseDisplayName
+      });
+      
       const testCaseData = {
-        name: testCaseName && testCaseName.trim() ? `${testCaseName.trim()} - ${scenario.name}` : `${featureName} - ${scenario.name}`,
+        name: testCaseDisplayName,
         projectKey: targetProjectKey,
         status: status,
         priority: 'Medium', // Default priority
@@ -1197,7 +1501,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
                    console.log('🔍 CRITICAL VERIFICATION REQUIRED:');
                    console.log('📋 Test Case Key:', zephyrResponse.data.key);
                    console.log('🌐 Direct URL:', `${zephyrBaseUrl.replace('/v2', '')}/testcases/${zephyrResponse.data.key}`);
-                   console.log('📁 Expected Location: Section1 (inside Automated Scripts)');
+                   console.log('📁 EXPECTED: Section1 folder (inside Automated Scripts)');
                    console.log('⚠️  IMPORTANT: Check the ACTUAL Zephyr Scale UI, not just the API response!');
                    console.log('🚨 The API may be lying about the folder assignment!');
                    
@@ -1253,44 +1557,32 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               timeout: 30000
             });
             
-            
-            
-            // Update the test case status
-            try {
-              // Try different approaches for status update
-              const statusUpdateData = {
-                id: zephyrResponse.data.id,
-                key: zephyrResponse.data.key,
-                name: testCaseData.name,
-                project: {
-                  id: 177573
-                },
-                priority: {
-                  id: 3233492
-                },
-                status: {
-                  id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : 3233490
-                },
-                customFields: {
-                  'isAutomatable': isAutomatable,
-                  'isAutomated': null
-                }
-              };
-              
-              const statusUpdateResponse = await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, statusUpdateData, {
-                headers: {
-                  'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-                  'Content-Type': 'application/json'
-                },
-                timeout: 30000
-              });
-              
-            } catch (statusError) {
-              // Status update failed, continue silently
-            }
+            console.log('✅ Test script added successfully:', {
+              status: testScriptResponse.status,
+              data: testScriptResponse.data
+            });
             
           } catch (scriptError) {
-            // Test script addition failed, continue silently
+            console.log('❌ Failed to add test script:', scriptError.message);
+          }
+          
+          // Add Jira ticket link for traceability if provided
+          if (jiraTicketKey && jiraBaseUrl) {
+            try {
+              console.log('�� Adding Jira ticket to coverage for traceability...');
+              const linkResult = await addJiraTicketToCoverage(zephyrResponse.data.key, jiraTicketKey, jiraBaseUrl);
+              
+              if (linkResult.success) {
+                console.log('✅ Jira ticket added to coverage:', linkResult.message);
+              } else {
+                console.log('⚠️  Jira ticket coverage linking failed:', linkResult.message);
+                if (linkResult.manualInstructions) {
+                  console.log('📋 Manual instructions:', linkResult.manualInstructions);
+                }
+              }
+            } catch (linkError) {
+              console.log('❌ Error adding Jira ticket to coverage:', linkError.message);
+            }
           }
           
           // Log the direct URL to view the test case
@@ -1339,7 +1631,12 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       projectKey: targetProjectKey,
       folderId: folderId,
       isUpdate: !!testCaseIds,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      jiraTicketInfo: jiraTicketKey ? {
+        ticketKey: jiraTicketKey,
+        jiraBaseUrl: jiraBaseUrl,
+        coverageStatus: 'attempted'
+      } : null
     }
   };
 }
@@ -1352,5 +1649,8 @@ module.exports = {
   getMainFolders,
   getSubfolders,
   searchFolders,
-  isZephyrConfigured
+  isZephyrConfigured,
+  addJiraTicketInfo,
+  addJiraTicketToCoverage,
+  discoverTraceabilityEndpoints
 }; 

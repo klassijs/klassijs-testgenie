@@ -142,7 +142,7 @@ async function getJiraIssues(projectKey, issueTypes) {
 
 // Convert Jira issue to Gherkin feature
 function convertJiraIssueToGherkin(issue) {
-  const featureName = issue.summary || 'Test Feature';
+  const featureName = `${issue.key}: ${issue.summary}` || 'Test Feature';
   const description = typeof issue.description === 'string' ? issue.description : '';
   
   // Create scenarios from the Jira ticket content
@@ -150,12 +150,15 @@ function convertJiraIssueToGherkin(issue) {
   
   // Build Gherkin content
   let gherkinContent = `Feature: ${featureName}\n`;
+  gherkinContent += `  # Jira Ticket: ${issue.key}\n`;
+  gherkinContent += `  # Summary: ${issue.summary}\n`;
   gherkinContent += `  As a user\n`;
   gherkinContent += `  I want to ${issue.summary?.toLowerCase() || 'perform actions'}\n`;
   gherkinContent += `  So that I can achieve my goals\n\n`;
   
   // Add created scenarios
   scenarios.forEach((scenario, index) => {
+    gherkinContent += `  # Jira Ticket: ${issue.key}\n`;
     gherkinContent += `Scenario: ${scenario.title}\n`;
     scenario.steps.forEach(step => {
       gherkinContent += `  ${step}\n`;
@@ -177,7 +180,7 @@ function createScenariosFromJiraContent(summary, description, issueKey) {
   
   // Create main scenario from the ticket summary
   const mainScenario = {
-    title: summary || `Test ${issueKey}`,
+    title: summary || `Test ${issueKey}`, // Don't duplicate the issue key if it's already in the feature name
     steps: []
   };
   
@@ -198,7 +201,7 @@ function createScenariosFromJiraContent(summary, description, issueKey) {
   
   // If there's a description, try to create additional scenarios
   if (description) {
-    const additionalScenarios = extractScenariosFromDescription(description, summary);
+    const additionalScenarios = extractScenariosFromDescription(description, summary, issueKey);
     scenarios.push(...additionalScenarios);
   }
   
@@ -241,7 +244,7 @@ function extractActionFromSummary(summary) {
 }
 
 // Extract scenarios from Jira description
-function extractScenariosFromDescription(description, summary) {
+function extractScenariosFromDescription(description, summary, issueKey) {
   const scenarios = [];
   
   if (!description || typeof description !== 'string') {
@@ -266,8 +269,9 @@ function extractScenariosFromDescription(description, summary) {
         if (currentScenario) {
           scenarios.push(currentScenario);
         }
+        const scenarioTitle = trimmedLine.replace(/scenario:?\s*/i, '').trim() || summary || 'Test Scenario';
         currentScenario = {
-          title: trimmedLine.replace(/scenario:?\s*/i, '').trim() || summary || 'Test Scenario',
+          title: scenarioTitle, // Don't duplicate the issue key if it's already in the feature name
           steps: []
         };
       } else if (currentScenario && (trimmedLine.toLowerCase().startsWith('given') ||

@@ -67,12 +67,16 @@ const TestGenerator = () => {
   // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
   const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
 
+  // Track Jira ticket information for imported features
+  const [jiraTicketInfo, setJiraTicketInfo] = useState({});
+
   // Jira import state
   const [showJiraImport, setShowJiraImport] = useState(false);
   const [jiraConfig, setJiraConfig] = useState({
     projectKey: '',
     issueTypes: [],
-    selectedIssues: []
+    selectedIssues: [],
+    baseUrl: '' // Will be set from backend response
   });
   const [jiraProjects, setJiraProjects] = useState([]);
   const [jiraIssues, setJiraIssues] = useState([]);
@@ -91,6 +95,11 @@ const TestGenerator = () => {
       const response = await axios.post(`${API_BASE_URL}/api/jira/test-connection`);
 
       if (response.data.success) {
+        // Store the Jira base URL from backend response
+        if (response.data.jiraBaseUrl) {
+          setJiraConfig(prev => ({ ...prev, baseUrl: response.data.jiraBaseUrl }));
+        }
+        
         setJiraProjects(response.data.projects || []);
         setJiraStep('select');
         setStatus({ type: 'success', message: 'Successfully connected to Jira!' });
@@ -151,11 +160,22 @@ const TestGenerator = () => {
         
         // Initialize editable features for imported content
         const importedEditableFeatures = {};
+        const importedJiraTicketInfo = {};
         importedFeatures.forEach((feature, index) => {
           importedEditableFeatures[index] = feature.content;
+          
+          // Extract Jira ticket key from feature title (format: "OET-1842: Summary")
+          if (feature.title && feature.title.includes(':')) {
+            const ticketKey = feature.title.split(':')[0].trim();
+            importedJiraTicketInfo[index] = {
+              ticketKey: ticketKey,
+              jiraBaseUrl: jiraConfig.baseUrl
+            };
+          }
         });
         
         setEditableFeatures(importedEditableFeatures);
+        setJiraTicketInfo(importedJiraTicketInfo);
         setEditingFeatures({});
         setActiveTab(0);
         setShowJiraImport(false);
@@ -166,6 +186,7 @@ const TestGenerator = () => {
         console.log('🔍 Jira Import Debug:', {
           importedFeatures: importedFeatures,
           importedEditableFeatures: importedEditableFeatures,
+          importedJiraTicketInfo: importedJiraTicketInfo,
           featureTabsLength: importedFeatures.length,
           activeTab: 0
         });
@@ -812,7 +833,10 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
         folderId: folderId || null,
         status: status,
         isAutomatable: isAutomatable,
-        testCaseId: testCaseId
+        testCaseId: testCaseId,
+        // Add Jira ticket information for traceability if this feature came from Jira
+        jiraTicketKey: jiraTicketInfo[activeTab]?.ticketKey || null,
+        jiraBaseUrl: jiraTicketInfo[activeTab]?.jiraBaseUrl || null
       });
 
       // Clear the progress interval
@@ -830,6 +854,15 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
         await new Promise(resolve => setTimeout(resolve, 1500));
         setShowZephyrProgress(false);
         
+        // Show success message
+        setStatus({ 
+          type: 'success', 
+          message: `Test case "${activeTab}" pushed to Zephyr Scale successfully!${
+            response.data.jiraTraceability ? 
+              ` Jira ticket ${response.data.jiraTraceability.ticketKey} linked for traceability.` : 
+              ' Jira ticket traceability linking failed - manual setup required.'
+          }` 
+        });
         return response.data;
       } else {
         throw new Error('Push failed');
@@ -1428,7 +1461,8 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                 setJiraConfig({
                   projectKey: '',
                   issueTypes: [],
-                  selectedIssues: []
+                  selectedIssues: [],
+                  baseUrl: '' // Will be set from backend response
                 });
               }}
               title="Import test cases from Jira"
@@ -1621,6 +1655,22 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                     onClick={() => setActiveTab(index)}
                   >
                     {feature.title}
+                    {jiraTicketInfo[index] && (
+                      <span 
+                        title={`Jira Ticket: ${jiraTicketInfo[index].ticketKey}`}
+                        style={{
+                          marginLeft: '8px',
+                          fontSize: '0.7rem',
+                          backgroundColor: '#3b82f6',
+                          color: 'white',
+                          padding: '2px 6px',
+                          borderRadius: '10px',
+                          fontWeight: 'normal'
+                        }}
+                      >
+                        🔗
+                      </span>
+                    )}
                   </button>
                 ))}
               </div>
@@ -2304,7 +2354,7 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                       }));
                       setStatus({ 
                         type: 'success', 
-                        message: `Successfully ${zephyrTestCaseIds[activeTab] ? 'updated' : 'pushed'} to Zephyr Scale! ${result.zephyrTestCaseIds ? `${result.zephyrTestCaseIds.length} test cases` : 'Test Case ID: ' + result.zephyrTestCaseId}` 
+                        message: `Successfully ${zephyrTestCaseIds[activeTab] ? 'updated' : 'pushed'} to Zephyr Scale! ${result.zephyrTestCaseIds ? `${result.zephyrTestCaseIds.length} test cases` : 'Test Case ID: ' + result.zephyrTestCaseId}${jiraTicketInfo[activeTab] ? ` | Jira ticket ${jiraTicketInfo[activeTab].ticketKey} automatically added to coverage` : ''}` 
                       });
                       setShowZephyrConfig(false);
                     }
@@ -2410,6 +2460,31 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                     Using your configured Jira credentials from environment variables.
                   </p>
                   
+                  <div className="form-group">
+                    <label htmlFor="jiraBaseUrl">Jira Base URL *</label>
+                    <input
+                      type="url"
+                      id="jiraBaseUrl"
+                      placeholder="Will be configured automatically from backend"
+                      value={jiraConfig.baseUrl}
+                      onChange={(e) => setJiraConfig(prev => ({ ...prev, baseUrl: e.target.value }))}
+                      style={{
+                        width: '100%',
+                        padding: '0.75rem',
+                        border: '1px solid #d1d5db',
+                        borderRadius: '0.375rem',
+                        fontSize: '0.875rem'
+                      }}
+                      readOnly
+                      disabled
+                    />
+                    <small style={{ color: '#6b7280', fontSize: '0.8rem' }}>
+                      This URL is automatically configured from your backend environment variables.
+                      <br />
+                      <strong>Current:</strong> {jiraConfig.baseUrl || 'Not configured yet'}
+                    </small>
+                  </div>
+                  
                   <div className="modal-footer">
                     <button
                       className="btn btn-primary"
@@ -2425,6 +2500,20 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                         'Jira Connect'
                       )}
                     </button>
+                    
+                    {jiraConfig.baseUrl && (
+                      <div style={{ 
+                        marginTop: '8px', 
+                        padding: '8px', 
+                        backgroundColor: '#d1fae5', 
+                        border: '1px solid #10b981', 
+                        borderRadius: '4px',
+                        fontSize: '0.8rem',
+                        color: '#065f46'
+                      }}>
+                        ✅ Jira Base URL configured: {jiraConfig.baseUrl}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
