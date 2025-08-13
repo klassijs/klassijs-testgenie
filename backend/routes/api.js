@@ -740,17 +740,6 @@ router.post('/push-to-zephyr', async (req, res) => {
 
     const response = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseIds, jiraTicketKey, jiraBaseUrl);
 
-    console.log('🔍 DEBUG: Response structure from pushToZephyr:', {
-      responseType: typeof response,
-      responseKeys: response ? Object.keys(response) : 'null/undefined',
-      responseData: response?.data,
-      responseSuccess: response?.success,
-      responseTestCaseKey: response?.testCaseKey,
-      createdTestCases: response?.createdTestCases,
-      zephyrTestCaseId: response?.zephyrTestCaseId,
-      zephyrTestCaseIds: response?.zephyrTestCaseIds
-    });
-
     if (!response.success) {
       return res.status(400).json({
         error: 'Failed to push to Zephyr Scale',
@@ -768,25 +757,22 @@ router.post('/push-to-zephyr', async (req, res) => {
       testCaseId = response.createdTestCases[0].id;
     } else if (response.zephyrTestCaseId) {
       testCaseKey = response.zephyrTestCaseId;
-      testCaseId = response.zephyrTestCaseId;
-    } else if (response.zephyrTestCaseIds && response.zephyrTestCaseIds.length > 0) {
-      testCaseKey = response.zephyrTestCaseIds[0];
-      testCaseId = response.zephyrTestCaseIds[0];
     }
 
-    // Get folder details for the response
-    let folderName = 'Unknown';
-    try {
-      const folderDetailsResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/folders/${folderId}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      folderName = folderDetailsResponse.data.name;
-    } catch (folderError) {
-      console.log('⚠️ Could not fetch folder details for response:', folderError.message);
-      folderName = `Folder ID: ${folderId}`;
+    // Get folder details for response
+    let folderName = null;
+    if (folderId) {
+      try {
+        const folderResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/folders/${folderId}`, {
+          headers: {
+            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        folderName = folderResponse.data.name;
+      } catch (error) {
+        console.error('Error fetching folder details:', error.message);
+      }
     }
 
     res.json({

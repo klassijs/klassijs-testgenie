@@ -858,9 +858,9 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
         setStatus({ 
           type: 'success', 
           message: `Test case "${activeTab}" pushed to Zephyr Scale successfully!${
-            response.data.jiraTraceability ? 
-              ` Jira ticket ${response.data.jiraTraceability.ticketKey} linked for traceability.` : 
-              ' Jira ticket traceability linking failed - manual setup required.'
+            response.data.jiraTraceability && response.data.jiraTraceability.success ? 
+              ` Jira ticket linked for traceability.` : 
+              ''
           }` 
         });
         return response.data;
@@ -1220,7 +1220,7 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                     
                     if (inTable) {
                       if (trimmedLine === '' || !trimmedLine.includes('|')) {
-                        break;
+                        break; // End of table
                       }
                       
                       const columns = trimmedLine.split('|').map(col => col.trim()).filter(col => col);

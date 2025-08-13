@@ -315,16 +315,30 @@ async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
 
 // Add Jira ticket to Zephyr test case coverage programmatically
 async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) {
-  console.log('🔗 Adding Jira ticket to Zephyr coverage programmatically:', {
-    testCaseKey,
-    jiraTicketKey,
-    jiraBaseUrl
-  });
-
-  // Try web links endpoint first - this is the most reliable method
   try {
-    console.log('📤 Adding Jira ticket via web links endpoint...');
-    
+    // Check if web links already exist to avoid duplicates
+    const existingLinksResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links`, {
+      headers: {
+        'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    const existingWebLinks = existingLinksResponse.data?.webLinks || [];
+    const jiraTicketAlreadyLinked = existingWebLinks.some(link => 
+      link.url && link.url.includes(jiraTicketKey)
+    );
+
+    if (jiraTicketAlreadyLinked) {
+      return {
+        success: true,
+        method: 'webLinks',
+        message: `Jira ticket ${jiraTicketKey} already linked via web links`,
+        note: 'Web links provide external navigation to Jira tickets for traceability'
+      };
+    }
+
+    // Create web link for Jira ticket
     const webLinkData = {
       title: `Jira Ticket: ${jiraTicketKey}`,
       url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
@@ -332,19 +346,11 @@ async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) 
       description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`
     };
 
-    // CORRECT ENDPOINT: /testcases/{key}/links/weblinks
     const webLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/weblinks`, webLinkData, {
       headers: {
         'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
         'Content-Type': 'application/json'
       }
-    });
-
-    console.log('✅ Web link added successfully:', {
-      status: webLinkResponse.status,
-      data: webLinkResponse.data,
-      method: 'web links endpoint',
-      jiraTicketKey: jiraTicketKey
     });
 
     return {
@@ -355,155 +361,12 @@ async function addJiraTicketToCoverage(testCaseKey, jiraTicketKey, jiraBaseUrl) 
     };
 
   } catch (error) {
-    console.log('❌ Web links endpoint failed:', {
-      status: error.response?.status,
-      message: error.response?.data?.message || error.message,
-      endpoint: `${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/weblinks`
-    });
-
-    // Second attempt: Try to add directly to issues array
-    try {
-      console.log('🔄 Second attempt: Trying to add Jira ticket to issues array...');
-      
-      // Get current test case to see the links structure
-      const currentTestCase = await axios.get(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}`, {
-        headers: {
-          'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-          'Content-Type': 'application/json'
-        }
-      });
-
-      if (currentTestCase.data && currentTestCase.data.links) {
-        console.log('📋 Current links structure:', currentTestCase.data.links);
-        
-        // Try different payload structures for the issues endpoint
-        const issuePayloads = [
-          // Structure 1: Simple key
-          { issueKey: jiraTicketKey },
-          // Structure 2: With URL
-          { issueKey: jiraTicketKey, url: `${jiraBaseUrl}/browse/${jiraTicketKey}` },
-          // Structure 3: With type
-          { issueKey: jiraTicketKey, type: 'JIRA_TICKET' },
-          // Structure 4: With full metadata
-          { 
-            issueKey: jiraTicketKey, 
-            url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
-            type: 'JIRA_TICKET',
-            summary: `Jira ticket ${jiraTicketKey}`,
-            description: `Linked for test coverage and traceability`
-          }
-        ];
-
-        let issueSuccess = false;
-        let issueResponse = null;
-
-        for (let i = 0; i < issuePayloads.length; i++) {
-          try {
-            console.log(`📤 Trying issues payload structure ${i + 1}:`, issuePayloads[i]);
-            
-            issueResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/issues`, issuePayloads[i], {
-              headers: {
-                'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-                'Content-Type': 'application/json'
-              }
-            });
-
-            console.log(`✅ Issues endpoint worked with payload structure ${i + 1}:`, {
-              status: issueResponse.status,
-              data: issueResponse.data
-            });
-
-            issueSuccess = true;
-            break;
-
-          } catch (payloadError) {
-            console.log(`❌ Payload structure ${i + 1} failed:`, {
-              status: payloadError.response?.status,
-              message: payloadError.response?.data?.message || payloadError.message
-            });
-            
-            if (i === issuePayloads.length - 1) {
-              throw payloadError; // Re-throw the last error
-            }
-          }
-        }
-
-        if (issueSuccess && issueResponse) {
-          return {
-            success: true,
-            method: 'issues',
-            message: `Jira ticket ${jiraTicketKey} linked to test case via issues endpoint`,
-            data: issueResponse.data
-          };
-        } else {
-          throw new Error('All issue payload structures failed');
-        }
-
-      } else {
-        throw new Error('Test case does not have a links structure');
-      }
-
-    } catch (issueError) {
-      console.log('❌ Issues endpoint also failed:', {
-        status: issueError.response?.status,
-        message: issueError.response?.data?.message || issueError.message
-      });
-
-      // Fallback: Try to add as comment
-      try {
-        console.log('🔄 Fallback: Adding Jira ticket info as comment...');
-        
-        const commentData = {
-          body: `Jira Ticket: ${jiraTicketKey}\nURL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\nAdd this ticket to coverage via Traceability tab > Issues section > Add existing issue`
-        };
-
-        // CORRECT ENDPOINT: /testcases/{key}/links/comments
-        const commentResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${testCaseKey}/links/comments`, commentData, {
-          headers: {
-            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          }
-        });
-
-        console.log('✅ Comment added successfully:', {
-          status: commentResponse.status,
-          data: commentResponse.data,
-          method: 'comment',
-          jiraTicketKey: jiraTicketKey
-        });
-
-        return {
-          success: true,
-          method: 'comment',
-          message: `Jira ticket ${jiraTicketKey} information added for manual traceability`,
-          instructions: `Check the comment for steps to add ${jiraTicketKey} to coverage via Traceability tab > Issues section`
-        };
-
-      } catch (commentError) {
-        console.log('❌ Comment fallback also failed:', {
-          status: commentError.response?.status,
-          message: commentError.response?.data?.message || commentError.message
-        });
-
-        console.log('📋 MANUAL TRACEABILITY REQUIRED:');
-        console.log('  - Test Case:', testCaseKey);
-        console.log('  - Jira Ticket:', jiraTicketKey);
-        console.log('  - Jira URL:', `${jiraBaseUrl}/browse/${jiraTicketKey}`);
-        console.log('  - Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue');
-
-        return {
-          success: false,
-          method: 'manual',
-          message: 'All programmatic methods failed, manual addition required',
-          manualInstructions: {
-            testCaseKey: testCaseKey,
-            jiraTicketKey: jiraTicketKey,
-            jiraUrl: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
-            steps: 'Add manually in Zephyr Scale UI via Traceability tab > Issues section > Add existing issue'
-          }
-        };
-      }
-    }
+    return {
+      success: false,
+      error: error.message,
+      message: 'Failed to link Jira ticket via web links',
+      manualSteps: `Add ${jiraTicketKey} to coverage via Traceability tab > Issues section > Add existing issue`
+    };
   }
 }
 
@@ -579,10 +442,10 @@ async function discoverTraceabilityEndpoints(projectKey) {
 
 // Search for existing Zephyr issues by Jira ticket key
 async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
-  console.log('🔍 Searching for existing Zephyr issue with Jira ticket:', jiraTicketKey);
+  console.log('🔍 Searching for existing Zephyr issue with Jira key:', jiraTicketKey);
   
   try {
-    // Search for issues in the project
+    // Try to search for issues containing the Jira ticket key
     const searchResponse = await axios.get(`${process.env.ZEPHYR_BASE_URL}/issues`, {
       headers: {
         'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
@@ -590,56 +453,84 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
       },
       params: {
         projectKey: projectKey,
-        maxResults: 100 // Search through more results
+        maxResults: 100,
+        startAt: 0
       }
     });
-    
-    if (searchResponse.data && searchResponse.data.issues) {
-      // Look for issues that contain the Jira ticket key
-      const matchingIssues = searchResponse.data.issues.filter(issue => {
-        return issue.key && issue.key.includes(jiraTicketKey) ||
-               issue.summary && issue.summary.includes(jiraTicketKey) ||
-               issue.description && issue.description.includes(jiraTicketKey);
-      });
+
+    if (searchResponse.data && searchResponse.data.values) {
+      const issues = searchResponse.data.values;
+      console.log(`📋 Found ${issues.length} issues in project ${projectKey}`);
       
-      if (matchingIssues.length > 0) {
-        console.log('✅ Found matching Zephyr issues:', matchingIssues.map(issue => ({
-          id: issue.id,
-          key: issue.key,
-          summary: issue.summary
-        })));
+      // Search for issues that contain the Jira ticket key
+      const matchingIssue = issues.find(issue => {
+        const issueKey = issue.key || '';
+        const issueSummary = issue.summary || '';
+        const issueDescription = issue.description || '';
         
-        // Return the first matching issue
+        return issueKey.includes(jiraTicketKey) || 
+               issueSummary.includes(jiraTicketKey) || 
+               issueDescription.includes(jiraTicketKey);
+      });
+
+      if (matchingIssue) {
+        console.log('✅ Found matching Zephyr issue:', {
+          id: matchingIssue.id,
+          key: matchingIssue.key,
+          summary: matchingIssue.summary
+        });
+        
         return {
           success: true,
-          issue: matchingIssues[0],
-          message: `Found existing issue with ID: ${matchingIssues[0].id}`
+          issue: {
+            id: matchingIssue.id,
+            key: matchingIssue.key,
+            summary: matchingIssue.summary
+          }
         };
       } else {
-        console.log('❌ No matching Zephyr issues found for Jira ticket:', jiraTicketKey);
+        console.log('❌ No matching Zephyr issue found for Jira ticket:', jiraTicketKey);
         return {
           success: false,
-          message: 'No existing Zephyr issue found for this Jira ticket'
+          message: 'No matching Zephyr issue found'
         };
       }
     } else {
-      console.log('❌ No issues found in project or invalid response format');
-      return {
-        success: false,
-        message: 'No issues found in project'
-      };
+      throw new Error('Invalid response format from issues endpoint');
     }
-    
+
   } catch (error) {
-    console.log('❌ Failed to search for existing issues:', {
+    console.log('❌ Failed to search for Zephyr issues:', {
       status: error.response?.status,
       message: error.response?.data?.message || error.message
     });
+    
     return {
       success: false,
-      message: 'Failed to search for existing issues',
       error: error.message
     };
+  }
+}
+
+// Helper to get folder details by ID
+async function getFolderDetails(folderId) {
+  if (!isZephyrConfigured) {
+    throw new Error('Zephyr Scale is not configured');
+  }
+
+  try {
+    const zephyrBaseUrl = ZEPHYR_BASE_URL;
+    const response = await axios.get(`${zephyrBaseUrl}/folders/${folderId}`, {
+      headers: {
+        'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+        'Content-Type': 'application/json'
+      },
+      timeout: 10000
+    });
+    return response.data;
+  } catch (error) {
+    console.error('Error fetching folder details by ID:', error);
+    return null;
   }
 }
 
@@ -953,17 +844,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         }
       }
       
-      // Debug the naming logic
-      console.log('🔍 Test case naming debug:', {
-        testCaseName: testCaseName,
-        testCaseNameTrimmed: testCaseName ? testCaseName.trim() : 'null/undefined',
-        featureName: featureName,
-        scenarioName: scenario.name,
-        featureEqualsScenario: featureName === scenario.name,
-        featureContainsScenario: featureName.includes(scenario.name),
-        finalName: testCaseDisplayName
-      });
-      
       const testCaseData = {
         name: testCaseDisplayName,
         projectKey: targetProjectKey,
@@ -974,170 +854,22 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         }
       };
 
-      // Add folder ID if specified
+      // Set folder ID if provided
       if (folderId) {
-        console.log('Setting folder ID:', folderId, 'Type:', typeof folderId);
-        console.log('🎯 Attempting to assign test case to folder during creation...');
+        const folderIdType = typeof folderId;
+        console.log(`Setting folder ID: ${folderId} Type: ${folderIdType}`);
         
-        // First, let's get the folder details to understand what we're working with
-        try {
-          console.log('🔍 Getting folder details for ID:', folderId);
-          const folderDetailsResponse = await axios.get(`${zephyrBaseUrl}/folders/${folderId}`, {
-            headers: {
-              'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-              'Content-Type': 'application/json'
-            },
-            timeout: 10000
-          });
+        // Attempt to assign test case to folder during creation
+        console.log('Attempting to assign test case to folder during creation...');
+        
+        // Get folder details for verification
+        const folderDetails = await getFolderDetails(folderId);
+        if (folderDetails) {
+          console.log(`Selected folder: ${folderDetails.name}`);
           
-          const folderDetails = folderDetailsResponse.data;
-          console.log('📁 Selected folder details:', {
-            id: folderDetails.id,
-            name: folderDetails.name,
-            parentId: folderDetails.parentId,
-            folderType: folderDetails.folderType,
-            project: folderDetails.project
-          });
-          
-          // If this folder has a parent, show the parent details too
-          if (folderDetails.parentId) {
-            try {
-              const parentFolderResponse = await axios.get(`${zephyrBaseUrl}/folders/${folderDetails.parentId}`, {
-                headers: {
-                  'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-                  'Content-Type': 'application/json'
-                },
-                timeout: 10000
-              });
-              
-              console.log('📁 Parent folder details:', {
-                id: parentFolderResponse.data.id,
-                name: parentFolderResponse.data.name,
-                parentId: parentFolderResponse.data.parentId
-              });
-            } catch (parentError) {
-              console.log('Could not fetch parent folder details:', parentError.message);
-            }
-          }
-          
-          // Verify the folder is accessible and valid
-          console.log('✅ Folder verification successful - folder exists and is accessible');
-          
-        } catch (folderError) {
-          console.error('❌ Could not fetch folder details:', folderError.message);
-          console.log('⚠️  This might indicate an invalid folder ID or permission issue');
-          console.log('🚨 Test case will likely be placed in default location due to invalid folder');
+          // Add folder to test case data
+          testCaseData.folder = { id: folderId };
         }
-        
-        // Convert folderId to different formats that Zephyr Scale might expect
-        const numericFolderId = parseInt(folderId);
-        const stringFolderId = String(folderId);
-        
-        // Verify the folderId conversion
-        console.log('🔍 DEBUG: Folder ID conversions:', {
-          original: folderId,
-          numeric: numericFolderId,
-          string: stringFolderId,
-          isNaN: isNaN(numericFolderId)
-        });
-        
-        // Try different field names and formats that Zephyr Scale might expect
-        // Based on common API patterns, these are the most likely field names:
-        testCaseData.folderId = folderId;
-        testCaseData.folder = folderId;
-        testCaseData.parentFolderId = folderId;
-        testCaseData.parentFolder = folderId;
-        
-        // Also try with numeric format
-        testCaseData.folderIdNum = numericFolderId;
-        testCaseData.folderNum = numericFolderId;
-        
-        // Try with string format
-        testCaseData.folderIdStr = stringFolderId;
-        testCaseData.folderStr = stringFolderId;
-        
-        // Try with object format that Zephyr Scale might expect
-        testCaseData.folder = {
-          id: folderId
-        };
-        testCaseData.parentFolder = {
-          id: folderId
-        };
-        
-        // Try with different field names from Zephyr documentation
-        testCaseData.testFolder = {
-          id: folderId
-        };
-        testCaseData.testFolderId = folderId;
-        
-        // Try additional field names that might be used by Zephyr Scale
-        testCaseData.testCaseFolder = {
-          id: folderId
-        };
-        testCaseData.testCaseFolderId = folderId;
-        
-        // Try with different object structures
-        testCaseData.folder = {
-          id: folderId,
-          name: 'Selected Folder' // Sometimes APIs expect both id and name
-        };
-        
-        // Try with array format (some APIs expect arrays)
-        testCaseData.folders = [{
-          id: folderId
-        }];
-        
-        // Try with different field names from common API patterns
-        testCaseData.location = {
-          folderId: folderId
-        };
-        testCaseData.placement = {
-          folderId: folderId
-        };
-        
-        // CRITICAL: Try the exact field name that Zephyr Scale expects
-        // Based on research, Zephyr Scale might expect 'folder' as the primary field
-        // Let's prioritize this and remove conflicting assignments
-        delete testCaseData.folderId;
-        delete testCaseData.parentFolderId;
-        delete testCaseData.parentFolder;
-        delete testCaseData.folderIdNum;
-        delete testCaseData.folderNum;
-        delete testCaseData.folderIdStr;
-        delete testCaseData.folderStr;
-        delete testCaseData.testFolder;
-        delete testCaseData.testFolderId;
-        delete testCaseData.testCaseFolder;
-        delete testCaseData.testCaseFolderId;
-        delete testCaseData.folders;
-        delete testCaseData.location;
-        delete testCaseData.placement;
-        
-        // Use only the most likely field name
-        testCaseData.folder = {
-          id: folderId
-        };
-        
-        // TRY DIFFERENT APPROACH: Since 'folder' is being ignored, let's try alternatives
-        // Based on Zephyr Scale API documentation and common patterns
-        console.log('🔍 First attempt: Using "folder" field');
-        
-        // If this doesn't work, we'll need to try post-creation assignment
-        // But first, let's see if any of these alternative field names work
-        const alternativeFields = [
-          { field: 'parentFolder', value: { id: folderId } },
-          { field: 'testFolder', value: { id: folderId } },
-          { field: 'folderId', value: folderId },
-          { field: 'parentFolderId', value: folderId }
-        ];
-        
-        // Add alternative fields as backup
-        alternativeFields.forEach(alt => {
-          testCaseData[alt.field] = alt.value;
-        });
-        
-        console.log('📁 Test case data prepared with multiple folder field attempts:', JSON.stringify(testCaseData, null, 2));
-        console.log('🚀 Sending to Zephyr Scale API...');
       }
 
       let retryCount = 0;
@@ -1146,33 +878,28 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       
       while (retryCount < maxRetries) {
         try {
-          console.log('📤 Sending test case creation request to Zephyr Scale...');
+          // Create test case in Zephyr Scale
+          console.log('Sending test case creation request to Zephyr Scale...');
           
-          // Create new test case
-          zephyrResponse = await axios.post(endpoint, testCaseData, {
+          const zephyrResponse = await axios.post(`${zephyrBaseUrl}/testcases`, testCaseData, {
             headers: {
               'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
               'Content-Type': 'application/json'
             },
-            timeout: 30000 // 30 second timeout
+            timeout: 30000
           });
-          
+
           console.log('Zephyr API Response for test case creation:', {
             status: zephyrResponse.status,
             data: zephyrResponse.data,
             headers: zephyrResponse.headers
           });
-          
-          // Check if the test case was created with folder assignment
-          if (zephyrResponse.data.folder || zephyrResponse.data.folderId) {
-            console.log('✅ Test case created with folder assignment!');
-            console.log('Folder info in response:', {
-              folder: zephyrResponse.data.folder,
-              folderId: zephyrResponse.data.folderId
-            });
-          } else {
-            console.log('❌ Test case created but no folder assignment detected in response');
-            console.log('Will attempt post-creation folder assignment...');
+
+          // Check if folder assignment was successful
+          if (zephyrResponse.data.folder && zephyrResponse.data.folder.id === folderId) {
+            console.log('Test case created and assigned to correct folder');
+          } else if (folderId) {
+            console.log('Test case created but folder assignment may need verification');
           }
           
           // Fetch the full test case details to see the current state
@@ -1205,7 +932,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
                 
                 // Also check if this matches what the user expects
                 console.log('🔍 VERIFICATION: Please check in Zephyr Scale UI if the test case is actually in the expected location');
-                console.log('📋 Test Case Key:', zephyrResponse.data.key);
+                console.log('�� Test Case Key:', zephyrResponse.data.key);
                 console.log('📁 Expected Folder ID:', folderId);
                 console.log('📁 Actual Folder ID:', assignedFolderId);
                 console.log('🌐 Direct URL:', `${zephyrBaseUrl.replace('/v2', '')}/testcases/${zephyrResponse.data.key}`);
@@ -1659,13 +1386,12 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
           console.log('🚨 REALITY: Check where it actually appears in the Zephyr Scale UI!');
           console.log('🚨 The API cannot be trusted for folder assignment!');
         
-          // Now add the test script to the created test case
+          // Add test script content
           try {
             const testScriptData = {
-              type: 'bdd',
-              text: scenarioContent.trim()
+              content: scenarioContent
             };
-            
+
             const testScriptResponse = await axios.post(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}/testscript`, testScriptData, {
               headers: {
                 'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
@@ -1673,32 +1399,43 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               },
               timeout: 30000
             });
-            
-            console.log('✅ Test script added successfully:', {
+
+            console.log('Test script added successfully:', {
               status: testScriptResponse.status,
               data: testScriptResponse.data
             });
             
           } catch (scriptError) {
-            console.log('❌ Failed to add test script:', scriptError.message);
+            console.error('Test script addition failed:', scriptError.message);
           }
           
           // Add Jira ticket link for traceability if provided
+          let traceabilityResult = null;
           if (jiraTicketKey && jiraBaseUrl) {
             try {
-              console.log(' Adding Jira ticket to coverage for traceability...');
-              traceabilityResult = await addJiraTicketToCoverage(zephyrResponse.data.key, jiraTicketKey, jiraBaseUrl);
-              
-              if (traceabilityResult.success) {
-                console.log('✅ Jira ticket added to coverage:', traceabilityResult.message);
-              } else {
-                console.log('⚠️  Jira ticket coverage linking failed:', traceabilityResult.message);
-                if (traceabilityResult.manualInstructions) {
-                  console.log('📋 Manual instructions:', traceabilityResult.manualInstructions);
+              // Add Jira ticket via web links for traceability
+              const webLinkData = {
+                title: `Jira Ticket: ${jiraTicketKey}`,
+                url: `${jiraBaseUrl}/browse/${jiraTicketKey}`,
+                type: 'JIRA_TICKET',
+                description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`
+              };
+
+              const webLinkResponse = await axios.post(`${process.env.ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`, webLinkData, {
+                headers: {
+                  'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+                  'Content-Type': 'application/json'
                 }
-              }
+              });
+
+              traceabilityResult = {
+                success: true,
+                method: 'webLinks',
+                message: `Jira ticket ${jiraTicketKey} linked via web links`,
+                webLinks: webLinkResponse.data
+              };
+              
             } catch (linkError) {
-              console.log('❌ Error adding Jira ticket to coverage:', linkError.message);
               traceabilityResult = {
                 success: false,
                 error: linkError.message,
@@ -1743,23 +1480,14 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     success: true,
     message: testCaseIds ? `Successfully updated ${createdTestCases.length} test cases in Zephyr Scale` : `Successfully created ${createdTestCases.length} test cases in Zephyr Scale`,
     createdTestCases: createdTestCases,
-    zephyrTestCaseIds: testCaseIds || (createdTestCases.length > 0 ? createdTestCases.map(tc => tc.key) : []),
-    zephyrTestCaseId: testCaseIds ? testCaseIds[0] : (createdTestCases.length > 0 ? createdTestCases[0].key : null),
+    zephyrTestCaseIds: createdTestCases.map(tc => tc.key),
+    zephyrTestCaseId: createdTestCases.length > 0 ? createdTestCases[0].key : null,
     jiraTraceability: traceabilityResult,
     metadata: {
-      originalContentLength: content.length,
-      totalScenarios: scenarios.length,
-      featureName: featureName,
-      testCaseName: testCaseName,
       projectKey: targetProjectKey,
       folderId: folderId,
-      isUpdate: !!testCaseIds,
-      timestamp: new Date().toISOString(),
-      jiraTicketInfo: jiraTicketKey ? {
-        ticketKey: jiraTicketKey,
-        jiraBaseUrl: jiraBaseUrl,
-        coverageStatus: 'attempted'
-      } : null
+      totalScenarios: scenarios.length,
+      timestamp: new Date().toISOString()
     }
   };
 }
