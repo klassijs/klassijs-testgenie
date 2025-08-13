@@ -88,6 +88,104 @@ const TestGenerator = () => {
   // API base URL - can be configured via environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
+  // Function to parse requirements table and extract individual requirements
+  const parseRequirementsTable = (requirementsContent) => {
+    console.log('🔍 parseRequirementsTable called with:', requirementsContent);
+    console.log('🔍 Content length:', requirementsContent.length);
+    
+    const requirements = [];
+    const lines = requirementsContent.split('\n');
+    console.log('🔍 Split lines:', lines);
+    
+    let inTable = false;
+    let tableLines = [];
+    
+    // Find the table section - look for the header
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      
+      if (line.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
+        inTable = true;
+        console.log('🔍 Found table header at line:', i);
+        continue;
+      }
+      
+      if (inTable) {
+        // Skip separator lines (lines with just dashes and pipes)
+        if (line.trim().match(/^[\s\-|]+$/)) {
+          console.log('🔍 Skipping separator line:', line);
+          continue;
+        }
+        
+        // If we hit a completely empty line, check if there are more requirements below
+        if (line.trim() === '') {
+          console.log('🔍 Found empty line at line:', i);
+          // Look ahead a few lines to see if there are more requirements
+          let hasMoreRequirements = false;
+          for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
+            const nextLine = lines[j];
+            if (nextLine.includes('|') && nextLine.split('|').filter(col => col.trim()).length >= 3) {
+              hasMoreRequirements = true;
+              console.log('🔍 Found more requirements ahead at line:', j);
+              break;
+            }
+          }
+          
+          if (!hasMoreRequirements) {
+            console.log('🔍 No more requirements found, ending table parsing');
+            break; // End of table
+          }
+        }
+        
+        // Add any line that contains table data
+        if (line.includes('|')) {
+          tableLines.push(line);
+          console.log('🔍 Added table line:', line);
+        }
+      }
+    }
+    
+    console.log('🔍 Total table lines found:', tableLines.length);
+    
+    // Parse table rows
+    for (const line of tableLines) {
+      const columns = line.split('|').map(col => col.trim()).filter(col => col);
+      console.log('🔍 Parsing line:', line, 'Columns:', columns);
+      
+      if (columns.length >= 3) {
+        const [id, requirement, acceptanceCriteria] = columns;
+        
+        // Skip header row and separator rows
+        if (id.toLowerCase().includes('requirement id') || 
+            id.toLowerCase().includes('id') ||
+            id === '---' ||
+            id.includes('---') ||
+            requirement.includes('---') ||
+            acceptanceCriteria.includes('---') ||
+            id === '' ||
+            requirement === '' ||
+            acceptanceCriteria === '') {
+          console.log('🔍 Skipping invalid row:', { id, requirement, acceptanceCriteria });
+          continue;
+        }
+        
+        console.log('🔍 Adding requirement:', { id, requirement, acceptanceCriteria });
+        requirements.push({
+          id: id,
+          requirement: requirement,
+          acceptanceCriteria: acceptanceCriteria
+        });
+      }
+    }
+    
+    console.log('🔍 Final requirements parsed:', requirements);
+    return requirements;
+  };
+
+
+
+
+
   // Jira import functions
   const testJiraConnection = async () => {
     setIsLoadingJira(true);
@@ -220,7 +318,7 @@ const TestGenerator = () => {
     };
   }, [showFolderDropdown, showProjectDropdown]);
 
-  // File upload handlers
+  // Process uploaded file content
   const processFile = useCallback(async (fileObj) => {
     setIsProcessing(true);
     setProcessingFile(fileObj.name);
@@ -288,7 +386,7 @@ const TestGenerator = () => {
                 return { ...prev, ...editableFeaturesObj };
               });
               
-              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name}, extracted ${requirements.length} requirements, and created feature tabs!` });
+              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name}, extracted ${requirements.length} requirements, and created feature tabs! You can now edit the requirements if needed.` });
             } else {
               setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
             }
@@ -323,61 +421,6 @@ const TestGenerator = () => {
       setProcessingFile(null);
     }
   }, [API_BASE_URL, context]);
-
-  // Function to parse requirements table and extract individual requirements
-  const parseRequirementsTable = (requirementsContent) => {
-    const requirements = [];
-    const lines = requirementsContent.split('\n');
-    
-    let inTable = false;
-    let tableLines = [];
-    
-    // Find the table section
-    for (const line of lines) {
-      if (line.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
-        inTable = true;
-        continue;
-      }
-      
-      if (inTable) {
-        if (line.trim() === '' || !line.includes('|')) {
-          break; // End of table
-        }
-        tableLines.push(line);
-      }
-    }
-    
-    // Parse table rows
-    for (const line of tableLines) {
-      const columns = line.split('|').map(col => col.trim()).filter(col => col);
-      
-      if (columns.length >= 3) {
-        const [id, requirement, acceptanceCriteria] = columns;
-        
-        // Skip header row and separator rows
-        if (id.toLowerCase().includes('requirement id') || 
-            id.toLowerCase().includes('id') ||
-            id === '---' ||
-            id.includes('---') ||
-            requirement.includes('---') ||
-            acceptanceCriteria.includes('---') ||
-            id === '' ||
-            requirement === '' ||
-            acceptanceCriteria === '' ||
-            line.trim().match(/^[\s\-|]+$/)) {
-          continue;
-        }
-        
-        requirements.push({
-          id: id,
-          requirement: requirement,
-          acceptanceCriteria: acceptanceCriteria
-        });
-      }
-    }
-    
-    return requirements;
-  };
 
   const handleFileUpload = useCallback((event) => {
     // Extract files from the event
@@ -964,6 +1007,67 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
     fetchLoadingImages();
   }, [API_BASE_URL]);
 
+  const handleInsertRequirements = () => {
+    // Format requirements nicely before inserting (remove markdown syntax)
+    const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
+    setContent(formattedRequirements);
+    setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
+  };
+
+  // Helper function to format requirements for insertion (remove markdown, format nicely)
+  const formatRequirementsForInsertion = (markdownContent) => {
+    const lines = markdownContent.split('\n');
+    let formattedContent = 'Business Requirements:\n\n';
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('|') && line.endsWith('|')) {
+        const parts = line.split('|').map(p => p.trim()).filter(p => p);
+        if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
+          const [id, requirement, acceptanceCriteria] = parts;
+          formattedContent += `${id}:\n`;
+          formattedContent += `Business Requirement: ${requirement}\n`;
+          formattedContent += `Acceptance Criteria: ${acceptanceCriteria}\n\n`;
+        }
+      }
+    }
+    
+    return formattedContent.trim();
+  };
+
+  const handleCopyContent = () => {
+    navigator.clipboard.writeText(extractedRequirements);
+    setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
+  };
+
+  const handleDownloadContent = async () => {
+    try {
+      // Generate Word document using backend API
+      const response = await axios.post(`${API_BASE_URL}/api/generate-word-doc`, {
+        content: extractedRequirements,
+        title: 'Business Requirements'
+      }, {
+        responseType: 'blob'
+      });
+      
+      const blob = new Blob([response.data], { 
+        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
+      });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'business-requirements.docx';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      setStatus({ type: 'success', message: 'Requirements downloaded as Word document!' });
+    } catch (error) {
+      console.error('Error generating Word document:', error);
+      setStatus({ type: 'error', message: 'Failed to generate Word document. Please try again.' });
+    }
+  };
+
   return (
     <div className="container">
       {/* Status Message */}
@@ -1155,291 +1259,148 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
           </div>
         )}
 
-        {/* Extracted Requirements Display */}
+        {/* Extracted Business Requirements Section */}
         {extractedRequirements && (
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <FileText size={18} />
+            <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
               Extracted Business Requirements
             </h3>
-            <div className="requirements-content">
-              <div className="requirements-display" style={{
-                background: 'white',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                padding: '2rem',
-                boxShadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
-                fontFamily: 'Georgia, "Times New Roman", serif',
-                lineHeight: '1.6',
-                color: '#2d3748'
+            
+            {/* Proper table display - not markdown */}
+            <div style={{
+              background: 'white',
+              border: '1px solid #e2e8f0',
+              borderRadius: '8px',
+              padding: '1rem',
+              overflow: 'auto',
+              maxHeight: '500px'
+            }}>
+              <table style={{
+                width: '100%',
+                borderCollapse: 'collapse',
+                fontFamily: 'Arial, sans-serif',
+                fontSize: '14px'
               }}>
-                {(() => {
-                  // Parse the markdown table and convert to Word-like table format
-                  const lines = extractedRequirements.split('\n');
-                  const wordDocument = [];
-                  
-                  // Add title
-                  wordDocument.push(
-                    <div key="title" style={{
-                      textAlign: 'center',
-                      marginBottom: '2rem',
-                      borderBottom: '2px solid #2d3748',
-                      paddingBottom: '1rem'
-                    }}>
-                      <h1 style={{
-                        fontSize: '24px',
-                        fontWeight: 'bold',
-                        color: '#2d3748',
-                        margin: '0',
-                        fontFamily: 'Georgia, "Times New Roman", serif'
-                      }}>
-                        Business Requirements Document
-                      </h1>
-                      <p style={{
-                        fontSize: '12px',
-                        color: '#718096',
-                        margin: '0.5rem 0 0 0',
-                        fontStyle: 'italic'
-                      }}>
-                        Generated on {new Date().toLocaleDateString()}
-                      </p>
-                    </div>
-                  );
-                  
-                  // Process table content
-                  let inTable = false;
-                  let tableRows = [];
-                  
-                  for (const line of lines) {
-                    const trimmedLine = line.trim();
+                <thead>
+                  <tr style={{ backgroundColor: '#f8f9fa' }}>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Requirement ID</th>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Business Requirement</th>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Acceptance Criteria</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    // Parse markdown table into proper table rows
+                    const lines = extractedRequirements.split('\n');
+                    const requirements = [];
                     
-                    if (trimmedLine.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
-                      inTable = true;
-                      continue;
-                    }
-                    
-                    if (inTable) {
-                      if (trimmedLine === '' || !trimmedLine.includes('|')) {
-                        break; // End of table
-                      }
-                      
-                      const columns = trimmedLine.split('|').map(col => col.trim()).filter(col => col);
-                      if (columns.length >= 3) {
-                        const [id, requirement, acceptanceCriteria] = columns;
-                        
-                        // Skip header and separator rows
-                        if (id.toLowerCase().includes('requirement id') || 
-                            id === '---' || 
-                            id.includes('---') ||
-                            requirement.includes('---') ||
-                            acceptanceCriteria.includes('---')) {
-                          continue;
+                    for (let i = 0; i < lines.length; i++) {
+                      const line = lines[i].trim();
+                      if (line.startsWith('|') && line.endsWith('|')) {
+                        const parts = line.split('|').map(p => p.trim()).filter(p => p);
+                        if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
+                          requirements.push({
+                            id: parts[0],
+                            requirement: parts[1],
+                            acceptanceCriteria: parts[2]
+                          });
                         }
-                        
-                        tableRows.push({ id, requirement, acceptanceCriteria });
                       }
                     }
-                  }
-                  
-                  // Add table in Word-like format
-                  if (tableRows.length > 0) {
-                    wordDocument.push(
-                      <div key="table" style={{ marginBottom: '2rem' }}>
-                        <h2 style={{
-                          fontSize: '18px',
-                          fontWeight: 'bold',
-                          color: '#2d3748',
-                          marginBottom: '1rem',
-                          borderBottom: '1px solid #e2e8f0',
-                          paddingBottom: '0.5rem'
-                        }}>
-                          Requirements Table
-                        </h2>
-                        <table style={{
-                          width: '100%',
-                          borderCollapse: 'collapse',
-                          border: '1px solid #2d3748',
-                          fontFamily: 'Georgia, "Times New Roman", serif'
-                        }}>
-                          <thead>
-                            <tr style={{ backgroundColor: '#f7fafc' }}>
-                              <th style={{
-                                border: '1px solid #2d3748',
-                                padding: '12px',
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                                fontSize: '14px',
-                                color: '#2d3748',
-                                backgroundColor: '#e2e8f0'
-                              }}>
-                                Requirement ID
-                              </th>
-                              <th style={{
-                                border: '1px solid #2d3748',
-                                padding: '12px',
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                                fontSize: '14px',
-                                color: '#2d3748',
-                                backgroundColor: '#e2e8f0'
-                              }}>
-                                Business Requirement
-                              </th>
-                              <th style={{
-                                border: '1px solid #2d3748',
-                                padding: '12px',
-                                textAlign: 'left',
-                                fontWeight: 'bold',
-                                fontSize: '14px',
-                                color: '#2d3748',
-                                backgroundColor: '#e2e8f0'
-                              }}>
-                                Acceptance Criteria
-                              </th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {tableRows.map((row, index) => (
-                              <tr key={index} style={{
-                                backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa'
-                              }}>
-                                <td style={{
-                                  border: '1px solid #2d3748',
-                                  padding: '12px',
-                                  fontSize: '13px',
-                                  fontWeight: 'bold',
-                                  color: '#2d3748',
-                                  verticalAlign: 'top',
-                                  width: '15%'
-                                }}>
-                                  {row.id}
-                                </td>
-                                <td style={{
-                                  border: '1px solid #2d3748',
-                                  padding: '12px',
-                                  fontSize: '13px',
-                                  color: '#4a5568',
-                                  verticalAlign: 'top',
-                                  width: '35%'
-                                }}>
-                                  {row.requirement}
-                                </td>
-                                <td style={{
-                                  border: '1px solid #2d3748',
-                                  padding: '12px',
-                                  fontSize: '13px',
-                                  color: '#4a5568',
-                                  verticalAlign: 'top',
-                                  width: '50%',
-                                  fontStyle: 'italic'
-                                }}>
-                                  {row.acceptanceCriteria}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                    );
-                  }
-                  
-                  // Add any additional content
-                  const additionalContent = lines.filter(line => 
-                    !line.includes('|') && 
-                    line.trim() !== '' && 
-                    !line.includes('Requirement ID') &&
-                    !line.includes('---')
-                  );
-                  
-                  if (additionalContent.length > 0) {
-                    wordDocument.push(
-                      <div key="additional" style={{ marginTop: '2rem' }}>
-                        <h2 style={{
-                          fontSize: '18px',
-                          fontWeight: 'bold',
-                          color: '#2d3748',
-                          marginBottom: '1rem',
-                          borderBottom: '1px solid #e2e8f0',
-                          paddingBottom: '0.5rem'
-                        }}>
-                          Additional Information
-                        </h2>
-                        {additionalContent.map((content, index) => (
-                          <p key={index} style={{
-                            marginBottom: '0.75rem',
-                            fontSize: '14px',
-                            lineHeight: '1.6'
-                          }}>
-                            {content}
-                          </p>
-                        ))}
-                      </div>
-                    );
-                  }
-                  
-                  return wordDocument;
-                })()}
-              </div>
-              
-              {/* Action buttons at the bottom */}
-              <div className="requirements-actions" style={{ marginTop: '1.5rem', paddingTop: '1rem', borderTop: '1px solid #e2e8f0' }}>
-                <button
-                  className="btn btn-primary"
-                  onClick={() => {
-                    setContent(extractedRequirements);
-                    setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
-                  }}
-                  title="Insert requirements into the main content area"
-                >
-                  <FileText size={16} />
-                  Insert Requirements
-                </button>
-                <button
-                  className="btn btn-info"
-                  onClick={() => {
-                    navigator.clipboard.writeText(extractedRequirements);
-                    setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
-                  }}
-                  title="Copy requirements to clipboard"
-                >
-                  <Copy size={16} />
-                  Copy
-                </button>
-                <button
-                  className="btn btn-success"
-                  onClick={async () => {
-                    try {
-                      // Generate Word document using backend API
-                      const response = await axios.post(`${API_BASE_URL}/api/generate-word-doc`, {
-                        content: extractedRequirements,
-                        title: 'Business Requirements'
-                      }, {
-                        responseType: 'blob'
-                      });
-                      
-                      const blob = new Blob([response.data], { 
-                        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
-                      });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = 'business-requirements.docx';
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                      setStatus({ type: 'success', message: 'Requirements downloaded as Word document!' });
-                    } catch (error) {
-                      console.error('Error generating Word document:', error);
-                      setStatus({ type: 'error', message: 'Failed to generate Word document. Please try again.' });
-                    }
-                  }}
-                  title="Download requirements as Word document"
-                >
-                  <Download size={16} />
-                  Download
-                </button>
-              </div>
+                    
+                    return requirements.map((req, index) => (
+                      <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
+                          <textarea
+                            defaultValue={req.id}
+                            onBlur={(e) => {
+                              // Only update when user finishes editing (onBlur)
+                              const newReqs = [...requirements];
+                              newReqs[index].id = e.target.value;
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              setExtractedRequirements(newContent);
+                            }}
+                            style={{ 
+                              width: '100%', 
+                              border: 'none', 
+                              outline: 'none', 
+                              background: 'transparent',
+                              resize: 'vertical',
+                              minHeight: '40px',
+                              fontFamily: 'inherit',
+                              fontWeight: 'bold'
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          <textarea
+                            defaultValue={req.requirement}
+                            onBlur={(e) => {
+                              // Only update when user finishes editing (onBlur)
+                              const newReqs = [...requirements];
+                              newReqs[index].requirement = e.target.value;
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              setExtractedRequirements(newContent);
+                            }}
+                            style={{ 
+                              width: '100%', 
+                              border: 'none', 
+                              outline: 'none', 
+                              background: 'transparent',
+                              resize: 'vertical',
+                              minHeight: '80px',
+                              fontFamily: 'inherit'
+                            }}
+                          />
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          <textarea
+                            defaultValue={req.acceptanceCriteria}
+                            onBlur={(e) => {
+                              // Only update when user finishes editing (onBlur)
+                              const newReqs = [...requirements];
+                              newReqs[index].acceptanceCriteria = e.target.value;
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              setExtractedRequirements(newContent);
+                            }}
+                            style={{ 
+                              width: '100%', 
+                              border: 'none', 
+                              outline: 'none', 
+                              background: 'transparent',
+                              resize: 'vertical',
+                              minHeight: '80px',
+                              fontFamily: 'inherit'
+                            }}
+                          />
+                        </td>
+                      </tr>
+                    ));
+                  })()}
+                </tbody>
+              </table>
+            </div>
+            
+            {/* Simple action buttons */}
+            <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
+              <button 
+                className="btn btn-primary"
+                onClick={() => setContent(extractedRequirements)}
+              >
+                Insert Requirements
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => navigator.clipboard.writeText(extractedRequirements)}
+              >
+                Copy
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={handleDownloadContent}
+              >
+                Download
+              </button>
             </div>
           </div>
         )}
@@ -1488,15 +1449,18 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
           Generate Cucumber Test Cases
         </h2>
         
+        {/* Requirements Section */}
         <div className="form-group">
           <label className="form-label">Requirements / User Story / Content</label>
           <textarea
             className="form-textarea"
-            placeholder="Enter your requirements, user stories, or any content you want to convert to Cucumber test cases..."
+            placeholder="Enter your requirements, user stories, or any content you want to convert to Cucumber test cases... You can also upload a file above."
             value={content}
             onChange={(e) => setContent(e.target.value)}
-            rows={6}
+            rows={8}
           />
+          
+
         </div>
 
         <div className="form-group">
@@ -2756,6 +2720,10 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
           </div>
         </div>
       )}
+
+      {/* Requirements Editor Modal */}
+
+      
     </div>
   );
 };
