@@ -465,11 +465,16 @@ WORKFLOW ANALYSIS AND COMPLEXITY CALCULATION:
 - CRITICAL: Analyze EACH requirement individually for its specific complexity
 - NEVER apply the same complexity to all requirements
 - NEVER use global document complexity for individual requirements
-- For each requirement, calculate the cyclomatic complexity using this formula:
-  CC = Decision Points - Activities + 2
+- For each requirement, calculate the cyclomatic complexity using this ACCURATE formula:
+  CC = E - N + 2P
+  Where:
+  E = number of edges (transitions/flows between elements)
+  N = number of nodes (activities, decisions, events)
+  P = number of connected components (usually 1 for single workflow)
 - Decision points include: exclusive gateways, parallel gateways, inclusive gateways, conditional flows
 - Activities include: tasks, user tasks, service tasks, subprocesses
 - Events include: start events, end events, intermediate events
+- Edges include: sequence flows, message flows, conditional flows, default flows
 - If a requirement involves workflows or decision logic, provide detailed complexity analysis
 - Format complexity as: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
 - For simple requirements without workflows, use: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"

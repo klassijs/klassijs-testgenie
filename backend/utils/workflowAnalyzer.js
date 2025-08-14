@@ -37,6 +37,9 @@ function analyzeWorkflowContent(content) {
     activities: 0,
     events: 0,
     connectors: 0,
+    edges: 0,        // New: count actual transitions/flows
+    nodes: 0,        // New: count all workflow elements
+    components: 1,   // New: assume single workflow component
     totalElements: 0,
     cyclomaticComplexity: 0,
     workflowDetected: false,
@@ -76,17 +79,22 @@ function analyzeWorkflowContent(content) {
     }
   });
 
+  // Calculate edges (transitions) - estimate based on connectors and decision points
+  analysis.edges = analysis.connectors + analysis.decisionPoints;
+  
+  // Calculate total nodes (all workflow elements)
+  analysis.nodes = analysis.decisionPoints + analysis.activities + analysis.events;
+  
   // Calculate total elements
-  analysis.totalElements = analysis.decisionPoints + analysis.activities + analysis.events + analysis.connectors;
+  analysis.totalElements = analysis.nodes + analysis.connectors;
 
-  // Calculate cyclomatic complexity
-  // CC = Decision Points - Activities + 2 (adjusted for workflow analysis)
-  analysis.cyclomaticComplexity = Math.max(1, analysis.decisionPoints - analysis.activities + 2);
+  // Calculate cyclomatic complexity using the better formula: CC = E - N + 2P
+  analysis.cyclomaticComplexity = Math.max(1, analysis.edges - analysis.nodes + (2 * analysis.components));
 
   // Determine if workflow is detected
   analysis.workflowDetected = analysis.decisionPoints > 0 || analysis.activities > 5 || analysis.connectors > 3;
 
-  // Determine complexity level
+  // Determine complexity level based on the new formula
   if (analysis.cyclomaticComplexity <= 3) {
     analysis.complexityLevel = 'simple';
   } else if (analysis.cyclomaticComplexity <= 10) {
@@ -301,6 +309,121 @@ function generateCoverageRecommendations(expectedPaths, actualScenarios, decisio
   return recommendations;
 }
 
+/**
+ * Validate if AI-generated complexity values are reasonable
+ * @param {string} requirementText - The requirement text
+ * @param {string} complexityString - The complexity string from AI
+ * @returns {Object} Validation result with warnings and suggestions
+ */
+function validateComplexityValues(requirementText, complexityString) {
+  const validation = {
+    isValid: true,
+    warnings: [],
+    suggestions: [],
+    expectedComplexity: null
+  };
+
+  try {
+    // Parse the complexity string
+    const complexityMatch = complexityString.match(/CC:\s*(\d+),\s*Decision Points:\s*(\d+),\s*Activities:\s*(\d+),\s*Paths:\s*(\d+)/);
+    
+    if (!complexityMatch) {
+      validation.isValid = false;
+      validation.warnings.push('Complexity format is invalid. Expected: "CC: X, Decision Points: Y, Activities: Z, Paths: W"');
+      return validation;
+    }
+
+    const [, cc, decisionPoints, activities, paths] = complexityMatch.map(Number);
+    
+    // Validate the formula: CC = Decision Points - Activities + 2
+    const calculatedCC = decisionPoints - activities + 2;
+    if (cc !== calculatedCC) {
+      validation.isValid = false;
+      validation.warnings.push(`Complexity calculation error: CC should be ${calculatedCC} (Decision Points: ${decisionPoints} - Activities: ${activities} + 2), but got ${cc}`);
+    }
+
+    // Check for reasonable values based on requirement content
+    const text = requirementText.toLowerCase();
+    
+    // Simple requirements (login, basic CRUD)
+    if (text.includes('login') || text.includes('logout') || text.includes('view') || text.includes('display')) {
+      if (cc > 3) {
+        validation.warnings.push('Complexity seems too high for a simple requirement. Consider reviewing.');
+        validation.suggestions.push('Expected: CC: 1-3 for simple operations');
+      }
+    }
+    
+    // Form validation requirements
+    if (text.includes('validate') || text.includes('check') || text.includes('verify')) {
+      if (cc < 2 || cc > 6) {
+        validation.warnings.push('Complexity seems unusual for validation logic. Consider reviewing.');
+        validation.suggestions.push('Expected: CC: 2-6 for validation requirements');
+      }
+    }
+    
+    // Workflow requirements
+    if (text.includes('workflow') || text.includes('process') || text.includes('approval') || text.includes('step')) {
+      if (cc < 3) {
+        validation.warnings.push('Complexity seems too low for a workflow requirement. Consider reviewing.');
+        validation.suggestions.push('Expected: CC: 3+ for workflow requirements');
+      }
+    }
+
+    // Check if paths make sense
+    if (paths < cc) {
+      validation.warnings.push('Number of paths should typically be >= cyclomatic complexity');
+      validation.suggestions.push('Paths should cover all decision branches');
+    }
+
+    // Check for extreme values
+    if (cc > 50) {
+      validation.warnings.push('Extremely high complexity detected. Consider breaking down the requirement.');
+      validation.suggestions.push('Break complex requirements into smaller, manageable pieces');
+    }
+
+    if (decisionPoints > 100) {
+      validation.warnings.push('Very high number of decision points. Consider simplifying the logic.');
+      validation.suggestions.push('Review if all decision points are necessary');
+    }
+
+    // Generate expected complexity based on content analysis
+    const expectedCC = analyzeRequirementComplexity(requirementText);
+    validation.expectedComplexity = expectedCC;
+
+    if (Math.abs(cc - expectedCC) > 5) {
+      validation.warnings.push(`Complexity differs significantly from expected (${expectedCC}). Consider reviewing.`);
+    }
+
+  } catch (error) {
+    validation.isValid = false;
+    validation.warnings.push(`Error parsing complexity: ${error.message}`);
+  }
+
+  return validation;
+}
+
+/**
+ * Analyze requirement text to estimate expected complexity
+ * @param {string} requirementText - The requirement text
+ * @returns {number} Estimated cyclomatic complexity
+ */
+function analyzeRequirementComplexity(requirementText) {
+  const text = requirementText.toLowerCase();
+  let complexity = 1; // Base complexity
+
+  // Add complexity for different patterns
+  if (text.includes('if') || text.includes('when') || text.includes('condition')) complexity += 1;
+  if (text.includes('validate') || text.includes('check')) complexity += 2;
+  if (text.includes('workflow') || text.includes('process')) complexity += 3;
+  if (text.includes('approval') || text.includes('step')) complexity += 2;
+  if (text.includes('integration') || text.includes('api')) complexity += 2;
+  if (text.includes('error') || text.includes('exception')) complexity += 1;
+  if (text.includes('loop') || text.includes('repeat')) complexity += 2;
+  if (text.includes('parallel') || text.includes('concurrent')) complexity += 3;
+
+  return Math.min(complexity, 20); // Cap at reasonable maximum
+}
+
 module.exports = {
   analyzeWorkflowContent,
   generateComplexityDescription,
@@ -308,5 +431,7 @@ module.exports = {
   categorizeRequirementComplexity,
   validateTestCoverage,
   generateCoverageRecommendations,
+  validateComplexityValues,
+  analyzeRequirementComplexity,
   WORKFLOW_KEYWORDS
 };

@@ -1299,6 +1299,52 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     }
   };
 
+  // Function to validate complexity values and show warnings
+  const validateComplexityValues = (requirements) => {
+    const warnings = [];
+    
+    requirements.forEach((req, index) => {
+      const complexity = req.complexity || '';
+      
+      // Check if complexity follows the expected format
+      const complexityMatch = complexity.match(/CC:\s*(\d+),\s*Decision Points:\s*(\d+),\s*Activities:\s*(\d+),\s*Paths:\s*(\d+)/);
+      
+      if (!complexityMatch) {
+        warnings.push(`Requirement ${req.id}: Invalid complexity format. Expected: "CC: X, Decision Points: Y, Activities: Z, Paths: W"`);
+        return;
+      }
+      
+      const [, cc, decisionPoints, activities, paths] = complexityMatch.map(Number);
+      
+      // Validate the formula: CC = E - N + 2P (where E=edges, N=nodes, P=components)
+      // For individual requirements, estimate edges and nodes
+      const estimatedEdges = decisionPoints + 1; // At least one flow per decision point
+      const estimatedNodes = decisionPoints + activities + 1; // Include start/end events
+      const estimatedComponents = 1; // Single workflow component
+      const calculatedCC = estimatedEdges - estimatedNodes + (2 * estimatedComponents);
+      
+      if (Math.abs(cc - calculatedCC) > 2) { // Allow some variance for estimation
+        warnings.push(`Requirement ${req.id}: Complexity may be inaccurate. Estimated CC: ${calculatedCC} (E:${estimatedEdges} - N:${estimatedNodes} + 2P:${estimatedComponents}), got: ${cc}`);
+      }
+      
+      // Check for reasonable values
+      if (cc > 50) {
+        warnings.push(`Requirement ${req.id}: Extremely high complexity (${cc}). Consider breaking down this requirement.`);
+      }
+      
+      if (decisionPoints > 100) {
+        warnings.push(`Requirement ${req.id}: Very high decision points (${decisionPoints}). Consider simplifying the logic.`);
+      }
+      
+      // Check if paths make sense
+      if (paths < cc) {
+        warnings.push(`Requirement ${req.id}: Number of paths (${paths}) should typically be >= cyclomatic complexity (${cc})`);
+      }
+    });
+    
+    return warnings;
+  };
+
   return (
     <div className="container">
       {/* Status Message */}
@@ -1664,10 +1710,21 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                   const requirements = parseRequirementsTable(extractedRequirements);
                   console.log('🔍 Parsed requirements count:', requirements.length);
                   
+                  // Validate complexity values and show warnings
+                  const complexityWarnings = validateComplexityValues(requirements);
+                  if (complexityWarnings.length > 0) {
+                    console.warn('⚠️ Complexity Validation Warnings:', complexityWarnings);
+                    setStatus({ 
+                      type: 'warning', 
+                      message: `Requirements inserted! ${complexityWarnings.length} complexity warnings found. Check console for details.` 
+                    });
+                  } else {
+                    setStatus({ type: 'success', message: 'Requirements inserted with headers and generated IDs! You can now generate test cases.' });
+                  }
+                  
                   // Format requirements properly with headers and generated IDs for insertion
                   const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);
                   setContent(formattedContent);
-                  setStatus({ type: 'success', message: 'Requirements inserted with headers and generated IDs! You can now generate test cases.' });
                 }}
               >
                 Insert Requirements
