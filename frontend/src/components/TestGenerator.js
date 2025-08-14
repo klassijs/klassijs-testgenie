@@ -92,21 +92,27 @@ const TestGenerator = () => {
   const parseRequirementsTable = (requirementsContent) => {
     console.log('🔍 parseRequirementsTable called with:', requirementsContent);
     console.log('🔍 Content length:', requirementsContent.length);
+    console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
     
     const requirements = [];
     const lines = requirementsContent.split('\n');
     console.log('🔍 Split lines:', lines);
+    console.log('🔍 Number of lines:', lines.length);
     
     let inTable = false;
     let tableLines = [];
     
-    // Find the table section - look for the header
+    // Find the table section - look for the header (more flexible detection)
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i];
       
-      if (line.includes('| Requirement ID | Business Requirement | Acceptance Criteria |')) {
+      // More flexible header detection - check for key words in the right order
+      if (line.includes('|') && 
+          line.toLowerCase().includes('requirement id') && 
+          line.toLowerCase().includes('business requirement') && 
+          line.toLowerCase().includes('acceptance criteria')) {
         inTable = true;
-        console.log('🔍 Found table header at line:', i);
+        console.log('🔍 Found table header at line:', i, 'Content:', line);
         continue;
       }
       
@@ -155,9 +161,10 @@ const TestGenerator = () => {
       if (columns.length >= 3) {
         const [id, requirement, acceptanceCriteria] = columns;
         
-        // Skip header row and separator rows
+        // Skip header row and separator rows (more flexible detection)
         if (id.toLowerCase().includes('requirement id') || 
-            id.toLowerCase().includes('id') ||
+            id.toLowerCase().includes('business requirement') ||
+            id.toLowerCase().includes('acceptance criteria') ||
             id === '---' ||
             id.includes('---') ||
             requirement.includes('---') ||
@@ -241,53 +248,150 @@ const TestGenerator = () => {
 
   const importJiraIssues = async () => {
     setIsLoadingJira(true);
+    setStatus({ type: 'info', message: 'Importing Jira tickets and processing through AI requirements extraction...' });
+    
     try {
       const response = await axios.post(`${API_BASE_URL}/api/jira/import-issues`, {
         selectedIssues: jiraConfig.selectedIssues
       });
 
       if (response.data.success) {
-        // Convert imported issues to feature tabs
-        const importedFeatures = response.data.features.map((feature, index) => ({
-          title: feature.title,
-          content: feature.content,
-          id: `jira-import-${index}`
-        }));
-
-        setFeatureTabs(importedFeatures);
+        // Combine all Jira content into one document for requirements extraction
+        const combinedJiraContent = response.data.features.map(feature => 
+          `Jira Ticket: ${feature.title}\n\n${feature.content}`
+        ).join('\n\n---\n\n');
         
-        // Initialize editable features for imported content
-        const importedEditableFeatures = {};
-        const importedJiraTicketInfo = {};
-        importedFeatures.forEach((feature, index) => {
-          importedEditableFeatures[index] = feature.content;
+        // Extract requirements from the combined Jira content using the same AI processing
+        setStatus({ type: 'info', message: 'Processing Jira content through AI requirements extraction...' });
+        
+        try {
+          const requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
+            content: combinedJiraContent, 
+            context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}` 
+          });
           
-          // Extract Jira ticket key from feature title (format: "OET-1842: Summary")
-          if (feature.title && feature.title.includes(':')) {
-            const ticketKey = feature.title.split(':')[0].trim();
-            importedJiraTicketInfo[index] = {
-              ticketKey: ticketKey,
-              jiraBaseUrl: jiraConfig.baseUrl
-            };
+          if (requirementsResponse.data.success) {
+            // Set the extracted requirements table (same as uploaded documents)
+            setExtractedRequirements(requirementsResponse.data.content);
+            
+            // Parse the requirements table to extract individual requirements
+            const requirementsContent = requirementsResponse.data.content;
+            const requirements = parseRequirementsTable(requirementsContent);
+            
+            if (requirements.length > 0) {
+              // Create feature tabs from extracted requirements (same as uploaded documents)
+              const newFeatures = requirements.map((req, index) => ({
+                title: req.id || `JIRA-${String(index + 1).padStart(3, '0')}`,
+                content: `Requirement: ${req.requirement}\n\nAcceptance Criteria: ${req.acceptanceCriteria}`,
+                originalContent: req.requirement
+              }));
+              
+              // Add new features to existing tabs
+              setFeatureTabs(prev => {
+                const updatedTabs = [...prev, ...newFeatures];
+                return updatedTabs;
+              });
+              
+              // Initialize editable features for new sections
+              setEditableFeatures(prev => {
+                const editableFeaturesObj = {};
+                newFeatures.forEach((feature, index) => {
+                  const globalIndex = (prev?.length || 0) + index;
+                  editableFeaturesObj[globalIndex] = feature.content;
+                });
+                return { ...prev, ...editableFeaturesObj };
+              });
+              
+              // Store Jira ticket info for traceability
+              const jiraTicketInfo = {};
+              response.data.features.forEach((feature, index) => {
+                if (feature.title && feature.title.includes(':')) {
+                  const ticketKey = feature.title.split(':')[0].trim();
+                  jiraTicketInfo[index] = {
+                    ticketKey: ticketKey,
+                    jiraBaseUrl: jiraConfig.baseUrl
+                  };
+                }
+              });
+              setJiraTicketInfo(jiraTicketInfo);
+              
+              console.log('🔍 Closing Jira import modal...');
+              console.log('🔍 Current showJiraImport state:', showJiraImport);
+              
+              // Force close the modal by resetting all related state
+              setShowJiraImport(false);
+              setJiraStep('connect'); // Reset Jira import flow
+              setJiraConfig(prev => ({ ...prev, selectedIssues: [] })); // Clear selected issues
+              
+              console.log('🔍 After setShowJiraImport(false), state should be:', false);
+              
+              // Force a complete state reset to ensure modal closes
+              setTimeout(() => {
+                console.log('🔍 Forcing complete modal state reset...');
+                console.log('🔍 Number of modal overlays found:', document.querySelectorAll('.modal-overlay').length);
+                
+                setShowJiraImport(false);
+                setJiraStep('connect');
+                
+                // Force close any remaining modal elements via DOM manipulation
+                const modalOverlays = document.querySelectorAll('.modal-overlay');
+                modalOverlays.forEach((overlay, index) => {
+                  console.log(`🔍 Modal overlay ${index}:`, overlay);
+                  if (overlay.closest('[data-modal="jira-import"]')) {
+                    console.log('🔍 Hiding modal overlay via DOM manipulation');
+                    overlay.style.display = 'none';
+                  }
+                });
+                
+                // Additional check - force the modal to close
+                console.log('🔍 Final check - showJiraImport should be false');
+              }, 50);
+              
+              // Additional aggressive approach - multiple attempts
+              setTimeout(() => {
+                console.log('🔍 Second attempt to close modal...');
+                setShowJiraImport(false);
+                
+                // Force hide all modal overlays
+                document.querySelectorAll('.modal-overlay').forEach(overlay => {
+                  overlay.style.display = 'none';
+                });
+              }, 200);
+              
+              setTimeout(() => {
+                console.log('🔍 Third attempt to close modal...');
+                setShowJiraImport(false);
+                
+                // Last resort - remove modal from DOM
+                const jiraModal = document.querySelector('[data-modal="jira-import"]');
+                if (jiraModal) {
+                  console.log('🔍 Removing modal from DOM as last resort');
+                  jiraModal.remove();
+                }
+              }, 500);
+              
+              setStatus({ type: 'success', message: `Successfully imported ${response.data.features.length} Jira tickets, extracted ${requirements.length} requirements, and created feature tabs! You can now edit the requirements if needed, then click "Insert Requirements" to add them to the test generator.` });
+              
+              // Ensure the requirements table is visible
+              if (requirements.length > 0) {
+                // Scroll to the requirements section to make it visible
+                setTimeout(() => {
+                  const requirementsSection = document.querySelector('.requirements-section');
+                  if (requirementsSection) {
+                    requirementsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  }
+                }, 200);
+              }
+            } else {
+              setStatus({ type: 'success', message: `Successfully imported ${response.data.features.length} Jira tickets and extracted requirements!` });
+            }
+          } else {
+            setStatus({ type: 'error', message: 'Failed to extract requirements from Jira tickets' });
           }
-        });
-        
-        setEditableFeatures(importedEditableFeatures);
-        setJiraTicketInfo(importedJiraTicketInfo);
-        setEditingFeatures({});
-        setActiveTab(0);
-        setShowJiraImport(false);
-        setShowModal(true); // Show the modal to display imported features
-        setStatus({ type: 'success', message: `Successfully imported ${importedFeatures.length} test cases from Jira!` });
-        
-        // Debug logging to verify the import
-        console.log('🔍 Jira Import Debug:', {
-          importedFeatures: importedFeatures,
-          importedEditableFeatures: importedEditableFeatures,
-          importedJiraTicketInfo: importedJiraTicketInfo,
-          featureTabsLength: importedFeatures.length,
-          activeTab: 0
-        });
+        } catch (requirementsError) {
+          console.error('Error extracting requirements from Jira tickets:', requirementsError);
+          setStatus({ type: 'error', message: 'Failed to process Jira tickets through AI requirements extraction' });
+        }
       } else {
         setStatus({ type: 'error', message: response.data.error || 'Failed to import Jira issues' });
       }
@@ -2423,7 +2527,15 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
 
       {/* Jira Import Modal */}
       {showJiraImport && (
-        <div className="modal-overlay" onClick={() => setShowJiraImport(false)}>
+        <div 
+          className="modal-overlay" 
+          data-modal="jira-import" 
+          onClick={() => {
+            console.log('🔍 Modal overlay clicked, closing modal...');
+            setShowJiraImport(false);
+          }}
+          style={{ zIndex: 1000 }}
+        >
           <div className="modal-content" style={{ maxWidth: '600px' }} onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
               <h3>Import from Jira</h3>

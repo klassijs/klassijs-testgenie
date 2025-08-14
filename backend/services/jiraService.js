@@ -178,69 +178,99 @@ function convertJiraIssueToGherkin(issue) {
 function createScenariosFromJiraContent(summary, description, issueKey) {
   const scenarios = [];
   
-  // Create main scenario from the ticket summary
-  const mainScenario = {
-    title: `${issueKey}: ${summary}` || `Test ${issueKey}`, // Include issue key for traceability
-    steps: []
-  };
-  
-  // Add basic steps based on the summary
-  mainScenario.steps.push(`Given I am on the application`);
-  
-  // Try to extract action from summary
-  const action = extractActionFromSummary(summary);
-  if (action) {
-    mainScenario.steps.push(`When I ${action}`);
-  } else {
-    mainScenario.steps.push(`When I perform the required action`);
+  // First, try to extract meaningful scenarios from the description
+  if (description && typeof description === 'string' && description.trim()) {
+    const extractedScenarios = extractScenariosFromDescription(description, summary, issueKey);
+    if (extractedScenarios.length > 0) {
+      scenarios.push(...extractedScenarios);
+    }
   }
   
-  mainScenario.steps.push(`Then I should see the expected result`);
-  
-  scenarios.push(mainScenario);
-  
-  // If there's a description, try to create additional scenarios
-  if (description) {
-    const additionalScenarios = extractScenariosFromDescription(description, summary, issueKey);
-    scenarios.push(...additionalScenarios);
+  // If no scenarios were extracted from description, create intelligent ones from summary
+  if (scenarios.length === 0) {
+    const mainScenario = {
+      title: `${issueKey}: ${summary}` || `Test ${issueKey}`,
+      steps: []
+    };
+    
+    // Create more intelligent steps based on the summary content
+    const intelligentSteps = createIntelligentSteps(summary, description);
+    mainScenario.steps.push(...intelligentSteps);
+    
+    scenarios.push(mainScenario);
   }
   
   return scenarios;
 }
 
-// Extract action from Jira summary
-function extractActionFromSummary(summary) {
-  if (!summary) return null;
+// Create intelligent test steps based on Jira ticket content
+function createIntelligentSteps(summary, description) {
+  const steps = [];
+  const lowerSummary = summary?.toLowerCase() || '';
+  const lowerDescription = description?.toLowerCase() || '';
   
-  const lowerSummary = summary.toLowerCase();
+  // Determine the context from summary and description
+  let context = 'the application';
+  let action = 'perform the required action';
+  let expectedResult = 'see the expected result';
   
-  // Common action patterns
-  if (lowerSummary.includes('login') || lowerSummary.includes('sign in')) {
-    return 'login to the application';
-  }
-  if (lowerSummary.includes('logout') || lowerSummary.includes('sign out')) {
-    return 'logout from the application';
-  }
-  if (lowerSummary.includes('create') || lowerSummary.includes('add')) {
-    return 'create a new item';
-  }
-  if (lowerSummary.includes('edit') || lowerSummary.includes('update')) {
-    return 'edit the item';
-  }
-  if (lowerSummary.includes('delete') || lowerSummary.includes('remove')) {
-    return 'delete the item';
-  }
-  if (lowerSummary.includes('search') || lowerSummary.includes('find')) {
-    return 'search for the item';
-  }
-  if (lowerSummary.includes('view') || lowerSummary.includes('see')) {
-    return 'view the details';
-  }
-  if (lowerSummary.includes('navigate') || lowerSummary.includes('go to')) {
-    return 'navigate to the page';
+  // Extract context (what page/area we're working with)
+  if (lowerSummary.includes('login') || lowerSummary.includes('sign in') || lowerSummary.includes('authentication')) {
+    context = 'the login page';
+    action = 'enter valid credentials and click login';
+    expectedResult = 'be successfully logged in and redirected to the dashboard';
+  } else if (lowerSummary.includes('dashboard') || lowerSummary.includes('home')) {
+    context = 'the dashboard';
+    action = 'view the dashboard content';
+    expectedResult = 'see all relevant information and navigation options';
+  } else if (lowerSummary.includes('user') || lowerSummary.includes('profile')) {
+    context = 'the user management section';
+    action = 'access user profile or management features';
+    expectedResult = 'see user information and management options';
+  } else if (lowerSummary.includes('report') || lowerSummary.includes('analytics')) {
+    context = 'the reporting section';
+    action = 'generate or view the required report';
+    expectedResult = 'see the report with accurate data';
+  } else if (lowerSummary.includes('form') || lowerSummary.includes('input')) {
+    context = 'the form';
+    action = 'fill out the required fields with valid data';
+    expectedResult = 'see the form submitted successfully';
+  } else if (lowerSummary.includes('search') || lowerSummary.includes('find')) {
+    context = 'the search functionality';
+    action = 'enter search criteria and execute search';
+    expectedResult = 'see relevant search results';
+  } else if (lowerSummary.includes('create') || lowerSummary.includes('add') || lowerSummary.includes('new')) {
+    context = 'the creation form';
+    action = 'fill out the creation form with required information';
+    expectedResult = 'see the new item created successfully';
+  } else if (lowerSummary.includes('edit') || lowerSummary.includes('update') || lowerSummary.includes('modify')) {
+    context = 'the edit form';
+    action = 'modify the existing information';
+    expectedResult = 'see the changes saved successfully';
+  } else if (lowerSummary.includes('delete') || lowerSummary.includes('remove')) {
+    context = 'the item management section';
+    action = 'select the item and confirm deletion';
+    expectedResult = 'see the item removed successfully';
+  } else if (lowerSummary.includes('navigation') || lowerSummary.includes('menu')) {
+    context = 'the navigation menu';
+    action = 'navigate through the menu structure';
+    expectedResult = 'reach the intended destination';
   }
   
-  return null;
+  // Add more specific context from description if available
+  if (lowerDescription.includes('page') || lowerDescription.includes('screen')) {
+    const pageMatch = lowerDescription.match(/(?:on|in|to|the)\s+([a-zA-Z\s]+(?:page|screen))/);
+    if (pageMatch) {
+      context = pageMatch[1].trim();
+    }
+  }
+  
+  // Build the steps
+  steps.push(`Given I am on ${context}`);
+  steps.push(`When I ${action}`);
+  steps.push(`Then I should ${expectedResult}`);
+  
+  return steps;
 }
 
 // Extract scenarios from Jira description
@@ -288,6 +318,84 @@ function extractScenariosFromDescription(description, summary, issueKey) {
   // Add the last scenario
   if (currentScenario) {
     scenarios.push(currentScenario);
+  }
+  
+  // If no Gherkin scenarios found, try to extract test steps from natural language
+  if (scenarios.length === 0) {
+    const naturalLanguageScenarios = extractNaturalLanguageScenarios(description, summary, issueKey);
+    scenarios.push(...naturalLanguageScenarios);
+  }
+  
+  return scenarios;
+}
+
+// Extract test scenarios from natural language in Jira descriptions
+function extractNaturalLanguageScenarios(description, summary, issueKey) {
+  const scenarios = [];
+  
+  if (!description || typeof description !== 'string') {
+    return scenarios;
+  }
+  
+  const lines = description.split('\n');
+  let currentSteps = [];
+  let hasTestContent = false;
+  
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+    if (!trimmedLine) continue;
+    
+    // Look for action-oriented language that can be converted to test steps
+    const lowerLine = trimmedLine.toLowerCase();
+    
+    // Skip lines that are clearly not test-related
+    if (lowerLine.includes('bug') || lowerLine.includes('issue') || lowerLine.includes('problem') || 
+        lowerLine.includes('error') || lowerLine.includes('exception') || lowerLine.includes('stack trace')) {
+      continue;
+    }
+    
+    // Convert natural language to test steps
+    if (lowerLine.includes('user') || lowerLine.includes('click') || lowerLine.includes('enter') || 
+        lowerLine.includes('select') || lowerLine.includes('navigate') || lowerLine.includes('go to') ||
+        lowerLine.includes('fill') || lowerLine.includes('submit') || lowerLine.includes('save') ||
+        lowerLine.includes('verify') || lowerLine.includes('check') || lowerLine.includes('confirm') ||
+        lowerLine.includes('should') || lowerLine.includes('must') || lowerLine.includes('will')) {
+      
+      hasTestContent = true;
+      
+      // Convert to Gherkin format
+      let step = '';
+      if (lowerLine.includes('user') || lowerLine.includes('click') || lowerLine.includes('enter') || 
+          lowerLine.includes('select') || lowerLine.includes('navigate') || lowerLine.includes('go to') ||
+          lowerLine.includes('fill') || lowerLine.includes('submit') || lowerLine.includes('save')) {
+        step = `When ${trimmedLine}`;
+      } else if (lowerLine.includes('verify') || lowerLine.includes('check') || lowerLine.includes('confirm') ||
+                 lowerLine.includes('should') || lowerLine.includes('must') || lowerLine.includes('will')) {
+        step = `Then ${trimmedLine}`;
+      } else {
+        step = `Given ${trimmedLine}`;
+      }
+      
+      currentSteps.push(step);
+    }
+  }
+  
+  // If we found test content, create a scenario
+  if (hasTestContent && currentSteps.length > 0) {
+    // Add a Given step if we don't have one
+    if (!currentSteps.some(step => step.toLowerCase().startsWith('given'))) {
+      currentSteps.unshift('Given I am on the relevant page');
+    }
+    
+    // Add a Then step if we don't have one
+    if (!currentSteps.some(step => step.toLowerCase().startsWith('then'))) {
+      currentSteps.push('Then the action should complete successfully');
+    }
+    
+    scenarios.push({
+      title: `${issueKey}: ${summary}`,
+      steps: currentSteps
+    });
   }
   
   return scenarios;

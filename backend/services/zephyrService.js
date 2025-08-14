@@ -1389,7 +1389,8 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
           // Add test script content
           try {
             const testScriptData = {
-              content: scenarioContent
+              type: 'bdd',
+              text: scenarioContent.trim()
             };
 
             const testScriptResponse = await axios.post(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}/testscript`, testScriptData, {
