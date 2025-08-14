@@ -658,6 +658,13 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         if (!testCaseId) continue; // Skip if no test case ID for this scenario
         
         let scenarioContent = '';
+        
+        // Extract feature name from the content
+        const featureMatch = content.match(/^# Feature:\s*(.+)$/m);
+        if (featureMatch) {
+          scenarioContent += `# Feature: ${featureMatch[1].trim()}\n\n`;
+        }
+        
         scenarioContent += `# Scenario: ${scenario.name}\n`;
         scenario.steps.forEach(step => {
           scenarioContent += `${step}\n`;
@@ -808,6 +815,12 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       // Format scenario content with # prefix for scenario lines
       let scenarioContent = '';
       
+      // Extract feature name from the content and add it with # prefix
+      const featureMatch = content.match(/^# Feature:\s*(.+)$/m);
+      if (featureMatch) {
+        scenarioContent += `# Feature: ${featureMatch[1].trim()}\n\n`;
+      }
+      
       // Add scenario name with # prefix
       scenarioContent += `# Scenario: ${scenario.name}\n`;
       
@@ -824,24 +837,12 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       }
 
       // Create test case first (without testScript)
-      // Fix the naming logic to prevent duplication
-      let testCaseDisplayName;
+      // Use only the scenario name for the test case name
+      let testCaseDisplayName = scenario.name;
       
+      // Only add test case name prefix if explicitly provided
       if (testCaseName && testCaseName.trim()) {
-        // If test case name is provided, use: "Test Case Name - Scenario Name"
         testCaseDisplayName = `${testCaseName.trim()} - ${scenario.name}`;
-      } else {
-        // If test case name is blank, be smart about naming to prevent duplication
-        if (featureName === scenario.name) {
-          // If feature name and scenario name are identical, just use the feature name
-          testCaseDisplayName = featureName;
-        } else if (featureName.includes(scenario.name)) {
-          // If feature name already contains the scenario name, just use the feature name
-          testCaseDisplayName = featureName;
-        } else {
-          // Otherwise, combine them: "Feature Name - Scenario Name"
-          testCaseDisplayName = `${featureName} - ${scenario.name}`;
-        }
       }
       
       const testCaseData = {

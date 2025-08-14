@@ -19,6 +19,8 @@ const TestGenerator = () => {
   const [isDragOver, setIsDragOver] = useState(false);
   const [showModal, setShowModal] = useState(false);
   const [extractedRequirements, setExtractedRequirements] = useState('');
+  const [requirementsSource, setRequirementsSource] = useState(''); // 'jira' or 'upload'
+  const [jiraTicketPrefix, setJiraTicketPrefix] = useState(''); // Store Jira ticket prefix
 
   const [activeTab, setActiveTab] = useState(0);
   const [featureTabs, setFeatureTabs] = useState([]);
@@ -154,7 +156,8 @@ const TestGenerator = () => {
     console.log('🔍 Total table lines found:', tableLines.length);
     
     // Parse table rows
-    for (const line of tableLines) {
+    for (let i = 0; i < tableLines.length; i++) {
+      const line = tableLines[i];
       const columns = line.split('|').map(col => col.trim()).filter(col => col);
       console.log('🔍 Parsing line:', line, 'Columns:', columns);
       
@@ -176,9 +179,26 @@ const TestGenerator = () => {
           continue;
         }
         
-        console.log('🔍 Adding requirement:', { id, requirement, acceptanceCriteria });
+        // Generate requirement ID based on source
+        let generatedId;
+        if (requirementsSource === 'jira' && jiraTicketPrefix) {
+          // For Jira: use ticket prefix + sequential number
+          generatedId = `${jiraTicketPrefix}-${String(i + 1).padStart(3, '0')}`;
+        } else {
+          // For uploaded documents: use BR prefix
+          generatedId = `BR-${String(i + 1).padStart(3, '0')}`;
+        }
+        
+        console.log('🔍 Adding requirement:', { 
+          originalId: id, 
+          generatedId: generatedId, 
+          requirement, 
+          acceptanceCriteria,
+          source: requirementsSource 
+        });
+        
         requirements.push({
-          id: id,
+          id: generatedId,
           requirement: requirement,
           acceptanceCriteria: acceptanceCriteria
         });
@@ -274,6 +294,17 @@ const TestGenerator = () => {
             // Set the extracted requirements table (same as uploaded documents)
             setExtractedRequirements(requirementsResponse.data.content);
             
+            // Set requirements source and extract Jira ticket prefix
+            setRequirementsSource('jira');
+            
+            // Extract Jira ticket prefix from the first ticket
+            const firstTicket = response.data.features[0];
+            if (firstTicket && firstTicket.title && firstTicket.title.includes(':')) {
+              const ticketKey = firstTicket.title.split(':')[0].trim();
+              setJiraTicketPrefix(ticketKey);
+              console.log('🔍 Set Jira ticket prefix:', ticketKey);
+            }
+            
             // Parse the requirements table to extract individual requirements
             const requirementsContent = requirementsResponse.data.content;
             const requirements = parseRequirementsTable(requirementsContent);
@@ -302,16 +333,20 @@ const TestGenerator = () => {
                 return { ...prev, ...editableFeaturesObj };
               });
               
-              // Store Jira ticket info for traceability
+              // Store Jira ticket info for traceability - set for ALL new feature tabs
               const jiraTicketInfo = {};
-              response.data.features.forEach((feature, index) => {
-                if (feature.title && feature.title.includes(':')) {
-                  const ticketKey = feature.title.split(':')[0].trim();
-                  jiraTicketInfo[index] = {
-                    ticketKey: ticketKey,
-                    jiraBaseUrl: jiraConfig.baseUrl
-                  };
-                }
+              const ticketKey = response.data.features[0]?.title?.split(':')[0]?.trim() || 'JIRA';
+              
+              // Get the current length of existing feature tabs
+              const currentTabsLength = featureTabs.length;
+              
+              // Set Jira ticket info for all the new feature tabs we just created
+              newFeatures.forEach((feature, index) => {
+                const globalIndex = currentTabsLength + index;
+                jiraTicketInfo[globalIndex] = {
+                  ticketKey: ticketKey,
+                  jiraBaseUrl: jiraConfig.baseUrl
+                };
               });
               setJiraTicketInfo(jiraTicketInfo);
               
@@ -460,6 +495,10 @@ const TestGenerator = () => {
           
           if (requirementsResponse.data.success) {
             setExtractedRequirements(requirementsResponse.data.content);
+            
+            // Set requirements source for uploaded documents
+            setRequirementsSource('upload');
+            setJiraTicketPrefix(''); // Clear any Jira ticket prefix
             
             // Create feature tabs from extracted requirements
             const requirementsContent = requirementsResponse.data.content;
@@ -618,7 +657,18 @@ Requirement ID: ${req.id}
 Business Requirement: ${req.requirement}
 Acceptance Criteria: ${req.acceptanceCriteria}
 
-GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
+GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.
+
+IMPORTANT: 
+1. Feature line must start with # in this format:
+   # Feature: [Feature Name]
+
+2. Each scenario title must include the requirement ID in this format:
+   Scenario: ${req.id}: [Scenario Description]
+
+Example:
+# Feature: junior school
+Scenario: ${req.id}: Successfully entering valid data into the "Need More Information" section`;
         
         const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
           content: testContent, 
@@ -626,11 +676,19 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
         });
         
         if (response.data.success) {
+          // Create a descriptive title that includes requirement ID and summary
+          const requirementSummary = req.requirement.length > 50 
+            ? req.requirement.substring(0, 50) + '...' 
+            : req.requirement;
+          
+          const scenarioTitle = `${req.id}: ${requirementSummary}`;
+          
           generatedFeatures.push({
-            title: req.id,
+            title: scenarioTitle,
             content: response.data.content,
             requirement: req.requirement,
-            acceptanceCriteria: req.acceptanceCriteria
+            acceptanceCriteria: req.acceptanceCriteria,
+            requirementId: req.id // Store the requirement ID separately for reference
           });
         } else {
           console.error(`Failed to generate tests for ${req.id}`);
@@ -1159,6 +1217,22 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
     return formattedContent.trim();
   };
 
+  // New function to format requirements with generated IDs for insertion
+  const formatRequirementsForInsertionWithGeneratedIds = (requirements) => {
+    let formattedContent = 'Business Requirements:\n\n';
+    
+    // Add header row
+    formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria |\n';
+    formattedContent += '|---|---|---|\n';
+    
+    // Add data rows with generated IDs
+    requirements.forEach(req => {
+      formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} |\n`;
+    });
+    
+    return formattedContent.trim();
+  };
+
   const handleCopyContent = () => {
     navigator.clipboard.writeText(extractedRequirements);
     setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
@@ -1383,6 +1457,39 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
           </div>
         )}
 
+        {/* Import from Jira Section */}
+        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src="/jira-icon.svg" alt="Jira" style={{ width: '18px', height: '18px' }} />
+            Import from Jira
+          </h3>
+          <p style={{ marginBottom: '1rem', color: '#4a5568', fontSize: '0.9rem' }}>
+            Import Epics, Stories, Tasks and Bugs directly from your Jira Projects.
+          </p>
+          <button 
+            className="btn btn-primary"
+            onClick={() => {
+              setShowJiraImport(true);
+              setJiraStep('connect');
+              setJiraConfig({
+                projectKey: '',
+                issueTypes: [],
+                selectedIssues: [],
+                baseUrl: '' // Will be set from backend response
+              });
+            }}
+            title="Import test cases from Jira"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+          >
+            <img src="/jira-icon.svg" alt="Jira" style={{ width: '18px', height: '18px' }} />
+            Import from Jira
+          </button>
+        </div>
+
         {/* Extracted Business Requirements Section */}
         {extractedRequirements && (
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
@@ -1414,23 +1521,8 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
                 </thead>
                 <tbody>
                   {(() => {
-                    // Parse markdown table into proper table rows
-                    const lines = extractedRequirements.split('\n');
-                    const requirements = [];
-                    
-                    for (let i = 0; i < lines.length; i++) {
-                      const line = lines[i].trim();
-                      if (line.startsWith('|') && line.endsWith('|')) {
-                        const parts = line.split('|').map(p => p.trim()).filter(p => p);
-                        if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
-                          requirements.push({
-                            id: parts[0],
-                            requirement: parts[1],
-                            acceptanceCriteria: parts[2]
-                          });
-                        }
-                      }
-                    }
+                    // Parse markdown table into proper table rows with generated IDs
+                    const requirements = parseRequirementsTable(extractedRequirements);
                     
                     return requirements.map((req, index) => (
                       <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
@@ -1509,7 +1601,15 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
             <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
               <button 
                 className="btn btn-primary"
-                onClick={() => setContent(extractedRequirements)}
+                onClick={() => {
+                  // Get the parsed requirements with generated IDs
+                  const requirements = parseRequirementsTable(extractedRequirements);
+                  
+                  // Format requirements properly with headers and generated IDs for insertion
+                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);
+                  setContent(formattedContent);
+                  setStatus({ type: 'success', message: 'Requirements inserted with headers and generated IDs! You can now generate test cases.' });
+                }}
               >
                 Insert Requirements
               </button>
@@ -1528,41 +1628,6 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
             </div>
           </div>
         )}
-
-        {/* Import from Jira Section */}
-        <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
-                      <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <img src="/jira-icon.svg" alt="Jira" style={{ width: '18px', height: '18px' }} />
-              Import from Jira
-            </h3>
-          <p style={{ marginBottom: '1rem', color: '#4a5568', fontSize: '0.9rem' }}>
-            Import Epics, Stories, Tasks and Bugs directly from your Jira Projects.
-          </p>
-                      <button 
-              className="btn btn-primary"
-              onClick={() => {
-                setShowJiraImport(true);
-                setJiraStep('connect');
-                setJiraConfig({
-                  projectKey: '',
-                  issueTypes: [],
-                  selectedIssues: [],
-                  baseUrl: '' // Will be set from backend response
-                });
-              }}
-              title="Import test cases from Jira"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: '8px'
-              }}
-            >
-              Import from Jira
-            </button>
-        </div>
-
-
-
 
       </div>
 
@@ -2353,7 +2418,7 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
               </div>
               
               <div className="form-group">
-                <label htmlFor="testCaseName">Test Case Name</label>
+                <label htmlFor="testCaseName">Test Case Name (optional)</label>
                 <input
                   type="text"
                   id="testCaseName"
