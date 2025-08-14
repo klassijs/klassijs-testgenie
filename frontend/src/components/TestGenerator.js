@@ -1019,15 +1019,35 @@ GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.`;
     const lines = markdownContent.split('\n');
     let formattedContent = 'Business Requirements:\n\n';
     
+    // First, find and include the header row
+    let headerRow = '';
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i].trim();
+      if (line.startsWith('|') && line.endsWith('|')) {
+        const parts = line.split('|').map(p => p.trim()).filter(p => p);
+        if (parts.length >= 3 && parts[0].toLowerCase().includes('requirement id')) {
+          headerRow = line;
+          break;
+        }
+      }
+    }
+    
+    // Add header row if found
+    if (headerRow) {
+      formattedContent += headerRow + '\n';
+      // Add separator line
+      const headerParts = headerRow.split('|').map(p => p.trim()).filter(p => p);
+      const separatorLine = '|' + headerParts.map(() => '---').join('|') + '|';
+      formattedContent += separatorLine + '\n';
+    }
+    
+    // Add data rows
     for (let i = 0; i < lines.length; i++) {
       const line = lines[i].trim();
       if (line.startsWith('|') && line.endsWith('|')) {
         const parts = line.split('|').map(p => p.trim()).filter(p => p);
         if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
-          const [id, requirement, acceptanceCriteria] = parts;
-          formattedContent += `${id}:\n`;
-          formattedContent += `Business Requirement: ${requirement}\n`;
-          formattedContent += `Acceptance Criteria: ${acceptanceCriteria}\n\n`;
+          formattedContent += line + '\n';
         }
       }
     }
