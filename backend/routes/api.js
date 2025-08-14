@@ -312,7 +312,8 @@ router.post('/extract-requirements', async (req, res) => {
       });
     }
 
-    const extractedRequirements = await extractBusinessRequirements(content, context);
+    const { enableLogging = true } = req.body;
+    const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
 
     res.json({
       success: true,

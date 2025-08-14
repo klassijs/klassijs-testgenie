@@ -154,12 +154,16 @@ const TestGenerator = () => {
     }
     
     console.log('🔍 Total table lines found:', tableLines.length);
+    console.log('🔍 ALL table lines:', tableLines);
     
     // Parse table rows
+    let requirementCounter = 0; // Use a separate counter for requirement IDs
+    
     for (let i = 0; i < tableLines.length; i++) {
       const line = tableLines[i];
       const columns = line.split('|').map(col => col.trim()).filter(col => col);
-      console.log('🔍 Parsing line:', line, 'Columns:', columns);
+      console.log(`🔍 [ROW ${i}] Parsing line:`, line);
+      console.log(`🔍 [ROW ${i}] Columns:`, columns);
       
       if (columns.length >= 3) {
         const [id, requirement, acceptanceCriteria] = columns;
@@ -175,7 +179,7 @@ const TestGenerator = () => {
             id === '' ||
             requirement === '' ||
             acceptanceCriteria === '') {
-          console.log('🔍 Skipping invalid row:', { id, requirement, acceptanceCriteria });
+          console.log(`🔍 [ROW ${i}] SKIPPING invalid row:`, { id, requirement, acceptanceCriteria });
           continue;
         }
         
@@ -183,29 +187,36 @@ const TestGenerator = () => {
         let generatedId;
         if (requirementsSource === 'jira' && jiraTicketPrefix) {
           // For Jira: use ticket prefix + sequential number
-          generatedId = `${jiraTicketPrefix}-${String(i + 1).padStart(3, '0')}`;
+          requirementCounter++; // Increment counter for each valid requirement
+          generatedId = `${jiraTicketPrefix}-${String(requirementCounter).padStart(3, '0')}`;
         } else {
           // For uploaded documents: use BR prefix
-          generatedId = `BR-${String(i + 1).padStart(3, '0')}`;
+          requirementCounter++; // Increment counter for each valid requirement
+          generatedId = `BR-${String(requirementCounter).padStart(3, '0')}`;
         }
         
-        console.log('🔍 Adding requirement:', { 
+        console.log(`🔍 [ROW ${i}] ADDING requirement:`, { 
           originalId: id, 
           generatedId: generatedId, 
-          requirement, 
-          acceptanceCriteria,
-          source: requirementsSource 
+          requirement: requirement.substring(0, 50) + '...', 
+          acceptanceCriteria: acceptanceCriteria.substring(0, 50) + '...',
+          source: requirementsSource,
+          rowIndex: i,
+          requirementCounter: requirementCounter
         });
         
         requirements.push({
           id: generatedId,
           requirement: requirement,
-          acceptanceCriteria: acceptanceCriteria
+          acceptanceCriteria: acceptanceCriteria,
+          complexity: columns[3] || 'CC: 1, Paths: 1'
         });
+      } else {
+        console.log(`🔍 [ROW ${i}] SKIPPING - insufficient columns:`, columns);
       }
     }
     
-    console.log('🔍 Final requirements parsed:', requirements);
+    console.log('🔍 Final requirements parsed:', requirements.map(r => ({ id: r.id, req: r.requirement.substring(0, 30) + '...' })));
     return requirements;
   };
 
@@ -287,7 +298,8 @@ const TestGenerator = () => {
         try {
           const requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
             content: combinedJiraContent, 
-            context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}` 
+            context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}`,
+            enableLogging: false // Disable logging for Jira imports to reduce console noise
           });
           
           if (requirementsResponse.data.success) {
@@ -666,9 +678,30 @@ IMPORTANT:
 2. Each scenario title must include the requirement ID in this format:
    Scenario: ${req.id}: [Scenario Description]
 
+3. PATH COVERAGE REQUIREMENTS:
+   - Analyze the complexity from the requirements table
+   - Create test scenarios that cover EVERY identified execution path
+   - For each decision point, create separate test scenarios
+   - Ensure all branches and conditions are tested
+   - The number of test scenarios should match or exceed the "Paths" count from complexity analysis
+
+4. If the requirement contains workflow steps, decision points, or conditional logic:
+   - Calculate the cyclomatic complexity
+   - Ensure test coverage for all decision paths
+   - Include scenarios for each branch/condition
+   - Add a comment showing: # Cyclomatic Complexity: [number]
+   - Add comment: # Test Coverage: [X] of [Y] paths covered
+
 Example:
 # Feature: junior school
-Scenario: ${req.id}: Successfully entering valid data into the "Need More Information" section`;
+Scenario: ${req.id}: Successfully entering valid data into the "Need More Information" section
+
+# If workflow detected:
+# Cyclomatic Complexity: 5
+# Decision Points: 3 (user role, data validation, approval flow)
+# Test Coverage: All 5 paths covered
+
+# CRITICAL: Generate enough test scenarios to cover ALL identified paths from the complexity analysis`;
         
         const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
           content: testContent, 
@@ -1222,12 +1255,12 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     let formattedContent = 'Business Requirements:\n\n';
     
     // Add header row
-    formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria |\n';
-    formattedContent += '|---|---|---|\n';
+    formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n';
+    formattedContent += '|---|---|---|---|\n';
     
     // Add data rows with generated IDs
     requirements.forEach(req => {
-      formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} |\n`;
+      formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity || 'CC: 1, Paths: 1'} |\n`;
     });
     
     return formattedContent.trim();
@@ -1517,6 +1550,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Requirement ID</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Business Requirement</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Acceptance Criteria</th>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Complexity</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1533,7 +1567,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                               // Only update when user finishes editing (onBlur)
                               const newReqs = [...requirements];
                               newReqs[index].id = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
                               setExtractedRequirements(newContent);
                             }}
                             style={{ 
@@ -1555,7 +1589,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                               // Only update when user finishes editing (onBlur)
                               const newReqs = [...requirements];
                               newReqs[index].requirement = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
                               setExtractedRequirements(newContent);
                             }}
                             style={{ 
@@ -1576,7 +1610,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                               // Only update when user finishes editing (onBlur)
                               const newReqs = [...requirements];
                               newReqs[index].acceptanceCriteria = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} |`).join('\n');
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
                               setExtractedRequirements(newContent);
                             }}
                             style={{ 
@@ -1588,6 +1622,29 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                               minHeight: '80px',
                               fontFamily: 'inherit'
                             }}
+                          />
+                        </td>
+                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                          <textarea
+                            defaultValue={req.complexity || 'CC: 1, Paths: 1'}
+                            onBlur={(e) => {
+                              // Only update when user finishes editing (onBlur)
+                              const newReqs = [...requirements];
+                              newReqs[index].complexity = e.target.value;
+                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
+                              setExtractedRequirements(newContent);
+                            }}
+                            style={{ 
+                              width: '100%', 
+                              border: 'none', 
+                              outline: 'none', 
+                              background: 'transparent',
+                              resize: 'vertical',
+                              minHeight: '40px',
+                              fontFamily: 'inherit',
+                              fontSize: '12px'
+                            }}
+                            placeholder="CC: 1, Paths: 1"
                           />
                         </td>
                       </tr>
@@ -1603,7 +1660,9 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                 className="btn btn-primary"
                 onClick={() => {
                   // Get the parsed requirements with generated IDs
+                  console.log('🔍 Insert Requirements clicked - extractedRequirements:', extractedRequirements.substring(0, 200));
                   const requirements = parseRequirementsTable(extractedRequirements);
+                  console.log('🔍 Parsed requirements count:', requirements.length);
                   
                   // Format requirements properly with headers and generated IDs for insertion
                   const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);

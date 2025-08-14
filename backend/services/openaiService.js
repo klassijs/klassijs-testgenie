@@ -1,4 +1,82 @@
 const axios = require('axios');
+const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequirementComplexity } = require('../utils/workflowAnalyzer');
+
+/**
+ * Enhance complexity calculations in the extracted requirements
+ * @param {string} requirements - The requirements table from AI
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced requirements with improved complexity calculations
+ */
+function enhanceComplexityCalculations(requirements, workflowAnalysis) {
+  try {
+    const lines = requirements.split('\n');
+    const enhancedLines = [];
+    
+    for (const line of lines) {
+      if (line.includes('|') && line.includes('CC:')) {
+        // This line already has complexity, enhance it if needed
+        const enhancedLine = enhanceExistingComplexity(line, workflowAnalysis);
+        enhancedLines.push(enhancedLine);
+      } else if (line.includes('|') && !line.includes('CC:')) {
+        // This line is missing complexity, add it
+        const enhancedLine = addMissingComplexity(line, workflowAnalysis);
+        enhancedLines.push(enhancedLine);
+      } else {
+        enhancedLines.push(line);
+      }
+    }
+    
+    return enhancedLines.join('\n');
+  } catch (error) {
+    console.error('Error enhancing complexity calculations:', error);
+    return requirements; // Return original if enhancement fails
+  }
+}
+
+/**
+ * Enhance existing complexity calculation
+ * @param {string} line - Table row with existing complexity
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced line
+ */
+function enhanceExistingComplexity(line, workflowAnalysis) {
+  // Extract requirement and acceptance criteria from the line
+  const columns = line.split('|').map(col => col.trim()).filter(col => col);
+  if (columns.length >= 4) {
+    const [id, requirement, acceptanceCriteria, existingComplexity] = columns;
+    
+    // If the complexity looks too generic or is the same as global analysis, recalculate
+    if (existingComplexity.includes('CC: 1, Decision Points: 0, Activities: 1, Paths: 1') || 
+        existingComplexity.includes(`CC: ${workflowAnalysis.cyclomaticComplexity}`)) {
+      
+      // Use smart categorization for this specific requirement
+      const smartComplexity = categorizeRequirementComplexity(requirement, acceptanceCriteria);
+      return line.replace(existingComplexity, smartComplexity);
+    }
+  }
+  return line;
+}
+
+/**
+ * Add missing complexity calculation
+ * @param {string} line - Table row without complexity
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced line
+ */
+function addMissingComplexity(line, workflowAnalysis) {
+  if (line.trim().endsWith('|')) {
+    // Extract requirement and acceptance criteria from the line
+    const columns = line.split('|').map(col => col.trim()).filter(col => col);
+    if (columns.length >= 3) {
+      const [id, requirement, acceptanceCriteria] = columns;
+      
+      // Use smart categorization for this specific requirement
+      const smartComplexity = categorizeRequirementComplexity(requirement, acceptanceCriteria);
+      return line + ` ${smartComplexity} |`;
+    }
+  }
+  return line;
+}
 
 const OPENAI_URL = process.env.OPENAI_URL;
 const OPENAI_DEVELOPMENT_ID = process.env.OPENAI_DEVELOPMENT_ID;
@@ -37,11 +115,18 @@ async function generateTestCases(content, context = '') {
       role: 'system',
       content: `You are a Test Automation Architect creating Cucumber test cases in Gherkin syntax.
 
-Your task is to analyze the EXACT requirement and acceptance criteria provided and generate MULTIPLE test scenarios that thoroughly test that SPECIFIC functionality.
+Your task is to analyze the EXACT requirement and acceptance criteria provided and generate test scenarios that cover EVERY execution path identified in the complexity analysis.
 
 IMPORTANT: You must generate test scenarios that are SPECIFIC to the provided business requirement and acceptance criteria. Do NOT generate generic test scenarios.
 
-For each acceptance criteria, generate AT LEAST 5 different test scenarios including:
+PATH COVERAGE REQUIREMENTS:
+- Analyze the complexity information from the requirement (CC, Decision Points, Paths)
+- Generate test scenarios that cover EVERY identified execution path
+- The number of test scenarios should match or exceed the "Paths" count
+- Each decision point should have separate test scenarios for each branch
+- Ensure complete coverage of all conditional logic and workflow branches
+
+For each acceptance criteria, generate comprehensive test scenarios including:
 
 POSITIVE TEST SCENARIOS:
 - Happy path scenarios (main success flow)
@@ -59,6 +144,13 @@ NEGATIVE TEST SCENARIOS:
 - Invalid state transitions
 - Security-related negative scenarios
 
+WORKFLOW PATH SCENARIOS:
+- Test each decision branch separately
+- Cover all gateway conditions (exclusive, parallel, inclusive)
+- Test all possible workflow paths
+- Include error paths and exception handling
+- Test parallel execution paths
+
 DATA-DRIVEN SCENARIOS:
 - Scenario outlines with multiple examples
 - Different data combinations
@@ -66,7 +158,7 @@ DATA-DRIVEN SCENARIOS:
 
 CRITICAL REQUIREMENTS:
 - Generate ONLY pure Gherkin syntax (Feature, Scenario, Given, When, Then, And, But)
-- Generate MULTIPLE scenarios (3-5 minimum) for each acceptance criteria
+- Generate ENOUGH scenarios to cover ALL identified paths from complexity analysis
 - Include both positive scenarios and negative/edge case scenarios
 - Use descriptive scenario names that clearly indicate what is being tested
 - Do NOT generate generic test scenarios
@@ -76,9 +168,10 @@ CRITICAL REQUIREMENTS:
 - Do NOT include any text that starts with "Example:", "Sample:", "Here's an example:", or similar
 - Start directly with 'Feature:' and end with the last test scenario
 - Ensure the output is ready to be saved directly as a .feature file
-- Each scenario should test a different aspect or variation of the acceptance criteria
+- Each scenario should test a different execution path or decision branch
 - Output ONLY the actual test scenarios, nothing else
-- The Feature name and scenarios must be based on the SPECIFIC business requirement provided`
+- The Feature name and scenarios must be based on the SPECIFIC business requirement provided
+- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis`
     },
     {
       role: 'user',
@@ -89,20 +182,28 @@ ${content}
 
 Additional context: ${context}
 
+PATH COVERAGE REQUIREMENTS:
+- Analyze the complexity information (CC, Decision Points, Paths) from the requirement
+- Generate test scenarios that cover EVERY identified execution path
+- The number of test scenarios should match or exceed the "Paths" count
+- Each decision point should have separate test scenarios for each branch
+- Ensure complete coverage of all conditional logic and workflow branches
+
 CRITICAL REQUIREMENTS:
 - Generate test scenarios that are SPECIFIC to the business requirement and acceptance criteria provided above
 - Do NOT generate generic test scenarios like "User Registration" or "Login"
 - Do NOT create test scenarios for functionality not mentioned in the requirement
 - Each scenario must directly relate to the provided business requirement and acceptance criteria
-- Generate multiple scenarios (positive, negative, edge cases) for this single acceptance criteria
-- Each scenario should test a different aspect or variation of the provided acceptance criteria
+- Generate ENOUGH scenarios to cover ALL identified paths from complexity analysis
+- Each scenario should test a different execution path or decision branch
 - Output ONLY the actual Gherkin test scenarios
 - Do NOT include any examples, explanations, or sample scenarios
 - Start directly with 'Feature:' and end with the last test scenario
 - The Feature name should be based on the business requirement provided
 - If the requirement mentions "ProQuest Orders", the Feature should be about "ProQuest Orders"
 - If the requirement mentions "Salesforce", the scenarios should involve "Salesforce"
-- Use the EXACT terminology from the requirement in your test scenarios`
+- Use the EXACT terminology from the requirement in your test scenarios
+- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis`
     }
   ];
 
@@ -286,9 +387,18 @@ Additional context: ${context}`
 }
 
 // Extract business requirements and acceptance criteria from documents
-async function extractBusinessRequirements(content, context = '') {
+async function extractBusinessRequirements(content, context = '', enableLogging = true) {
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
+  }
+
+  // Generate unique request ID for tracking
+  const requestId = Math.random().toString(36).substring(2, 15);
+  
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Starting requirements extraction...`);
+    console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+    console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
   }
   
   // Check if content is sufficient
@@ -318,6 +428,12 @@ async function extractBusinessRequirements(content, context = '') {
     
   }
 
+  // Analyze workflow content for complexity calculation
+  const workflowAnalysis = analyzeWorkflowContent(processedContent);
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+  }
+
   // Clean up the URL to prevent duplication
   let baseUrl = OPENAI_URL;
   if (baseUrl.endsWith('/')) {
@@ -336,7 +452,7 @@ async function extractBusinessRequirements(content, context = '') {
 
 Extract business requirements and create a markdown table with these columns:
 
-| Requirement ID | Business Requirement | Acceptance Criteria |
+| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
 
 CRITICAL REQUIREMENTS:
 - EVERY business requirement MUST have a corresponding acceptance criteria
@@ -345,6 +461,24 @@ CRITICAL REQUIREMENTS:
 - Acceptance criteria should be specific, measurable, and testable
 - Use Given-When-Then format for acceptance criteria where applicable
 
+WORKFLOW ANALYSIS AND COMPLEXITY CALCULATION:
+- CRITICAL: Analyze EACH requirement individually for its specific complexity
+- NEVER apply the same complexity to all requirements
+- NEVER use global document complexity for individual requirements
+- For each requirement, calculate the cyclomatic complexity using this formula:
+  CC = Decision Points - Activities + 2
+- Decision points include: exclusive gateways, parallel gateways, inclusive gateways, conditional flows
+- Activities include: tasks, user tasks, service tasks, subprocesses
+- Events include: start events, end events, intermediate events
+- If a requirement involves workflows or decision logic, provide detailed complexity analysis
+- Format complexity as: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- For simple requirements without workflows, use: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- EXAMPLES of different complexities:
+  * Simple login: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+  * Form validation: "CC: 3, Decision Points: 2, Activities: 2, Paths: 3"
+  * Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
+- IMPORTANT: Each requirement MUST have DIFFERENT complexity based on its specific content
+
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - When analyzing diagram content, focus on business processes, systems, actors, and flows
 - If the diagram is a flowchart, extract the requirements from the flowchart
@@ -352,6 +486,7 @@ SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - Convert visual elements into functional requirements
 - Identify data flows, system integrations, and user interactions
 - Look for business rules, decision points, and process steps
+- Count decision points (gateways) and activities for complexity calculation
 
 Ensure that:
 - Requirements are written in clear, concise, and testable language
@@ -359,7 +494,8 @@ Ensure that:
 - Group related requirements logically if needed
 - Start directly with the table, no explanations
 - For diagram content, create requirements that reflect the business processes shown
-- EVERY business requirement MUST have acceptance criteria - this is mandatory`
+- EVERY business requirement MUST have acceptance criteria - this is mandatory
+- EVERY requirement MUST include complexity analysis in the Complexity column`
     },
     {
       role: 'user',
@@ -368,6 +504,7 @@ Ensure that:
 Requirement ID
 Business Requirement (What the system should do)
 Acceptance Criteria (How we know the requirement is met)
+Complexity (Cyclomatic complexity analysis)
 
 CRITICAL REQUIREMENTS:
 - EVERY business requirement MUST have a corresponding acceptance criteria
@@ -376,17 +513,40 @@ CRITICAL REQUIREMENTS:
 - Acceptance criteria should be specific, measurable, and testable
 - Use Given-When-Then format for acceptance criteria where applicable
 
+WORKFLOW ANALYSIS:
+- Analyze EACH requirement individually for its specific complexity
+- Do NOT apply the same complexity to all requirements
+- Calculate cyclomatic complexity for each requirement using: CC = Decision Points - Activities + 2
+- For workflow requirements, provide detailed complexity: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- For simple requirements: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- IMPORTANT: Each requirement should have DIFFERENT complexity based on its specific content
+
 Ensure that:
 - Requirements are written in clear, concise, and testable language
 - Acceptance criteria follow the Given-When-Then format where applicable
 - Group related requirements logically if needed
 - EVERY business requirement MUST have acceptance criteria - this is mandatory
+- EVERY requirement MUST include complexity analysis in the Complexity column
 
 Document to analyze:
 
 ${processedContent}
 
-Additional context: ${context}`
+Additional context: ${context}
+
+WORKFLOW ANALYSIS CONTEXT:
+The document has been analyzed for workflow elements:
+- Decision Points: ${workflowAnalysis.decisionPoints}
+- Activities: ${workflowAnalysis.activities}
+- Events: ${workflowAnalysis.events}
+- Overall Complexity Level: ${workflowAnalysis.complexityLevel}
+- Workflow Detected: ${workflowAnalysis.workflowDetected ? 'Yes' : 'No'}
+
+IMPORTANT: Do NOT use these global numbers for individual requirements!
+- Each requirement must be analyzed INDIVIDUALLY for its specific complexity
+- A simple login requirement should have CC: 1, Decision Points: 0, Activities: 1, Paths: 1
+- A complex workflow requirement might have CC: 5, Decision Points: 3, Activities: 2, Paths: 5
+- The global document analysis is for context only - analyze each requirement separately`
     }
   ];
 
@@ -439,14 +599,34 @@ Additional context: ${context}`
     // Remove any markdown code blocks if present
     extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
 
+    // Post-process to enhance complexity calculations if needed
+    if (workflowAnalysis.workflowDetected) {
+      extractedRequirements = enhanceComplexityCalculations(extractedRequirements, workflowAnalysis);
+    }
+
+    if (enableLogging) {
+      console.log(`🔍 [${requestId}] Successfully extracted requirements`);
+    }
+    
     return {
       success: true,
       content: extractedRequirements,
-      message: 'Successfully extracted business requirements and acceptance criteria'
+      message: 'Successfully extracted business requirements and acceptance criteria',
+      metadata: {
+        workflowAnalysis: workflowAnalysis,
+        complexityLevel: workflowAnalysis.complexityLevel,
+        decisionPoints: workflowAnalysis.decisionPoints,
+        activities: workflowAnalysis.activities,
+        requestId: requestId
+      }
     };
 
   } catch (error) {
-    console.error('Error extracting business requirements:', error);
+    if (enableLogging) {
+      console.error(`🔍 [${requestId}] Error extracting business requirements:`, error);
+    } else {
+      console.error('Error extracting business requirements:', error);
+    }
     
     let errorMessage = 'Failed to extract business requirements';
     let suggestion = 'Please try again';

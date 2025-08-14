@@ -1,307 +1,378 @@
-# KlassiJS AI - Intelligent Test Case Generator
+# 🚀 AI Test Automation Platform
 
-A comprehensive AI-powered test automation platform that extracts business requirements and generates high-quality Cucumber test cases using Azure OpenAI. Built with React, Node.js, and modern web technologies.
+A comprehensive, AI-powered test automation platform that integrates with Jira, Zephyr Scale, and supports both document uploads and workflow analysis. Generate comprehensive test cases with automatic cyclomatic complexity calculation and path coverage analysis.
 
-## 🚀 Features
+## ✨ Features
 
-### **Core Functionality**
-- 🤖 **AI-Powered Requirements Extraction**: Automatically extracts business requirements and acceptance criteria from documents
-- 🧪 **Intelligent Test Generation**: Creates comprehensive Cucumber test cases in Gherkin syntax
-- 📋 **Structured Requirements Table**: Displays extracted requirements in a professional Word-like table format
-- 🔄 **Test Refinement**: Improve generated tests with AI-powered refinement
-- 📁 **Multi-Format Document Support**: PDF, DOCX, TXT, MD, RTF, ODT, images, Excel, PowerPoint, and Visio files
+### 🔍 **Smart Requirements Extraction**
+- **Document Analysis**: Upload Word, PDF, or text documents for automatic requirements extraction
+- **AI-Powered Processing**: Uses Azure OpenAI to intelligently parse business requirements
+- **Workflow Detection**: Automatically identifies workflows, decision points, and business processes
+- **Complexity Calculation**: Calculates cyclomatic complexity for each requirement
 
-### **Integrations**
-- 🔗 **Jira Integration**: Import Epics, Stories, Tasks, and Bugs directly from Jira projects
-- 📊 **Zephyr Scale Integration**: Push generated test cases directly to Zephyr Scale with hierarchical folder navigation
-- 💾 **Export Options**: Download requirements as Word documents and test cases as .feature files
+### 🧠 **Intelligent Test Generation**
+- **Path-Based Coverage**: Generates test scenarios that cover every identified execution path
+- **Gherkin Syntax**: Creates Cucumber test cases in proper Given/When/Then format
+- **Comprehensive Testing**: Includes positive, negative, and edge case scenarios
+- **Workflow Testing**: Specialized test generation for business process workflows
 
-### **User Experience**
-- 🎨 **Modern UI**: Beautiful, responsive interface with consistent button styling
-- 🔍 **Smart Search**: Filter dropdowns for projects and folders
-- 📂 **Hierarchical Navigation**: Tree-view folder navigation for Zephyr Scale
-- ⚡ **Real-time Feedback**: Loading states, progress indicators, and status messages
-- 📱 **Responsive Design**: Works seamlessly on desktop and mobile devices
+### 🔗 **Enterprise Integration**
+- **Jira Integration**: Import requirements directly from Jira tickets
+- **Zephyr Scale**: Push generated test cases to Zephyr Scale with full traceability
+- **Folder Management**: Organize test cases in Zephyr Scale folders
+- **Jira Traceability**: Automatic linking of test cases to Jira tickets
 
-## 🛠️ Tech Stack
+### 📊 **Advanced Analytics**
+- **Cyclomatic Complexity**: Automatic calculation of code/workflow complexity
+- **Path Coverage Analysis**: Ensures complete test coverage of all execution paths
+- **Decision Point Mapping**: Identifies and tests all decision branches
+- **Quality Metrics**: Provides coverage percentages and adequacy scores
 
-### **Frontend**
-- **React 18** with modern hooks and functional components
-- **Axios** for API communication
-- **Lucide React** for beautiful icons
-- **Modern CSS** with gradients, animations, and responsive design
+## 🏗️ Architecture
 
-### **Backend**
-- **Node.js** with Express framework
-- **Azure OpenAI** integration for AI-powered features
-- **Multer** for file upload handling
-- **Security**: Helmet, CORS, rate limiting
-- **File Processing**: Support for multiple document formats
-
-### **Package Management**
-- **pnpm** for fast, efficient package management
-- **Monorepo** structure with workspaces
-
-## 📋 Prerequisites
-
-- Node.js (v16 or higher)
-- pnpm (recommended) or npm
-- Azure OpenAI API access
-- Jira credentials (optional, for Jira integration)
-- Zephyr Scale credentials (optional, for Zephyr integration)
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Frontend      │    │     Backend      │    │   External      │
+│   (React)       │◄──►│   (Node.js)      │◄──►│   Services      │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+│                        │                        │
+├─ Test Generator        ├─ OpenAI Service        ├─ Azure OpenAI
+├─ Requirements Table    ├─ Jira Service          ├─ Jira Cloud
+├─ Zephyr Integration   ├─ Zephyr Service        ├─ Zephyr Scale
+└─ Workflow Analysis    └─ Workflow Analyzer     └─ File Uploads
+```
 
 ## 🚀 Quick Start
 
-### 1. Install pnpm
-```bash
-npm install -g pnpm
-```
+### Prerequisites
+- Node.js 16+ 
+- pnpm
+- Azure OpenAI API credentials
+- Jira Cloud instance (optional)
+- Zephyr Scale instance (optional)
 
-### 2. Clone and Install
-```bash
-git clone <repository-url>
-cd klassijs-AI
-pnpm run install-all
-```
+### Installation
 
-### 3. Configure Environment
-```bash
-cp env.example .env
-```
+1. **Clone the repository**
+   ```bash
+   git clone <your-repo-url>
+   cd klassijs-AI
+   ```
 
-Edit `.env` with your credentials:
+2. **Install dependencies**
+   ```bash
+   pnpm install
+   ```
 
-```env
-# Azure OpenAI Configuration
-AZURE_OPENAI_API_KEY=your_azure_openai_api_key_here
-AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
-AZURE_OPENAI_MODEL=gpt-4
+3. **Set up environment variables**
+   ```bash
+   cp env.example .env
+   ```
+   
+   Configure your `.env` file:
+   ```env
+   # Azure OpenAI
+   OPENAI_URL=https://your-resource.openai.azure.com
+   OPENAI_DEVELOPMENT_ID=your-deployment-id
+   OPENAI_API_VERSION=2024-02-15-preview
+   OPENAI_API_KEY=your-api-key
+   
+   # Jira (optional)
+   JIRA_BASE_URL=https://your-domain.atlassian.net
+   JIRA_EMAIL=your-email@domain.com
+   JIRA_API_TOKEN=your-api-token
+   
+   # Zephyr Scale (optional)
+   ZEPHYR_BASE_URL=https://your-instance.zephyrscale.io
+   ZEPHYR_API_TOKEN=your-api-token
+   ZEPHYR_PROJECT_KEY=your-project-key
+   ```
 
-# Server Configuration
-PORT=5000
-NODE_ENV=development
-FRONTEND_URL=http://localhost:3000
-
-# Jira Integration (Optional)
-JIRA_BASE_URL=https://your-domain.atlassian.net
-JIRA_EMAIL=your-email@domain.com
-JIRA_API_TOKEN=your-jira-api-token
-
-# Zephyr Scale Integration (Optional)
-ZEPHYR_BASE_URL=https://your-domain.zephyrscale.io
-ZEPHYR_API_TOKEN=your-zephyr-api-token
-ZEPHYR_PROJECT_KEY=your-project-key
-```
-
-### 4. Start the Application
-```bash
-# Development mode (both frontend and backend)
-pnpm run dev
-
-# Or start individually
-pnpm run server    # Backend only
-pnpm run client    # Frontend only
-```
-
-**Access the application:**
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:5000
+4. **Start the application**
+   ```bash
+   # Start backend
+   cd backend
+   pnpm start
+   
+   # Start frontend (in new terminal)
+   cd frontend
+   pnpm start
+   ```
 
 ## 📖 Usage Guide
 
-### **1. Document Upload & Requirements Extraction**
+### 1. **Requirements Extraction**
 
-1. **Upload Documents**: Drag and drop or select files (PDF, DOCX, TXT, etc.)
-2. **Automatic Analysis**: The AI automatically extracts business requirements
-3. **View Results**: Requirements are displayed in a professional table format
-4. **Export Options**: 
-   - Copy requirements to clipboard
-   - Download as Word document (.docx)
-   - Insert into test generator
+#### **From Documents**
+1. Navigate to the "Upload Document" section
+2. Upload your Word, PDF, or text document
+3. The system automatically:
+   - Extracts business requirements
+   - Calculates cyclomatic complexity
+   - Identifies workflows and decision points
+4. Review and edit the extracted requirements table
+5. Click "Insert Requirements" to add to the test generator
 
-### **2. Test Case Generation**
+#### **From Jira**
+1. Click "Import from Jira"
+2. Connect to your Jira instance
+3. Select projects and issue types
+4. Choose specific tickets to import
+5. The system processes tickets through AI requirements extraction
+6. Requirements are automatically organized with Jira ticket prefixes
 
-1. **Enter Content**: Use the main text area for requirements or user stories
-2. **Add Context**: Optionally add domain-specific information in the Additional Context section
-3. **Generate Tests**: Click "Generate Tests" to create Cucumber test cases
-4. **View Results**: Tests are displayed in organized feature tabs
-5. **Refine Tests**: Use the refinement feature to improve generated tests
+### 2. **Test Generation**
 
-### **3. Jira Integration**
+1. **Insert Requirements**: Use the extracted requirements or manually enter them
+2. **Add Context**: Provide additional domain-specific information
+3. **Generate Tests**: Click "Generate Test Cases"
+4. **Review Results**: The system generates:
+   - Feature files with proper Gherkin syntax
+   - Test scenarios for every execution path
+   - Positive, negative, and edge case scenarios
+   - Path coverage analysis
 
-1. **Connect to Jira**: Click "Import from Jira" and enter your credentials
-2. **Select Project**: Choose from your Jira projects
-3. **Select Issues**: Pick Epics, Stories, Tasks, or Bugs to import
-4. **Generate Tests**: Convert Jira issues to Cucumber test cases
+### 3. **Zephyr Scale Integration**
 
-### **4. Zephyr Scale Integration**
+1. **Configure Zephyr**: Set project key, folder, and test case settings
+2. **Push Tests**: Send generated test cases to Zephyr Scale
+3. **Traceability**: Automatic linking to Jira tickets (if imported from Jira)
+4. **Organization**: Test cases are properly organized in specified folders
 
-1. **Configure Zephyr**: Set up your Zephyr Scale credentials
-2. **Select Project**: Choose your Zephyr project
-3. **Navigate Folders**: Use the hierarchical folder navigation
-4. **Push Tests**: Send generated test cases directly to Zephyr Scale
+## 🔧 Configuration
 
-## 📊 Example Outputs
-
-### **Requirements Extraction**
+### **Azure OpenAI Setup**
+```bash
+# Get your Azure OpenAI credentials from Azure Portal
+# Configure in .env file
+OPENAI_URL=https://your-resource.openai.azure.com
+OPENAI_DEVELOPMENT_ID=your-deployment-id
+OPENAI_API_VERSION=2024-02-15-preview
+OPENAI_API_KEY=your-api-key
 ```
-| Requirement ID | Business Requirement | Acceptance Criteria |
-|----------------|---------------------|-------------------|
-| REQ-001 | User login functionality | Given the user is on the login page When the user enters valid credentials Then the user should be redirected to the dashboard |
-| REQ-002 | Password reset capability | Given the user has forgotten their password When the user requests a reset Then the system shall send a secure reset link |
-```
-
-### **Generated Test Cases**
-```gherkin
-Feature: User Authentication
-  As a user
-  I want to log in to the system
-  So that I can access my account
-
-  Scenario: Successful login with valid credentials
-    Given the user is on the login page
-    When the user enters valid username and password
-    And the user clicks the login button
-    Then the user should be redirected to the dashboard
-    And the user should see a welcome message
-
-  Scenario: Failed login with invalid credentials
-    Given the user is on the login page
-    When the user enters invalid username and password
-    And the user clicks the login button
-    Then the system should display an error message
-    And the user should remain on the login page
-```
-
-## 🔧 API Endpoints
-
-### **Core Endpoints**
-- `GET /api/health` - Health check
-- `POST /api/analyze-document` - Document analysis
-- `POST /api/extract-requirements` - Requirements extraction
-- `POST /api/generate-tests` - Test generation
-- `POST /api/refine-tests` - Test refinement
-- `POST /api/generate-word-doc` - Word document export
 
 ### **Jira Integration**
-- `POST /api/jira/test-connection` - Test Jira connection
-- `POST /api/jira/fetch-issues` - Fetch Jira issues
-- `POST /api/jira/import-issues` - Import Jira issues
+```bash
+# Generate API token from Atlassian
+# https://id.atlassian.com/manage-profile/security/api-tokens
+JIRA_BASE_URL=https://your-domain.atlassian.net
+JIRA_EMAIL=your-email@domain.com
+JIRA_API_TOKEN=your-api-token
+```
 
-### **Zephyr Scale Integration**
-- `GET /api/zephyr-projects` - Fetch Zephyr projects
-- `GET /api/zephyr-folders/:projectKey` - Fetch all folders
-- `GET /api/zephyr-main-folders/:projectKey` - Fetch main folders
-- `GET /api/zephyr-subfolders/:projectKey/:parentFolderId` - Fetch subfolders
-- `GET /api/zephyr-search-folders/:projectKey` - Search folders
-- `POST /api/zephyr-push` - Push test cases to Zephyr
+### **Zephyr Scale Setup**
+```bash
+# Get API token from Zephyr Scale
+# Configure project and folder structure
+ZEPHYR_BASE_URL=https://your-instance.zephyrscale.io
+ZEPHYR_API_TOKEN=your-api-token
+ZEPHYR_PROJECT_KEY=your-project-key
+```
+
+## 📊 Understanding Complexity Analysis
+
+### **Cyclomatic Complexity Formula**
+```
+CC = Decision Points - Activities + 2
+```
+
+### **Complexity Levels**
+- **CC 1-3**: Simple (basic functionality)
+- **CC 4-10**: Moderate (some decision logic)
+- **CC 11-20**: Complex (multiple decision paths)
+- **CC 21+**: Very Complex (consider refactoring)
+
+### **Path Coverage**
+- **Decision Points**: Gateways, conditional flows, branches
+- **Activities**: Tasks, user tasks, service tasks
+- **Paths**: Estimated execution paths through the workflow
+- **Coverage**: Percentage of paths covered by test scenarios
+
+## 🧪 Testing
+
+### **Run Backend Tests**
+```bash
+cd backend
+node test-workflow-analyzer.js
+```
+
+### **Test Workflow Analysis**
+```bash
+cd backend
+node test-workflow-analyzer.js
+```
+
+Expected output:
+```
+🔍 Testing Workflow Analyzer...
+
+📊 Basic Workflow Analysis:
+{
+  "decisionPoints": 17,
+  "activities": 29,
+  "complexityLevel": "moderate"
+}
+
+🧠 Smart Categorization Examples:
+Login requirement: CC: 1, Decision Points: 0, Activities: 1, Paths: 1
+Workflow process: CC: 6, Decision Points: 9, Activities: 15, Paths: 6
+```
 
 ## 📁 Project Structure
 
 ```
 klassijs-AI/
-├── frontend/                    # React frontend
-│   ├── src/
-│   │   ├── components/          # React components
-│   │   │   ├── Header.js       # Application header
-│   │   │   ├── TestGenerator.js # Main application component
-│   │   │   └── TestOutput.js   # Test display component
-│   │   ├── App.js              # Main app component
-│   │   └── App.css             # Global styles
-│   └── package.json
-├── backend/                     # Node.js backend
-│   ├── index.js                # Express server
-│   ├── routes/
-│   │   └── api.js              # API routes
-│   ├── services/
-│   │   ├── openaiService.js    # Azure OpenAI integration
+├── backend/                 # Backend services
+│   ├── services/           # Core business logic
+│   │   ├── openaiService.js    # AI test generation
 │   │   ├── jiraService.js      # Jira integration
 │   │   └── zephyrService.js    # Zephyr Scale integration
-│   ├── utils/
-│   │   └── fileProcessor.js    # File processing utilities
-│   └── package.json
-├── package.json                 # Root package.json
-├── pnpm-workspace.yaml         # pnpm workspace definition
-├── env.example                 # Environment variables template
-└── README.md                   # This file
+│   ├── utils/              # Utility functions
+│   │   ├── workflowAnalyzer.js # Complexity analysis
+│   │   └── docxGenerator.js    # Document generation
+│   └── routes/             # API endpoints
+│       └── api.js          # Main API routes
+├── frontend/               # React frontend
+│   ├── src/
+│   │   ├── components/     # React components
+│   │   │   ├── TestGenerator.js    # Main test generation UI
+│   │   │   ├── Header.js           # Application header
+│   │   │   └── TestOutput.js       # Test case display
+│   │   └── App.js          # Main application
+│   └── public/             # Static assets
+└── docs/                   # Documentation
 ```
 
-## 🔒 Security Features
+## 🔍 API Endpoints
 
-- **Rate Limiting**: Prevents abuse with configurable limits
-- **CORS**: Secure cross-origin request handling
-- **Helmet**: Security headers for Express
-- **Input Validation**: Comprehensive server-side validation
-- **Error Handling**: Robust error handling and logging
-- **Environment Variables**: Secure credential management
+### **Requirements Extraction**
+```http
+POST /api/extract-requirements
+Content-Type: application/json
 
-## 🛠️ Development
-
-### **Adding New Features**
-
-1. **Backend**: Add new endpoints in `backend/routes/api.js`
-2. **Frontend**: Create new components in `frontend/src/components/`
-3. **Styling**: Update `frontend/src/App.css` for new styles
-
-### **Testing**
-```bash
-# Frontend tests
-pnpm run test
-
-# Backend tests (when implemented)
-pnpm --filter @klassijs-ai/backend run test
+{
+  "content": "document content",
+  "context": "additional context"
+}
 ```
 
-### **Building**
-```bash
-# Build frontend for production
-pnpm run build
+### **Test Generation**
+```http
+POST /api/generate-tests
+Content-Type: application/json
 
-# Build all packages
-pnpm run build:all
+{
+  "content": "requirements content",
+  "context": "domain context"
+}
 ```
 
-## 🔧 Troubleshooting
+### **Jira Integration**
+```http
+POST /api/jira/test-connection
+POST /api/jira/fetch-issues
+POST /api/jira/import-issues
+```
+
+### **Zephyr Scale**
+```http
+POST /api/zephyr/push
+GET /api/zephyr/projects
+GET /api/zephyr/folders
+```
+
+## 🚨 Troubleshooting
 
 ### **Common Issues**
 
-1. **Azure OpenAI Connection Error**
-   - Verify API key and endpoint in `.env`
-   - Check Azure OpenAI resource status
-
-2. **Port Conflicts**
-   - Change PORT in `.env` if 5000 is in use
-   - Frontend runs on port 3000 by default
-
-3. **CORS Issues**
-   - Ensure backend is running on correct port
-   - Check FRONTEND_URL in `.env`
-
-4. **File Upload Issues**
-   - Check file size limits (5MB default)
-   - Verify supported file formats
-
-5. **Integration Issues**
-   - Verify Jira/Zephyr credentials
-   - Check network connectivity
-
-### **Debug Mode**
+#### **Azure OpenAI Not Working**
 ```bash
-# Backend with debug logging
-DEBUG=* pnpm run server
+# Check environment variables
+echo $OPENAI_URL
+echo $OPENAI_API_KEY
 
-# Frontend with React DevTools
-pnpm run client
+# Verify API endpoint
+curl -H "api-key: $OPENAI_API_KEY" \
+     "$OPENAI_URL/openai/deployments/$OPENAI_DEVELOPMENT_ID/chat/completions?api-version=$OPENAI_API_VERSION"
+```
+
+#### **Jira Connection Failed**
+```bash
+# Verify credentials
+echo $JIRA_BASE_URL
+echo $JIRA_EMAIL
+echo $JIRA_API_TOKEN
+
+# Test connection manually
+curl -u "$JIRA_EMAIL:$JIRA_API_TOKEN" \
+     "$JIRA_BASE_URL/rest/api/3/myself"
+```
+
+#### **Zephyr Scale Issues**
+```bash
+# Check configuration
+echo $ZEPHYR_BASE_URL
+echo $ZEPHYR_API_TOKEN
+
+# Test API access
+curl -H "Authorization: Bearer $ZEPHYR_API_TOKEN" \
+     "$ZEPHYR_BASE_URL/projects"
+```
+
+### **Logs and Debugging**
+```bash
+# Backend logs
+cd backend
+pnpm start
+
+# Frontend logs
+cd frontend
+pnpm start
 ```
 
 ## 🤝 Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests if applicable
-5. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
-## 📄 License
+### **Development Setup**
+```bash
+# Install development dependencies
+pnpm install --dev
 
-MIT License - see LICENSE file for details -- © 2025 [Larry Goddard](https://www.linkedin.com/in/larryg)
+# Run linting
+pnpm lint
+
+# Run tests
+pnpm test
+
+# Build for production
+pnpm build
+```
+
+## 📝 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+## 🙏 Acknowledgments
+
+- **Azure OpenAI** for AI-powered test generation
+- **Jira Cloud** for requirements management integration
+- **Zephyr Scale** for test case management
+- **React** for the frontend framework
+- **Node.js** for the backend runtime
+
+## 📞 Support
+
+- **Issues**: [GitHub Issues](https://github.com/your-repo/issues)
+- **Documentation**: [Wiki](https://github.com/your-repo/wiki)
+- **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)
+
+---
+
+**Built with ❤️ for Quality Assurance Teams**
+
+*Transform your testing workflow with AI-powered automation and intelligent complexity analysis.*
