@@ -1,6 +1,6 @@
-# 🚀 AI Test Automation Platform
+# 🚀 KlassiJS AI - AI-Powered Test Case Generator
 
-A comprehensive, AI-powered test automation platform that integrates with Jira, Zephyr Scale, and supports both document uploads and workflow analysis. Generate comprehensive test cases with automatic cyclomatic complexity calculation and path coverage analysis.
+A modern, AI-powered test automation platform that integrates with Jira, Zephyr Scale, and supports both document uploads and workflow analysis. Generate comprehensive test cases with automatic cyclomatic complexity calculation and path coverage analysis.
 
 ## ✨ Features
 
@@ -28,6 +28,12 @@ A comprehensive, AI-powered test automation platform that integrates with Jira, 
 - **Decision Point Mapping**: Identifies and tests all decision branches
 - **Quality Metrics**: Provides coverage percentages and adequacy scores
 
+### 🎨 **Modern UI/UX**
+- **Responsive Design**: Clean, modern interface that works on all devices
+- **Beautiful Header**: Custom teal gradient header with integrated chomp icons
+- **Intuitive Layout**: User-friendly interface for seamless test generation workflow
+- **Professional Appearance**: Polished design suitable for enterprise use
+
 ## 🏗️ Architecture
 
 ```
@@ -39,7 +45,8 @@ A comprehensive, AI-powered test automation platform that integrates with Jira, 
 ├─ Test Generator        ├─ OpenAI Service        ├─ Azure OpenAI
 ├─ Requirements Table    ├─ Jira Service          ├─ Jira Cloud
 ├─ Zephyr Integration   ├─ Zephyr Service        ├─ Zephyr Scale
-└─ Workflow Analysis    └─ Workflow Analyzer     └─ File Uploads
+├─ Header Component     ├─ Workflow Analyzer     ├─ File Uploads
+└─ Modern UI/UX        └─ File Processing        └─ Document Parsing
 ```
 
 ## 🚀 Quick Start
@@ -173,6 +180,15 @@ ZEPHYR_PROJECT_KEY=your-project-key
 
 ### **Cyclomatic Complexity Formula**
 ```
+CC = E - N + 2P
+```
+Where:
+- **E** = Edges (transitions/flows)
+- **N** = Nodes (decision points + activities + events)
+- **P** = Components (workflow components, typically 1)
+
+### **Alternative Formula for Simple Requirements**
+```
 CC = Decision Points - Activities + 2
 ```
 
@@ -185,6 +201,8 @@ CC = Decision Points - Activities + 2
 ### **Path Coverage**
 - **Decision Points**: Gateways, conditional flows, branches
 - **Activities**: Tasks, user tasks, service tasks
+- **Events**: Start, end, and intermediate events
+- **Edges**: Transitions and flows between elements
 - **Paths**: Estimated execution paths through the workflow
 - **Coverage**: Percentage of paths covered by test scenarios
 
@@ -229,18 +247,23 @@ klassijs-AI/
 │   │   └── zephyrService.js    # Zephyr Scale integration
 │   ├── utils/              # Utility functions
 │   │   ├── workflowAnalyzer.js # Complexity analysis
-│   │   └── docxGenerator.js    # Document generation
+│   │   ├── docxGenerator.js    # Document generation
+│   │   └── fileProcessor.js    # File processing utilities
 │   └── routes/             # API endpoints
 │       └── api.js          # Main API routes
 ├── frontend/               # React frontend
 │   ├── src/
 │   │   ├── components/     # React components
 │   │   │   ├── TestGenerator.js    # Main test generation UI
-│   │   │   ├── Header.js           # Application header
+│   │   │   ├── Header.js           # Application header with chomp icons
 │   │   │   └── TestOutput.js       # Test case display
-│   │   └── App.js          # Main application
-│   └── public/             # Static assets
-└── docs/                   # Documentation
+│   │   ├── App.js          # Main application
+│   │   └── App.css         # Modern styling with custom header
+│   └── public/             # Static assets including chomp icons
+├── env.example             # Environment configuration template
+├── package.json            # Monorepo configuration
+├── pnpm-workspace.yaml     # pnpm workspace setup
+└── quick-start.sh          # Quick setup script
 ```
 
 ## 🔍 API Endpoints
@@ -330,6 +353,19 @@ cd frontend
 pnpm start
 ```
 
+## 🎨 UI Customization
+
+### **Header Styling**
+The application features a custom teal gradient header with integrated chomp icons:
+- **Color Scheme**: Beautiful teal gradient (`#3a7a7a` to `#4a9a9a`)
+- **Chomp Icons**: Custom-sized icons positioned close to text
+- **Modern Design**: Clean, professional appearance with backdrop blur effects
+
+### **Component Styling**
+- **Responsive Layout**: Works seamlessly across all device sizes
+- **Card-based Design**: Clean, organized interface with subtle shadows
+- **Consistent Typography**: Professional font hierarchy and spacing
+
 ## 🤝 Contributing
 
 1. Fork the repository
@@ -341,13 +377,10 @@ pnpm start
 ### **Development Setup**
 ```bash
 # Install development dependencies
-pnpm install --dev
+pnpm install
 
-# Run linting
+# Run linting (if configured)
 pnpm lint
-
-# Run tests
-pnpm test
 
 # Build for production
 pnpm build
@@ -362,8 +395,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Azure OpenAI** for AI-powered test generation
 - **Jira Cloud** for requirements management integration
 - **Zephyr Scale** for test case management
-- **React** for the frontend framework
-- **Node.js** for the backend runtime
+- **React** for the modern frontend framework
+- **Node.js** for the robust backend runtime
 
 ## 📞 Support
 
@@ -371,5 +404,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [Wiki](https://github.com/your-repo/wiki)
 - **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)
 
+---
 
-*Transform your testing workflow with AI-powered automation and intelligent complexity analysis.*
+*Transform your testing workflow with AI-powered automation, intelligent complexity analysis, and a beautiful modern interface.*

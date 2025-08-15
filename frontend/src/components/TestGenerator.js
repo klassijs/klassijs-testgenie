@@ -1254,13 +1254,23 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
   const formatRequirementsForInsertionWithGeneratedIds = (requirements) => {
     let formattedContent = 'Business Requirements:\n\n';
     
-    // Add header row
+    // Add header row for reference
     formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n';
     formattedContent += '|---|---|---|---|\n';
     
     // Add data rows with generated IDs
     requirements.forEach(req => {
       formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity || 'CC: 1, Paths: 1'} |\n`;
+    });
+    
+    // Add the actual requirement content for test generation
+    formattedContent += '\n\nRequirements for Test Generation:\n\n';
+    requirements.forEach(req => {
+      formattedContent += `Requirement ID: ${req.id}\n`;
+      formattedContent += `Business Requirement: ${req.requirement}\n`;
+      formattedContent += `Acceptance Criteria: ${req.acceptanceCriteria}\n`;
+      formattedContent += `Complexity: ${req.complexity || 'CC: 1, Paths: 1'}\n`;
+      formattedContent += '\n';
     });
     
     return formattedContent.trim();
