@@ -30,11 +30,11 @@ body {
 
 /* Header Styles */
 .header {
-  background: rgba(255, 255, 255, 0.95);
+  background: linear-gradient(135deg, #3a7a7a 0%, #4a9a9a 100%);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
   padding: 1rem 2rem;
-  box-shadow: 0 2px 20px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
 }
 
 .header-content {
@@ -48,16 +48,36 @@ body {
 .logo {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: flex-start;
   font-size: 1.5rem;
   font-weight: 700;
-  color: #2d3748;
+  color: white;
 }
 
 .logo-icon {
-  width: 3rem;
-  height: 3rem;
+  width: 3.5rem;
+  height: auto;
   object-fit: contain;
+  margin-right: 0.5rem;
+}
+
+.chomp-icon {
+  /*width: 45px;*/
+  height: auto;
+  max-height: 70px;
+}
+
+.chomp-icon-left {
+  margin-left: 0.10rem;
+}
+
+.chomp-icon-right {
+  margin-left: 0;
+}
+
+.header-subtitle {
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.9rem;
 }
 
 .header-actions {

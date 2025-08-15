@@ -371,8 +371,5 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - **Documentation**: [Wiki](https://github.com/your-repo/wiki)
 - **Discussions**: [GitHub Discussions](https://github.com/your-repo/discussions)
 
----
-
-**Built with ❤️ for Quality Assurance Teams**
 
 *Transform your testing workflow with AI-powered automation and intelligent complexity analysis.*
