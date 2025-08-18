@@ -17,7 +17,15 @@
       "github": "https://github.com/arthureast"
     }
   ],
-  "private": true,
+  "keywords": [
+    "test-automation",
+    "cucumber",
+    "gherkin",
+    "ai",
+    "openai",
+    "monorepo"
+  ],
+  "license": "MIT",
   "scripts": {
     "dev": "concurrently \"pnpm run server\" \"pnpm run client\"",
     "server": "pnpm --filter @klassijs-ai/backend run dev",
@@ -28,10 +36,7 @@
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
     "test": "pnpm --filter @klassijs-ai/frontend run test"
   },
-  "keywords": ["test-automation", "cucumber", "gherkin", "ai", "openai", "monorepo"],
-  "author": "Test Automation Architect",
-  "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
   }
-} 
+}

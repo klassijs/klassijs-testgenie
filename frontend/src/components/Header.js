@@ -7,12 +7,12 @@ const Header = () => {
       <div className="header-content">
         <div className="logo">
           <img src={logo} alt="KlassiJS Logo" className="logo-icon" />
-          <span>KlassiJS QA CHOMP!!!</span>
-          <img src="/chomp.jpeg" alt="Chomp Icon" style={{ width: '50px', height: '50px', objectFit: 'contain' }} />
+          <span>QA CHOMP!!!</span>
+          <img src="/chompOnData.png" alt="Chomp Icon" className="chomp-icon chomp-icon-left" />
         </div>
-        <div className="flex items-center gap-4">
-          <img src="/chomp.jpeg" alt="Chomp Icon" style={{ width: '50px', height: '50px', objectFit: 'contain' }} />
-          <span style={{ color: '#4a5568', fontSize: '0.9rem' }}>
+        <div className="flex items-center gap-2">
+          <img src="/chompOnDigitalData.png" alt="Chomp Icon" className="chomp-icon chomp-icon-right" />
+          <span className="header-subtitle">
             KlassiJS AI-Powered Test Case Generator
           </span>
         </div>
