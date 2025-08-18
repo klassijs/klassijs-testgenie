@@ -45,7 +45,7 @@ const TestGenerator = () => {
     current: 0,
     total: 0,
     message: '',
-    status: 'idle' // idle, pushing, success, error
+    status: 'idle'
   });
 
   // API base URL - can be configured via environment variable

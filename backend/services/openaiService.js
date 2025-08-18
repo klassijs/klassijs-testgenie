@@ -136,14 +136,14 @@ Additional context: ${context}`
 
     // Clean up any explanations that might have slipped through
     const cleanGeneratedTests = generatedTests
-      .replace(/### Explanation:[\s\S]*?(?=Feature:|$)/gi, '') // Remove explanation sections
-      .replace(/This Gherkin syntax covers[\s\S]*?(?=Feature:|$)/gi, '') // Remove introductory explanations
-      .replace(/Certainly! Below are[\s\S]*?(?=Feature:|$)/gi, '') // Remove "Certainly! Below are..."
-      .replace(/The following Gherkin scenarios[\s\S]*?(?=Feature:|$)/gi, '') // Remove "The following Gherkin scenarios..."
-      .replace(/Here are the Gherkin test cases[\s\S]*?(?=Feature:|$)/gi, '') // Remove "Here are the Gherkin test cases..."
-      .replace(/```gherkin\\n/gi, '') // Remove leading ```gherkin
-      .replace(/```\\n/gi, '') // Remove trailing ```
-      .trim(); // Trim any leading/trailing whitespace
+      .replace(/### Explanation:[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/This Gherkin syntax covers[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/Certainly! Below are[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/The following Gherkin scenarios[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/Here are the Gherkin test cases[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/```gherkin\\n/gi, '')
+      .replace(/```\\n/gi, '')
+      .trim();
 
     return cleanGeneratedTests;
   } catch (error) {
@@ -257,14 +257,14 @@ Additional context: ${context}`
 
     // Clean up any explanations that might have slipped through
     const cleanRefinedTests = refinedTests
-      .replace(/### Explanation:[\s\S]*?(?=Feature:|$)/gi, '') // Remove explanation sections
-      .replace(/This Gherkin syntax covers[\s\S]*?(?=Feature:|$)/gi, '') // Remove introductory explanations
-      .replace(/Certainly! Below are[\s\S]*?(?=Feature:|$)/gi, '') // Remove "Certainly! Below are..."
-      .replace(/The following Gherkin scenarios[\s\S]*?(?=Feature:|$)/gi, '') // Remove "The following Gherkin scenarios..."
-      .replace(/Here are the Gherkin test cases[\s\S]*?(?=Feature:|$)/gi, '') // Remove "Here are the Gherkin test cases..."
-      .replace(/```gherkin\\n/gi, '') // Remove leading ```gherkin
-      .replace(/```\\n/gi, '') // Remove trailing ```
-      .trim(); // Trim any leading/trailing whitespace
+      .replace(/### Explanation:[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/This Gherkin syntax covers[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/Certainly! Below are[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/The following Gherkin scenarios[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/Here are the Gherkin test cases[\s\S]*?(?=Feature:|$)/gi, '')
+      .replace(/```gherkin\\n/gi, '')
+      .replace(/```\\n/gi, '')
+      .trim();
 
     return cleanRefinedTests;
   } catch (error) {

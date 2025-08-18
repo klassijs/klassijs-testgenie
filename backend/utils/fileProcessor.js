@@ -231,7 +231,7 @@ async function extractFileContent(file) {
             if (textMatches) {
               const meaningfulTexts = textMatches
                 .map(text => text.replace(/<\/?t>/g, '').trim())
-                .filter(text => text.length > 2 && !text.match(/^[0-9]+$/)); // Filter out numbers and very short text
+                .filter(text => text.length > 2 && !text.match(/^[0-9]+$/));
               
               if (meaningfulTexts.length > 0) {
                 extractedContent += `\n#### Business Content:\n`;
@@ -440,23 +440,39 @@ async function extractFileContent(file) {
             });
           }
           
-          // Extract shape information
+          // Extract shape information with better text extraction
           const shapeMatches = documentXml.match(/<Shape[^>]*>.*?<\/Shape>/gs);
           if (shapeMatches) {
             extractedContent += `\n\n### Diagram Elements:\n`;
             shapeMatches.forEach(shape => {
-              const shapeText = shape.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-              if (shapeText.length > 10) {
-                extractedContent += `- Shape: ${shapeText}\n`;
+              // Extract text content from shapes more effectively
+              const textMatches = shape.match(/<Text[^>]*>.*?<\/Text>/gs);
+              if (textMatches) {
+                textMatches.forEach(text => {
+                  const cleanText = text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                  if (cleanText.length > 3 && !cleanText.match(/^[0-9\s\-\.]+$/)) {
+                    extractedContent += `- Shape Text: ${cleanText}\n`;
+                  }
+                });
+              }
+              
+              // Extract shape properties that might contain business information
+              const shapeNameMatch = shape.match(/Name="([^"]*)"/);
+              if (shapeNameMatch && shapeNameMatch[1].length > 2) {
+                extractedContent += `- Shape Name: ${shapeNameMatch[1]}\n`;
               }
             });
           }
         }
         
-        // Extract meaningful content from key files only
-        const keyFiles = ['visio/document.xml', 'visio/pages/page1.xml'];
+        // Extract meaningful content from all page files
+        const pageFiles = Object.keys(zipContent.files).filter(file => 
+          file.startsWith('visio/pages/') && file.endsWith('.xml')
+        );
         
-        for (const filePath of keyFiles) {
+        console.log(`Found ${pageFiles.length} page files to process`);
+        
+        for (const filePath of pageFiles) {
           if (zipContent.files[filePath]) {
             try {
               const xmlContent = await zipContent.files[filePath].async('string');
@@ -466,29 +482,57 @@ async function extractFileContent(file) {
               if (textMatches) {
                 const meaningfulTexts = textMatches
                   .map(text => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
-                  .filter(text => text.length > 3 && !text.match(/^[0-9\s]+$/)); // Filter out numbers and whitespace
+                  .filter(text => text.length > 3 && !text.match(/^[0-9\s\-\.]+$/)); // Filter out numbers, whitespace, and single characters
                 
                 if (meaningfulTexts.length > 0) {
-                  extractedContent += `\n\n### Diagram Content:\n`;
+                  extractedContent += `\n\n### Page Content (${filePath}):\n`;
                   meaningfulTexts.forEach(text => {
                     extractedContent += `- ${text}\n`;
                   });
                 }
               }
               
-              // Extract only meaningful connections (business relationships)
+              // Extract shape properties that might contain business process information
+              const shapeMatches = xmlContent.match(/<Shape[^>]*>.*?<\/Shape>/gs);
+              if (shapeMatches) {
+                extractedContent += `\n\n### Business Process Elements:\n`;
+                shapeMatches.forEach(shape => {
+                  // Extract shape type and properties
+                  const shapeTypeMatch = shape.match(/Type="([^"]*)"/);
+                  const shapeNameMatch = shape.match(/Name="([^"]*)"/);
+                  const shapeTextMatch = shape.match(/<Text[^>]*>.*?<\/Text>/gs);
+                  
+                  if (shapeTypeMatch || shapeNameMatch || shapeTextMatch) {
+                    let shapeInfo = '';
+                    if (shapeTypeMatch) shapeInfo += `Type: ${shapeTypeMatch[1]}, `;
+                    if (shapeNameMatch) shapeInfo += `Name: ${shapeNameMatch[1]}, `;
+                    if (shapeTextMatch) {
+                      const textContent = shapeTextMatch.map(t => t.replace(/<[^>]*>/g, ' ').trim()).join(' | ');
+                      shapeInfo += `Text: ${textContent}`;
+                    }
+                    extractedContent += `- ${shapeInfo}\n`;
+                  }
+                });
+              }
+              
+              // Extract connections and relationships
               const connectionMatches = xmlContent.match(/<Connect[^>]*>/g);
               if (connectionMatches) {
-                const meaningfulConnections = connectionMatches
-                  .map(connection => connection.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
-                  .filter(connection => connection.length > 10); // Only longer, more meaningful connections
-                
-                if (meaningfulConnections.length > 0) {
-                  extractedContent += `\n\n### Business Relationships:\n`;
-                  meaningfulConnections.forEach(connection => {
-                    extractedContent += `- ${connection}\n`;
-                  });
-                }
+                extractedContent += `\n\n### Process Flow Connections:\n`;
+                connectionMatches.forEach(connection => {
+                  // Extract connection details
+                  const fromMatch = connection.match(/FromSheet="([^"]*)"/);
+                  const toMatch = connection.match(/ToSheet="([^"]*)"/);
+                  const fromPartMatch = connection.match(/FromPart="([^"]*)"/);
+                  const toPartMatch = connection.match(/ToPart="([^"]*)"/);
+                  
+                  if (fromMatch && toMatch) {
+                    extractedContent += `- Connection: ${fromMatch[1]} → ${toMatch[1]}`;
+                    if (fromPartMatch) extractedContent += ` (from ${fromPartMatch[1]})`;
+                    if (toPartMatch) extractedContent += ` (to ${toPartMatch[1]})`;
+                    extractedContent += `\n`;
+                  }
+                });
               }
               
             } catch (error) {
@@ -507,6 +551,25 @@ async function extractFileContent(file) {
           embeddedFiles.forEach(embeddedFile => {
             extractedContent += `- ${embeddedFile}\n`;
           });
+        }
+        
+        // Try to extract business process information from document properties
+        if (zipContent.files['docProps/core.xml']) {
+          try {
+            const coreXml = await zipContent.files['docProps/core.xml'].async('string');
+            const titleMatch = coreXml.match(/<dc:title>(.*?)<\/dc:title>/);
+            const subjectMatch = coreXml.match(/<dc:subject>(.*?)<\/dc:subject>/);
+            const creatorMatch = coreXml.match(/<dc:creator>(.*?)<\/dc:creator>/);
+            
+            if (titleMatch || subjectMatch || creatorMatch) {
+              extractedContent += `\n\n### Document Properties:\n`;
+              if (titleMatch) extractedContent += `- Title: ${titleMatch[1]}\n`;
+              if (subjectMatch) extractedContent += `- Subject: ${subjectMatch[1]}\n`;
+              if (creatorMatch) extractedContent += `- Creator: ${creatorMatch[1]}\n`;
+            }
+          } catch (error) {
+            console.log(`Could not extract document properties: ${error.message}`);
+          }
         }
         
         if (extractedContent.trim()) {
@@ -584,4 +647,4 @@ module.exports = {
   isExcelFile,
   isPowerPointFile,
   isVisioFile
-}; 
+};

@@ -5,7 +5,7 @@ const fs = require('fs');
 const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, isAzureOpenAIConfigured } = require('../services/openaiService');
 const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, isZephyrConfigured } = require('../services/zephyrService');
-const axios = require('axios'); // Added axios for the debug endpoint
+const axios = require('axios');
 
 const router = express.Router();
 
@@ -14,7 +14,7 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 10 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const mimeType = file.mimetype;
@@ -99,7 +99,7 @@ router.get('/loading-images', (req, res) => {
       };
     });
     
-    console.log(`Found ${imageFiles.length} loading images:`, imageFiles);
+    // console.log(`Found ${imageFiles.length} loading images:`, imageFiles);
     
     res.json({
       success: true,
@@ -108,7 +108,7 @@ router.get('/loading-images', (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error scanning loading images:', error);
+    // console.error('Error scanning loading images:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to scan loading images',

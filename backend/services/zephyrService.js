@@ -1,6 +1,5 @@
 const axios = require('axios');
 
-// Zephyr Scale Configuration
 const ZEPHYR_BASE_URL = process.env.ZEPHYR_BASE_URL;
 const ZEPHYR_API_TOKEN = process.env.ZEPHYR_API_TOKEN;
 const ZEPHYR_PROJECT_KEY = process.env.ZEPHYR_PROJECT_KEY;
@@ -14,8 +13,6 @@ async function getProjects() {
   }
 
   try {
-    // For SmartBear Zephyr Scale, we need to use the correct API endpoints
-    // The base URL should be the SmartBear Zephyr Scale API
     const zephyrBaseUrl = ZEPHYR_BASE_URL;
     
     console.log(`Fetching projects from SmartBear Zephyr Scale API: ${zephyrBaseUrl}/projects`);
@@ -25,7 +22,7 @@ async function getProjects() {
         'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
         'Content-Type': 'application/json'
       },
-      timeout: 10000 // 10 second timeout
+      timeout: 10000
     });
 
     if (response.data && Array.isArray(response.data)) {
@@ -60,7 +57,7 @@ async function getTestFolders(projectKey) {
     const zephyrBaseUrl = ZEPHYR_BASE_URL;
     const allFolders = [];
     let startAt = 0;
-    const maxResults = 100; // Try to get more folders per request
+    const maxResults = 100;
     
     console.log(`Fetching ALL folders for project ${projectKey} from SmartBear Zephyr Scale API (with pagination)`);
     
@@ -136,7 +133,6 @@ async function getTestFolders(projectKey) {
 
   } catch (error) {
     console.error(`Error fetching folders for project ${projectKey}:`, error);
-    // Return empty array instead of throwing error for folders
     return [];
   }
 }
@@ -307,7 +303,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       name: testCaseName && testCaseName.trim() ? `${testCaseName.trim()} - ${scenario.name}` : `${featureName} - ${scenario.name}`,
       projectKey: targetProjectKey,
       status: status,
-      priority: 'Medium', // Default priority
+      priority: 'Medium',
       customFields: {
         'isAutomatable': isAutomatable
       }
@@ -333,7 +329,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
             'Content-Type': 'application/json'
           },
-          timeout: 30000 // 30 second timeout
+          timeout: 30000
         });
       
       console.log(`Successfully created test case ${i + 1}/${scenarios.length} in Zephyr Scale`);
@@ -366,7 +362,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         console.log(JSON.stringify(testScriptResponse.data, null, 2));
         console.log('=== END TEST SCRIPT API RESPONSE ===');
         
-        // Update the test case status
         try {
           console.log(`📝 Updating status for ${zephyrResponse.data.key} to: ${status}`);
           
@@ -414,7 +409,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             console.error('Status Update API Error Response:', JSON.stringify(statusError.response.data, null, 2));
           }
           
-          // Try alternative approaches for status update
           try {
             console.log(`🔄 Trying alternative status update approaches for ${zephyrResponse.data.key}`);
             
@@ -549,7 +543,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         url: testCaseUrl
       });
       
-      break; // Success, exit retry loop
+      break;
       
     } catch (error) {
       retryCount++;
@@ -611,4 +605,4 @@ module.exports = {
   getProjects,
   getTestFolders,
   isZephyrConfigured
-}; 
+};
