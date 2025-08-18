@@ -2050,6 +2050,24 @@ SCENARIO NAMING GUIDELINES:
             <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
               <button 
                 className="btn btn-primary"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  borderColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#2563eb';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#3b82f6';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
+                }}
                 onClick={() => {
                   // Use the editable requirements state
                   console.log('🔍 Insert Requirements clicked - editableRequirements count:', editableRequirements.length);
@@ -2075,6 +2093,24 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#10b981',
+                  borderColor: '#10b981',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#059669';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#10b981';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                }}
                 onClick={() => {
                   // Sync editable requirements back to extractedRequirements with proper markdown table format
                   console.log('🔍 Save Changes clicked - editableRequirements:', editableRequirements);
@@ -2095,6 +2131,12 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#f59e0b',
+                  borderColor: '#f59e0b',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={() => {
                   // Reset to original requirements
                   const requirements = parseRequirementsTable(extractedRequirements);
@@ -2107,6 +2149,12 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#8b5cf6',
+                  borderColor: '#8b5cf6',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={() => {
                   // Debug button to see current state
                   console.log('🔍 Debug - Current state:');
@@ -2120,12 +2168,24 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#6b7280',
+                  borderColor: '#6b7280',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={() => navigator.clipboard.writeText(extractedRequirements)}
               >
                 Copy
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#059669',
+                  borderColor: '#059669',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={handleDownloadContent}
               >
                 Download
