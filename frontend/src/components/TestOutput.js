@@ -89,11 +89,7 @@ const TestOutput = ({ content }) => {
         </SyntaxHighlighter>
       </div>
       
-      <div className="test-output-footer">
-        <p className="test-output-info">
-          💡 <strong>Tip:</strong> You can copy these tests to your clipboard or download them as a .feature file
-        </p>
-      </div>
+
     </div>
   );
 };
