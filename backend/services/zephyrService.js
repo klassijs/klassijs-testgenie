@@ -1401,7 +1401,7 @@ module.exports = {
 }; 
 
 // Push test cases directly to Zephyr Scale
-async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None', testCaseIds = null, jiraTicketKey = null, jiraBaseUrl = null) {
+async function pushToZephyr(content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = null, status = 'Draft', isAutomatable = 'None', jiraTicketKey = null, jiraBaseUrl = null) {
   if (!isZephyrConfigured()) {
     throw new Error('Zephyr Scale is not configured');
   }
@@ -1734,7 +1734,7 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
 
   return {
     success: true,
-    message: testCaseIds ? `Successfully updated ${createdTestCases.length} test cases in Zephyr Scale` : `Successfully created ${createdTestCases.length} test cases in Zephyr Scale`,
+    message: `Successfully created ${createdTestCases.length} test cases in Zephyr Scale`,
     createdTestCases: createdTestCases,
     zephyrTestCaseIds: createdTestCases.map(tc => tc.key),
     zephyrTestCaseId: createdTestCases.length > 0 ? createdTestCases[0].key : null,

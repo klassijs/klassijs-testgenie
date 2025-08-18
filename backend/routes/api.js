@@ -721,7 +721,7 @@ router.get('/zephyr-search-folders/:projectKey', async (req, res) => {
 // Zephyr Scale Direct Push endpoint
 router.post('/push-to-zephyr', async (req, res) => {
   try {
-    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None', testCaseIds = null, jiraTicketKey = null, jiraBaseUrl = null } = req.body;
+    const { content, featureName = 'Test Feature', projectKey, testCaseName, folderId, status = 'Draft', isAutomatable = 'None', jiraTicketKey = null, jiraBaseUrl = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -739,7 +739,7 @@ router.post('/push-to-zephyr', async (req, res) => {
       });
     }
 
-    const response = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseIds, jiraTicketKey, jiraBaseUrl);
+    const response = await pushToZephyr(content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, jiraTicketKey, jiraBaseUrl);
 
     if (!response.success) {
       return res.status(400).json({
