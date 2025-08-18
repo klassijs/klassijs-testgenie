@@ -97,6 +97,13 @@ const TestGenerator = () => {
     // console.log('🔍 Content length:', requirementsContent.length);
     // console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
     
+    // Validate requirements source consistency
+    if (requirementsSource === 'upload' && (jiraTicketPrefix || Object.keys(jiraTicketInfo).length > 0)) {
+      console.log('⚠️  Requirements source is "upload" but Jira ticket info exists. Cleaning up...');
+      setJiraTicketPrefix('');
+      setJiraTicketInfo({});
+    }
+    
     const requirements = [];
     const lines = requirementsContent.split('\n');
     // console.log('🔍 Split lines:', lines);
@@ -512,6 +519,7 @@ const TestGenerator = () => {
             // Set requirements source for uploaded documents
             setRequirementsSource('upload');
             setJiraTicketPrefix(''); // Clear any Jira ticket prefix
+            setJiraTicketInfo({}); // Clear any Jira ticket info
             
             // Create feature tabs from extracted requirements
             const requirementsContent = requirementsResponse.data.content;
@@ -576,7 +584,7 @@ const TestGenerator = () => {
       setIsProcessing(false);
       setProcessingFile(null);
     }
-  }, [API_BASE_URL, context]);
+  }, [API_BASE_URL, context, parseRequirementsTable]);
 
   const handleFileUpload = useCallback((event) => {
     // Extract files from the event
@@ -641,6 +649,91 @@ const TestGenerator = () => {
 
   // Remove the separate extractRequirements function - it will be integrated into document processing
 
+  // Validate test coverage for generated tests
+  const validateTestCoverage = (testContent, requirement, acceptanceCriteria) => {
+    try {
+      const lines = testContent.split('\n');
+      let scenarioCount = 0;
+      let featureName = '';
+      let complexityInfo = null;
+      
+      // Parse the test content
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        
+        // Count scenarios
+        if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
+          scenarioCount++;
+        }
+        
+        // Extract feature name
+        if (trimmedLine.startsWith('Feature:')) {
+          featureName = trimmedLine.replace('Feature:', '').trim();
+        }
+        
+        // Extract complexity information
+        if (trimmedLine.includes('CC:') || trimmedLine.includes('Paths:')) {
+          complexityInfo = trimmedLine;
+        }
+      }
+      
+      // Analyze requirement complexity if not provided
+      let expectedPaths = 1; // Default minimum
+      if (complexityInfo) {
+        const pathsMatch = complexityInfo.match(/Paths:\s*(\d+)/i);
+        if (pathsMatch) {
+          expectedPaths = parseInt(pathsMatch[1]);
+        }
+      } else {
+        // Estimate complexity based on requirement content
+        const hasDecisionPoints = requirement.toLowerCase().includes('if') || 
+                                requirement.toLowerCase().includes('when') || 
+                                requirement.toLowerCase().includes('else') ||
+                                acceptanceCriteria.toLowerCase().includes('if') ||
+                                acceptanceCriteria.toLowerCase().includes('when') ||
+                                acceptanceCriteria.toLowerCase().includes('else');
+        
+        const hasMultipleConditions = (requirement.match(/and|or|but/gi) || []).length > 0 ||
+                                   (acceptanceCriteria.match(/and|or|but/gi) || []).length > 0;
+        
+        if (hasDecisionPoints || hasMultipleConditions) {
+          expectedPaths = Math.max(2, Math.min(5, scenarioCount)); // Estimate 2-5 paths
+        }
+      }
+      
+      // Calculate coverage metrics
+      const coveragePercentage = expectedPaths > 0 ? Math.round((scenarioCount / expectedPaths) * 100) : 100;
+      const isAdequateCoverage = scenarioCount >= expectedPaths;
+      
+      // Identify missing test types
+      const missingTestTypes = [];
+      if (scenarioCount < 3) missingTestTypes.push('negative test cases');
+      if (scenarioCount < 2) missingTestTypes.push('edge cases');
+      if (scenarioCount < expectedPaths) missingTestTypes.push('path coverage');
+      
+      return {
+        scenarioCount,
+        expectedPaths,
+        coveragePercentage,
+        isAdequateCoverage,
+        missingTestTypes,
+        featureName,
+        complexityInfo
+      };
+    } catch (error) {
+      console.error('Error validating test coverage:', error);
+      return {
+        scenarioCount: 0,
+        expectedPaths: 1,
+        coveragePercentage: 0,
+        isAdequateCoverage: false,
+        missingTestTypes: ['validation failed'],
+        featureName: '',
+        complexityInfo: null
+      };
+    }
+  };
+
   const generateTests = async () => {
     // Check if we have content to generate tests from
     if (!content.trim()) {
@@ -670,39 +763,97 @@ Requirement ID: ${req.id}
 Business Requirement: ${req.requirement}
 Acceptance Criteria: ${req.acceptanceCriteria}
 
-GENERATE TEST SCENARIOS SPECIFIC TO THIS REQUIREMENT ONLY.
+GENERATE COMPREHENSIVE TEST SCENARIOS FOR THIS SPECIFIC REQUIREMENT.
 
-IMPORTANT: 
+CRITICAL REQUIREMENTS:
 1. Feature line must start with # in this format:
-   # Feature: [Feature Name]
+   # Feature: [Feature Name Based on Requirement]
 
 2. Each scenario title must include the requirement ID in this format:
-   Scenario: ${req.id}: [Scenario Description]
+   Scenario: ${req.id}: [Specific Scenario Description]
 
-3. PATH COVERAGE REQUIREMENTS:
-   - Analyze the complexity from the requirements table
-   - Create test scenarios that cover EVERY identified execution path
-   - For each decision point, create separate test scenarios
-   - Ensure all branches and conditions are tested
-   - The number of test scenarios should match or exceed the "Paths" count from complexity analysis
+3. COMPREHENSIVE PATH COVERAGE:
+   - Analyze the complexity information (CC, Decision Points, Paths) from the requirement
+   - Generate test scenarios that cover EVERY identified execution path
+   - The number of test scenarios MUST match or exceed the "Paths" count from complexity analysis
+   - Each decision point should have separate test scenarios for each branch
+   - Ensure complete coverage of all conditional logic and workflow branches
 
-4. If the requirement contains workflow steps, decision points, or conditional logic:
-   - Calculate the cyclomatic complexity
-   - Ensure test coverage for all decision paths
-   - Include scenarios for each branch/condition
-   - Add a comment showing: # Cyclomatic Complexity: [number]
-   - Add comment: # Test Coverage: [X] of [Y] paths covered
+4. TEST SCENARIO TYPES REQUIRED:
 
-Example:
-# Feature: junior school
-Scenario: ${req.id}: Successfully entering valid data into the "Need More Information" section
+   POSITIVE TEST SCENARIOS:
+   - Happy path scenarios (main success flow)
+   - Valid data variations and combinations
+   - Different user roles/permissions if applicable
+   - Successful edge cases and boundary conditions
+   - Various valid input combinations
 
-# If workflow detected:
-# Cyclomatic Complexity: 5
-# Decision Points: 3 (user role, data validation, approval flow)
-# Test Coverage: All 5 paths covered
+   NEGATIVE TEST SCENARIOS:
+   - Invalid input scenarios (empty fields, special characters, very long text)
+   - Error conditions and exception handling
+   - Boundary value testing (minimum/maximum values, limits)
+   - Invalid data formats and malformed inputs
+   - Business rule violations
+   - Invalid state transitions
+   - Security-related negative scenarios
 
-# CRITICAL: Generate enough test scenarios to cover ALL identified paths from the complexity analysis`;
+   WORKFLOW PATH SCENARIOS:
+   - Test each decision branch separately
+   - Cover all gateway conditions (exclusive, parallel, inclusive)
+   - Test all possible workflow paths
+   - Include error paths and exception handling
+   - Test parallel execution paths if applicable
+
+   DATA-DRIVEN SCENARIOS:
+   - Use Scenario Outline with Examples for multiple data combinations
+   - Test various test conditions and data variations
+   - Cover different business scenarios
+
+5. COMPLEXITY ANALYSIS INTEGRATION:
+   - If complexity information exists: Use it to determine the minimum number of scenarios
+   - If no complexity info: Analyze the requirement to identify decision points and paths
+   - Ensure the number of scenarios covers all identified paths
+   - Add complexity analysis as comments if not present
+
+6. SCENARIO QUALITY REQUIREMENTS:
+   - Each scenario must test a different execution path or decision branch
+   - Scenarios must be specific to the provided business requirement
+   - Do NOT generate generic test scenarios
+   - Use natural, business-focused scenario names that describe the specific business case being tested
+   - Do NOT use technical labels like "Positive Test", "Negative Test", "Edge Case", etc.
+   - Instead, use descriptive names like "User successfully logs in with valid credentials", "System displays error for invalid email format", "Application handles maximum input length"
+   - Include both success and failure scenarios naturally
+   - Ensure edge cases and boundary conditions are covered with business-focused names
+
+EXAMPLE STRUCTURE:
+# Feature: [Specific Feature Based on Requirement]
+# Complexity: CC: X, Decision Points: Y, Paths: Z
+
+Scenario: ${req.id}: [Specific business scenario description]
+Given [precondition]
+When [action]
+Then [expected result]
+
+Scenario: ${req.id}: [Another specific business scenario]
+Given [precondition]
+When [action]
+Then [expected result]
+
+Scenario: ${req.id}: [Different business scenario variation]
+Given [precondition]
+When [action]
+Then [expected result]
+
+# Continue with more scenarios to cover ALL identified paths
+
+CRITICAL: Generate ENOUGH test scenarios to cover ALL identified paths from the complexity analysis. The number of scenarios should match or exceed the "Paths" count.
+
+SCENARIO NAMING GUIDELINES:
+- Use natural, business-focused language in scenario names
+- Avoid technical terms like "Positive Test", "Negative Test", "Edge Case", "Data-Driven Test"
+- Instead, describe the specific business scenario being tested
+- Examples of good names: "User successfully completes order", "System validates required fields", "Application handles network timeout"
+- Examples of names to avoid: "Positive Test - Happy Path", "Negative Test - Invalid Input", "Edge Case - Boundary Condition"`;
         
         const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
           content: testContent, 
@@ -730,23 +881,45 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
       }
       
       if (generatedFeatures.length > 0) {
+        // Validate test coverage for each requirement
+        const validationResults = generatedFeatures.map(feature => {
+          const coverage = validateTestCoverage(feature.content, feature.requirement, feature.acceptanceCriteria);
+          return {
+            ...feature,
+            coverage: coverage
+          };
+        });
+        
+        // Set requirements source for generated tests
+        setRequirementsSource('upload');
+        setJiraTicketPrefix(''); // Clear any Jira ticket prefix
+        setJiraTicketInfo({}); // Clear any Jira ticket info
+        
         // Set the feature tabs
-        setFeatureTabs(generatedFeatures);
+        setFeatureTabs(validationResults);
         setActiveTab(0);
         
         // Set editable features
         const editableFeaturesObj = {};
-        generatedFeatures.forEach((feature, index) => {
+        validationResults.forEach((feature, index) => {
           editableFeaturesObj[index] = feature.content;
         });
         setEditableFeatures(editableFeaturesObj);
         
         // Set overall generated tests (combined)
-        const allTests = generatedFeatures.map(f => f.content).join('\n\n');
+        const allTests = validationResults.map(f => f.content).join('\n\n');
         setGeneratedTests(allTests);
         
+        // Show coverage summary
+        const totalScenarios = validationResults.reduce((sum, f) => sum + f.coverage.scenarioCount, 0);
+        const totalPaths = validationResults.reduce((sum, f) => sum + f.coverage.expectedPaths, 0);
+        const coveragePercentage = totalPaths > 0 ? Math.round((totalScenarios / totalPaths) * 100) : 0;
+        
         setShowModal(true);
-        setStatus({ type: 'success', message: `Generated test cases for ${generatedFeatures.length} requirements!` });
+        setStatus({ 
+          type: 'success', 
+          message: `Generated ${totalScenarios} test scenarios for ${generatedFeatures.length} requirements! Coverage: ${coveragePercentage}% of expected paths.` 
+        });
       } else {
         setStatus({ type: 'error', message: 'Failed to generate test cases for any requirements' });
       }
@@ -822,6 +995,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
   };
 
   const clearAll = () => {
+    // Clear main content and state
     setContent('');
     setContext('');
     setGeneratedTests('');
@@ -833,6 +1007,71 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     setEditableFeatures({});
     setEditingFeatures({});
     setStatus(null);
+    
+    // Clear Jira-related state completely
+    setRequirementsSource('');
+    setJiraTicketPrefix('');
+    setJiraTicketInfo({});
+    setShowJiraImport(false);
+    setJiraConfig({
+      baseUrl: '',
+      projectKey: '',
+      issueTypes: [],
+      selectedIssues: []
+    });
+    setJiraProjects([]);
+    setJiraIssues([]);
+    setIsLoadingJira(false);
+    setJiraStep('connect');
+    setShowJiraProjectDropdown(false);
+    setJiraProjectSearch('');
+    
+    // Clear Zephyr-related state
+    setShowZephyrConfig(false);
+    setZephyrConfig({
+      projectKey: '',
+      folderId: null,
+      testCaseName: '',
+      status: 'Draft',
+      isAutomatable: 'None'
+    });
+    setZephyrProjects([]);
+    setZephyrFolders([]);
+    setLoadingProjects(false);
+    setLoadingFolders(false);
+    setShowFolderDropdown(false);
+    setFolderSearch('');
+    setShowProjectDropdown(false);
+    setProjectSearch('');
+    setFolderNavigation({
+      currentLevel: 'main',
+      parentFolderId: null,
+      parentFolderName: '',
+      breadcrumb: []
+    });
+    setSearchMode(false);
+    setExpandedFolders(new Set());
+    setShowZephyrProgress(false);
+    setZephyrProgress({
+      current: 0,
+      total: 0,
+      message: '',
+      isComplete: false
+    });
+    setPushedTabs(new Set());
+    setZephyrTestCaseIds({});
+    
+    // Clear processing states
+    setIsLoading(false);
+    setIsGenerating(false);
+    setIsProcessing(false);
+    setProcessingFile(null);
+    
+    // Clear any other state that might hold residue
+    setLoadingImages([]);
+    setImagesLoaded(false);
+    
+    console.log('🧹 Clear All: All state has been completely reset');
   };
 
   const formatFileSize = (bytes) => {
@@ -1140,37 +1379,95 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
         fetchZephyrFolders(zephyrConfig.projectKey);
       }
     }
-  }, [showZephyrConfig]);
-
-  // Rotate through test generation images
-  useEffect(() => {
-    if (isGenerating) {
-      const images = document.querySelectorAll('.test-image');
-      let currentImage = 0;
-      
-      const rotateImages = () => {
-        // Remove active class from all images
-        images.forEach(img => img.classList.remove('active'));
-        
-        // Add active class to current image
-        images[currentImage].classList.add('active');
-        
-        // Move to next image
-        currentImage = (currentImage + 1) % images.length;
-      };
-      
-      // Rotate images every 2 seconds (matching progress bar animation)
-      const interval = setInterval(rotateImages, 2000);
-      
-      // Start with first image
-      rotateImages();
-      
-      return () => clearInterval(interval);
-    }
-  }, [isGenerating]);
+  }, [showZephyrConfig, fetchZephyrProjects, fetchZephyrFolders, zephyrConfig.projectKey, zephyrProjects.length]);
 
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
+  const [imagesLoaded, setImagesLoaded] = useState(false);
+  
+  // Rotate through test generation images
+  useEffect(() => {
+    // Only proceed if we're generating, have images, and images are loaded
+    if (!isGenerating || !loadingImages || loadingImages.length === 0 || !imagesLoaded) {
+      return;
+    }
+    
+    let isMounted = true;
+    let intervalId = null;
+    
+    // Wait for next tick to ensure DOM elements are rendered
+    const timeoutId = setTimeout(() => {
+      try {
+        // Check if component is still mounted
+        if (!isMounted) return;
+        
+        const images = document.querySelectorAll('.test-image');
+        
+        // Only proceed if images exist
+        if (!images || images.length === 0) {
+          console.log('⚠️  No test-image elements found, skipping image rotation');
+          return;
+        }
+        
+        let currentImage = 0;
+        
+        const rotateImages = () => {
+          try {
+            // Check if component is still mounted
+            if (!isMounted) return;
+            
+            // Safety check - ensure images still exist
+            const currentImages = document.querySelectorAll('.test-image');
+            if (!currentImages || currentImages.length === 0) {
+              console.log('⚠️  Test-image elements no longer exist, stopping rotation');
+              return;
+            }
+            
+            // Remove active class from all images
+            currentImages.forEach(img => {
+              try {
+                if (img && img.classList && typeof img.classList.remove === 'function') {
+                  img.classList.remove('active');
+                }
+              } catch (error) {
+                console.warn('⚠️  Error removing active class from image:', error);
+              }
+            });
+            
+            // Add active class to current image
+            if (currentImages[currentImage] && 
+                currentImages[currentImage].classList && 
+                typeof currentImages[currentImage].classList.add === 'function') {
+              currentImages[currentImage].classList.add('active');
+            }
+            
+            // Move to next image
+            currentImage = (currentImage + 1) % currentImages.length;
+          } catch (error) {
+            console.error('❌ Error in rotateImages function:', error);
+          }
+        };
+        
+        // Rotate images every 2 seconds (matching progress bar animation)
+        intervalId = setInterval(rotateImages, 2000);
+        
+        // Start with first image
+        rotateImages();
+        
+      } catch (error) {
+        console.error('❌ Error setting up image rotation:', error);
+      }
+    }, 100); // Small delay to ensure DOM is ready
+    
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      clearTimeout(timeoutId);
+      if (intervalId) {
+        clearInterval(intervalId);
+      }
+    };
+  }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
     const fetchLoadingImages = async () => {
@@ -1189,6 +1486,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
           setLoadingImages(fallbackImages);
         }
       } catch (error) {
+        console.warn('⚠️  Failed to fetch loading images, using fallback:', error);
         // Fallback to static images if API fails
         const fallbackImages = [
           { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1370,20 +1668,28 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
               </div>
               <div className="test-generation-images">
                 <div className="image-container">
-                  {loadingImages.map((imageStep, index) => (
-                    <div 
-                      key={index}
-                      className={`test-image ${index === 0 ? 'active' : ''}`} 
-                      data-image={index + 1}
-                    >
-                      <img 
-                        src={`/images/loading/${imageStep.image}`} 
-                        alt={imageStep.title} 
-                        className="loading-image" 
-                      />
-                      <span>{imageStep.title}</span>
+                  {loadingImages && loadingImages.length > 0 ? (
+                    loadingImages.map((imageStep, index) => (
+                      <div 
+                        key={index}
+                        className={`test-image ${index === 0 ? 'active' : ''}`} 
+                        data-image={index + 1}
+                      >
+                        <img 
+                          src={`/images/loading/${imageStep.image}`} 
+                          alt={imageStep.title} 
+                          className="loading-image" 
+                        />
+                        <span>{imageStep.title}</span>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="test-image active">
+                      <div className="loading-placeholder">
+                        <span>Loading...</span>
+                      </div>
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
               <p>Analyzing document content and creating comprehensive test scenarios...</p>
@@ -1843,7 +2149,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
       )}
 
       {/* Test Cases Modal */}
-      {showModal && (generatedTests && generatedTests.trim() || featureTabs.length > 0) && (
+      {showModal && ((generatedTests && generatedTests.trim()) || featureTabs.length > 0) && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -1851,6 +2157,26 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                 <TestTube size={24} />
                 {generatedTests && generatedTests.trim() ? 'Generated Test Cases' : 'Test Cases'}
               </h2>
+              
+              {/* Coverage Summary */}
+              {featureTabs.length > 0 && featureTabs[0].coverage && (
+                <div className="coverage-summary">
+                  <div className="coverage-stats">
+                    <span className="stat-item">
+                      <strong>Total Scenarios:</strong> {featureTabs.reduce((sum, f) => sum + (f.coverage?.scenarioCount || 0), 0)}
+                    </span>
+                    <span className="stat-item">
+                      <strong>Expected Paths:</strong> {featureTabs.reduce((sum, f) => sum + (f.coverage?.expectedPaths || 0), 0)}
+                    </span>
+                    <span className="stat-item">
+                      <strong>Coverage:</strong> 
+                      <span className={`coverage-percentage ${featureTabs.reduce((sum, f) => sum + (f.coverage?.coveragePercentage || 0), 0) >= 100 ? 'good' : 'warning'}`}>
+                        {Math.round(featureTabs.reduce((sum, f) => sum + (f.coverage?.coveragePercentage || 0), 0) / featureTabs.length)}%
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              )}
               <div className="modal-actions">
                 <button 
                   className="btn btn-info"
@@ -1924,23 +2250,44 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                     className={`tab-button ${activeTab === index ? 'active' : ''} ${pushedTabs.has(index) ? 'pushed' : ''}`}
                     onClick={() => setActiveTab(index)}
                   >
-                    {feature.title}
-                    {jiraTicketInfo[index] && (
-                      <span 
-                        title={`Jira Ticket: ${jiraTicketInfo[index].ticketKey}`}
-                        style={{
-                          marginLeft: '8px',
-                          fontSize: '0.7rem',
-                          backgroundColor: '#3b82f6',
-                          color: 'white',
-                          padding: '2px 6px',
-                          borderRadius: '10px',
-                          fontWeight: 'normal'
-                        }}
-                      >
-                        🔗
-                      </span>
-                    )}
+                    <div className="tab-content">
+                      <span className="tab-title">{feature.title}</span>
+                      
+                      {/* Coverage Information */}
+                      {feature.coverage && (
+                        <div className="coverage-info">
+                          <span 
+                            className={`coverage-badge ${feature.coverage.isAdequateCoverage ? 'good' : 'warning'}`}
+                            title={`${feature.coverage.scenarioCount} scenarios, ${feature.coverage.expectedPaths} expected paths (${feature.coverage.coveragePercentage}% coverage)`}
+                          >
+                            {feature.coverage.scenarioCount}/{feature.coverage.expectedPaths}
+                          </span>
+                          {!feature.coverage.isAdequateCoverage && (
+                            <span className="coverage-warning" title={`Missing: ${feature.coverage.missingTestTypes.join(', ')}`}>
+                              ⚠️
+                            </span>
+                          )}
+                        </div>
+                      )}
+                      
+                      {/* Jira Ticket Info */}
+                      {jiraTicketInfo[index] && (
+                        <span 
+                          title={`Jira Ticket: ${jiraTicketInfo[index].ticketKey}`}
+                          style={{
+                            marginLeft: '8px',
+                            fontSize: '0.7rem',
+                            backgroundColor: '#3b82f6',
+                            color: 'white',
+                            padding: '2px 6px',
+                            borderRadius: '10px',
+                            fontWeight: 'normal'
+                          }}
+                        >
+                          🔗
+                        </span>
+                      )}
+                    </div>
                   </button>
                 ))}
               </div>
@@ -2121,8 +2468,8 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                         color: '#6b7280'
                       }}>
                         Select a project ({zephyrProjects.filter(project => 
-                          (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
-                          (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
+                          ((project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                           (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase())))
                         ).length} available)
                       </div>
                       <div style={{
@@ -2164,8 +2511,8 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                         </div>
                         {zephyrProjects
                           .filter(project => 
-                            (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
-                            (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
+                            ((project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                             (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase())))
                           )
                           .map((project) => (
                             <div

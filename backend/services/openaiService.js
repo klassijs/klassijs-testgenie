@@ -611,20 +611,124 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
   }
 }
 
+// Validate consistency of extracted requirements
+function validateRequirementsConsistency(extractedRequirements, originalContent) {
+  const issues = [];
+  let requirementCount = 0;
+  let consistencyScore = 100;
+  
+  try {
+    // Count requirements (more flexible pattern matching)
+    const requirementMatches = extractedRequirements.match(/\| BR-\d+\s*\|/g);
+    requirementCount = requirementMatches ? requirementMatches.length : 0;
+    
+    // If no requirements found with strict pattern, try more flexible matching
+    if (requirementCount === 0) {
+      const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
+      requirementCount = flexibleMatches ? flexibleMatches.length : 0;
+      if (requirementCount > 0) {
+        console.log(`ℹ️  Found ${requirementCount} requirements with flexible pattern matching`);
+      }
+    }
+    
+    // Check for table structure consistency (more flexible)
+    const tableRows = extractedRequirements.split('\n').filter(line => line.includes('|'));
+    const validRows = tableRows.filter(row => row.split('|').length >= 4);
+    
+    // Allow for some flexibility in table structure
+    const expectedRows = requirementCount + 1; // +1 for header row
+    const rowDifference = Math.abs(validRows.length - expectedRows);
+    
+    if (rowDifference > 2) { // Allow up to 2 rows difference
+      issues.push(`Table structure inconsistency: Expected ${expectedRows} rows, found ${validRows.length} (difference: ${rowDifference})`);
+      consistencyScore -= 10; // Reduced penalty for table structure issues
+    } else if (rowDifference > 0) {
+      console.log(`ℹ️  Table structure has minor differences: Expected ${expectedRows} rows, found ${validRows.length}`);
+    }
+    
+    // Check for sequential numbering
+    const requirementIds = [];
+    for (let i = 1; i <= requirementCount; i++) {
+      const expectedId = `BR-${String(i).padStart(3, '0')}`;
+      if (!extractedRequirements.includes(expectedId)) {
+        issues.push(`Missing sequential requirement ID: ${expectedId}`);
+        consistencyScore -= 10;
+      }
+      requirementIds.push(expectedId);
+    }
+    
+    // Check for duplicate IDs
+    const duplicateIds = requirementIds.filter(id => {
+      const regex = new RegExp(`\\| ${id} \\|`, 'g');
+      const matches = extractedRequirements.match(regex);
+      return matches && matches.length > 1;
+    });
+    
+    if (duplicateIds.length > 0) {
+      issues.push(`Duplicate requirement IDs found: ${duplicateIds.join(', ')}`);
+      consistencyScore -= 15;
+    }
+    
+    // Check for reasonable requirement extraction based on content
+    const contentLength = originalContent.length;
+    if (contentLength < 1000 && requirementCount > 8) {
+      issues.push(`Very high requirement count (${requirementCount}) for short content (${contentLength} chars) - may indicate over-extraction`);
+      consistencyScore -= 15;
+    } else if (contentLength > 10000 && requirementCount < 2) {
+      issues.push(`Very low requirement count (${requirementCount}) for long content (${contentLength} chars) - may indicate under-extraction`);
+      consistencyScore -= 15;
+    }
+    
+    // Ensure consistency score doesn't go below 0
+    consistencyScore = Math.max(0, consistencyScore);
+    
+  } catch (error) {
+    issues.push(`Validation error: ${error.message}`);
+    consistencyScore = 0;
+  }
+  
+  return {
+    requirementCount,
+    consistencyScore,
+    issues,
+    isValid: consistencyScore >= 80
+  };
+}
+
 // Extract business requirements and acceptance criteria from documents
 async function extractBusinessRequirements(content, context = '', enableLogging = true) {
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
   }
 
-  // Generate unique request ID for tracking
-  const requestId = Math.random().toString(36).substring(2, 15);
-  
-  if (enableLogging) {
-    console.log(`🔍 [${requestId}] Starting requirements extraction...`);
-    // console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
-    // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
-  }
+      // Generate unique request ID for tracking
+    const requestId = Math.random().toString(36).substring(2, 15);
+    
+    // Create a content hash for consistency tracking
+    const contentHash = require('crypto').createHash('md5').update(content.trim()).digest('hex').substring(0, 8);
+    
+    if (enableLogging) {
+      console.log(`🔍 [${requestId}] Starting requirements extraction...`);
+      console.log(`🔍 [${requestId}] Content hash: ${contentHash} (for consistency tracking)`);
+      console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+      
+      // Check if this content hash has been processed before (for consistency monitoring)
+      if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
+        const previousCount = global.contentHashHistory[contentHash].requirementCount;
+        console.log(`⚠️  [${requestId}] Content hash ${contentHash} detected before with ${previousCount} requirements - monitoring for consistency`);
+      }
+      
+      // Store content hash history for consistency monitoring
+      if (!global.contentHashHistory) global.contentHashHistory = {};
+      global.contentHashHistory[contentHash] = {
+        timestamp: new Date().toISOString(),
+        requestId: requestId,
+        contentLength: content.length,
+        requirementCount: null // Will be updated after extraction
+      };
+      
+      // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
+    }
   
   // Check if content is sufficient
   if (!content || content.trim().length < 50) {
@@ -676,18 +780,40 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       role: 'system',
       content: `You are a Business Analyst specializing in extracting business requirements from various document types including diagrams, flowcharts, and technical specifications.
 
-Extract business requirements and create a markdown table with these columns:
+Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
+
+EXTRACTION RULES - FOLLOW THESE EXACTLY:
+1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
+2. Do NOT create additional requirements that are not directly supported by the content
+3. Do NOT split a single requirement into multiple requirements
+4. Do NOT combine multiple requirements into one
+5. Each requirement should represent a distinct, testable business need
+6. Extract the EXACT requirements present in the content - no more, no less
+
+REQUIRED OUTPUT FORMAT:
+Create a markdown table with these columns:
 
 | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
 
-CRITICAL REQUIREMENTS:
-- EVERY business requirement MUST have a corresponding acceptance criteria
-- NO requirement should be left without acceptance criteria
-- If a business requirement is identified, you MUST create acceptance criteria for it
-- Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format for acceptance criteria where applicable
+REQUIREMENT ID FORMAT:
+- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Do NOT skip numbers or use random identifiers
+- Start with BR-001 and increment sequentially
 
-WORKFLOW ANALYSIS AND COMPLEXITY CALCULATION:
+BUSINESS REQUIREMENT RULES:
+- Extract ONLY what the system should do based on the content
+- Do NOT add features that are not mentioned
+- Do NOT create requirements for edge cases unless explicitly stated
+- Keep requirements focused and specific to the content provided
+
+ACCEPTANCE CRITERIA RULES:
+- EVERY business requirement MUST have a corresponding acceptance criteria
+- Acceptance criteria should be specific, measurable, and testable
+- Use Given-When-Then format where applicable
+- Base acceptance criteria ONLY on the content provided
+- Do NOT add acceptance criteria for features not mentioned
+
+COMPLEXITY CALCULATION RULES:
 - CRITICAL: Analyze EACH requirement individually for its specific complexity
 - NEVER apply the same complexity to all requirements
 - NEVER use global document complexity for individual requirements
@@ -710,6 +836,13 @@ WORKFLOW ANALYSIS AND COMPLEXITY CALCULATION:
   * Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
 - IMPORTANT: Each requirement MUST have DIFFERENT complexity based on its specific content
 
+CONSISTENCY REQUIREMENTS:
+- The same content should ALWAYS produce the same requirements
+- Do NOT be creative or add requirements that are not explicitly supported
+- Focus on extracting what is actually present in the content
+- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Be consistent in identifying and extracting the same requirements from the same content
+
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - When analyzing diagram content, focus on business processes, systems, actors, and flows
 - If the diagram is a flowchart, extract the requirements from the flowchart
@@ -719,45 +852,65 @@ SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - Look for business rules, decision points, and process steps
 - Count decision points (gateways) and activities for complexity calculation
 
-Ensure that:
+FINAL REQUIREMENTS:
 - Requirements are written in clear, concise, and testable language
 - Acceptance criteria follow the Given-When-Then format where applicable
-- Group related requirements logically if needed
 - Start directly with the table, no explanations
-- For diagram content, create requirements that reflect the business processes shown
 - EVERY business requirement MUST have acceptance criteria - this is mandatory
-- EVERY requirement MUST include complexity analysis in the Complexity column`
+- EVERY requirement MUST include complexity analysis in the Complexity column
+- BE CONSISTENT - same input should produce same output`
     },
     {
       role: 'user',
-      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria. Structure the output as a table with the following columns:
+      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria.
 
-Requirement ID
-Business Requirement (What the system should do)
-Acceptance Criteria (How we know the requirement is met)
-Complexity (Cyclomatic complexity analysis)
+IMPORTANT: Extract requirements CONSISTENTLY and DETERMINISTICALLY. The same content should ALWAYS produce the same requirements.
 
-CRITICAL REQUIREMENTS:
+REQUIRED OUTPUT FORMAT:
+Structure the output as a table with these columns:
+
+| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
+
+EXTRACTION RULES - FOLLOW THESE EXACTLY:
+1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
+2. Do NOT create additional requirements that are not directly supported by the content
+3. Do NOT split a single requirement into multiple requirements
+4. Do NOT combine multiple requirements into one
+5. Each requirement should represent a distinct, testable business need
+6. Extract the EXACT requirements present in the content - no more, no less
+
+REQUIREMENT ID FORMAT:
+- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Do NOT skip numbers or use random identifiers
+- Start with BR-001 and increment sequentially
+
+BUSINESS REQUIREMENT RULES:
+- Extract ONLY what the system should do based on the content
+- Do NOT add features that are not mentioned
+- Do NOT create requirements for edge cases unless explicitly stated
+- Keep requirements focused and specific to the content provided
+
+ACCEPTANCE CRITERIA RULES:
 - EVERY business requirement MUST have a corresponding acceptance criteria
-- NO requirement should be left without acceptance criteria
-- If you identify a business requirement, you MUST create acceptance criteria for it
 - Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format for acceptance criteria where applicable
+- Use Given-When-Then format where applicable
+- Base acceptance criteria ONLY on the content provided
+- Do NOT add acceptance criteria for features not mentioned
 
-WORKFLOW ANALYSIS:
+COMPLEXITY CALCULATION RULES:
 - Analyze EACH requirement individually for its specific complexity
 - Do NOT apply the same complexity to all requirements
 - Calculate cyclomatic complexity for each requirement using: CC = Decision Points - Activities + 2
 - For workflow requirements, provide detailed complexity: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
 - For simple requirements: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
-- IMPORTANT: Each requirement should have DIFFERENT complexity based on its specific content
+- Each requirement should have DIFFERENT complexity based on its specific content
 
-Ensure that:
-- Requirements are written in clear, concise, and testable language
-- Acceptance criteria follow the Given-When-Then format where applicable
-- Group related requirements logically if needed
-- EVERY business requirement MUST have acceptance criteria - this is mandatory
-- EVERY requirement MUST include complexity analysis in the Complexity column
+CONSISTENCY REQUIREMENTS:
+- The same content should ALWAYS produce the same requirements
+- Do NOT be creative or add requirements that are not explicitly supported
+- Focus on extracting what is actually present in the content
+- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Be consistent in identifying and extracting the same requirements from the same content
 
 Document to analyze:
 
@@ -777,7 +930,9 @@ IMPORTANT: Do NOT use these global numbers for individual requirements!
 - Each requirement must be analyzed INDIVIDUALLY for its specific complexity
 - A simple login requirement should have CC: 1, Decision Points: 0, Activities: 1, Paths: 1
 - A complex workflow requirement might have CC: 5, Decision Points: 3, Activities: 2, Paths: 5
-- The global document analysis is for context only - analyze each requirement separately`
+- The global document analysis is for context only - analyze each requirement separately
+
+REMEMBER: BE CONSISTENT. The same document should always produce the same requirements.`
     }
   ];
 
@@ -789,7 +944,7 @@ IMPORTANT: Do NOT use these global numbers for individual requirements!
         {
           messages: messages,
           max_tokens: 4000,
-          temperature: 0.3,
+          temperature: 0.1,
           response_format: { type: "text" }
         },
         {
@@ -835,8 +990,41 @@ IMPORTANT: Do NOT use these global numbers for individual requirements!
       extractedRequirements = enhanceComplexityCalculations(extractedRequirements, workflowAnalysis);
     }
 
+    // Validate consistency of extracted requirements
+    const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent);
+    if (validationResult.issues.length > 0) {
+      console.warn(`⚠️  [${requestId}] Requirements consistency issues detected:`, validationResult.issues);
+    }
+
+    // Update content hash history with requirements count
+    if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
+      global.contentHashHistory[contentHash].requirementCount = validationResult.requirementCount;
+      global.contentHashHistory[contentHash].consistencyScore = validationResult.consistencyScore;
+      
+      // Check for consistency issues with previous extractions
+      const previousExtractions = Object.entries(global.contentHashHistory)
+        .filter(([hash, data]) => hash === contentHash && data.requirementCount !== null)
+        .sort((a, b) => new Date(b[1].timestamp) - new Date(a[1].timestamp));
+      
+      if (previousExtractions.length > 1) {
+        const currentCount = validationResult.requirementCount;
+        const previousCount = previousExtractions[1][1].requirementCount;
+        
+        if (currentCount !== previousCount) {
+          console.warn(`⚠️  [${requestId}] INCONSISTENCY DETECTED: Same content produced ${previousCount} requirements before, now ${currentCount} requirements`);
+          console.warn(`⚠️  [${requestId}] Previous extraction: ${previousExtractions[1][1].timestamp}`);
+          console.warn(`⚠️  [${requestId}] Current extraction: ${new Date().toISOString()}`);
+          console.warn(`⚠️  [${requestId}] This may indicate the AI is not consistently identifying the same requirements`);
+        } else {
+          console.log(`✅ [${requestId}] Consistency confirmed: Same content produced ${currentCount} requirements as before`);
+        }
+      }
+    }
+
     if (enableLogging) {
       console.log(`🔍 [${requestId}] Successfully extracted requirements`);
+      console.log(`🔍 [${requestId}] Requirements count: ${validationResult.requirementCount}`);
+      console.log(`🔍 [${requestId}] Consistency score: ${validationResult.consistencyScore}%`);
     }
     
     return {
@@ -848,7 +1036,9 @@ IMPORTANT: Do NOT use these global numbers for individual requirements!
         complexityLevel: workflowAnalysis.complexityLevel,
         decisionPoints: workflowAnalysis.decisionPoints,
         activities: workflowAnalysis.activities,
-        requestId: requestId
+        requestId: requestId,
+        contentHash: contentHash,
+        requirementsValidation: validationResult
       }
     };
 

@@ -1188,6 +1188,108 @@ body {
   text-align: center;
 }
 
+/* Feature Tab Coverage Styles */
+.tab-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.tab-title {
+  flex: 1;
+  text-align: left;
+}
+
+.coverage-info {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.coverage-badge {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  border-radius: 8px;
+  font-weight: 600;
+  min-width: 40px;
+  text-align: center;
+}
+
+.coverage-badge.good {
+  background-color: #10b981;
+  color: white;
+}
+
+.coverage-badge.warning {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.coverage-warning {
+  font-size: 0.8rem;
+  color: #f59e0b;
+  cursor: help;
+}
+
+/* Coverage Summary Styles */
+.coverage-summary {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background-color: #f8fafc;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
+}
+
+.coverage-stats {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  font-size: 0.875rem;
+  color: #4a5568;
+}
+
+.coverage-percentage {
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.coverage-percentage.good {
+  color: #10b981;
+}
+
+.coverage-percentage.warning {
+  color: #f59e0b;
+}
+
+.loading-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 160px;
+  height: 160px;
+  background: linear-gradient(135deg, #f7fafc 0%, #e2e8f0 100%);
+  border-radius: 12px;
+  border: 2px dashed #cbd5e0;
+  margin-bottom: 0.5rem;
+  animation: placeholder-pulse 2s ease-in-out infinite;
+}
+
+.loading-placeholder span {
+  color: #718096;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+@keyframes placeholder-pulse {
+  0%, 100% { opacity: 0.6; }
+  50% { opacity: 1; }
+}
+
 @keyframes image-bounce {
   0%, 100% { transform: translateY(0); }
   50% { transform: translateY(-5px); }
