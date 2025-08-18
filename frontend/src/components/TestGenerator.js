@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, X, ExternalLink, Edit, Zap } from 'lucide-react';
+// import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap, GitBranch } from 'lucide-react';
 import axios from 'axios';
 import TestOutput from './TestOutput';
 
@@ -91,15 +92,15 @@ const TestGenerator = () => {
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
   // Function to parse requirements table and extract individual requirements
-  const parseRequirementsTable = useCallback((requirementsContent) => {
-    console.log('🔍 parseRequirementsTable called with:', requirementsContent);
-    console.log('🔍 Content length:', requirementsContent.length);
-    console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
+  const parseRequirementsTable = (requirementsContent) => {
+    // console.log('🔍 parseRequirementsTable called with:', requirementsContent);
+    // console.log('🔍 Content length:', requirementsContent.length);
+    // console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
     
     const requirements = [];
     const lines = requirementsContent.split('\n');
-    console.log('🔍 Split lines:', lines);
-    console.log('🔍 Number of lines:', lines.length);
+    // console.log('🔍 Split lines:', lines);
+    // console.log('🔍 Number of lines:', lines.length);
     
     let inTable = false;
     let tableLines = [];
@@ -114,33 +115,33 @@ const TestGenerator = () => {
           line.toLowerCase().includes('business requirement') && 
           line.toLowerCase().includes('acceptance criteria')) {
         inTable = true;
-        console.log('🔍 Found table header at line:', i, 'Content:', line);
+        // console.log('🔍 Found table header at line:', i, 'Content:', line);
         continue;
       }
       
       if (inTable) {
         // Skip separator lines (lines with just dashes and pipes)
         if (line.trim().match(/^[\s\-|]+$/)) {
-          console.log('🔍 Skipping separator line:', line);
+          // console.log('🔍 Skipping separator line:', line);
           continue;
         }
         
         // If we hit a completely empty line, check if there are more requirements below
         if (line.trim() === '') {
-          console.log('🔍 Found empty line at line:', i);
+          // console.log('🔍 Found empty line at line:', i);
           // Look ahead a few lines to see if there are more requirements
           let hasMoreRequirements = false;
           for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
             const nextLine = lines[j];
             if (nextLine.includes('|') && nextLine.split('|').filter(col => col.trim()).length >= 3) {
               hasMoreRequirements = true;
-              console.log('🔍 Found more requirements ahead at line:', j);
+              // console.log('🔍 Found more requirements ahead at line:', j);
               break;
             }
           }
           
           if (!hasMoreRequirements) {
-            console.log('🔍 No more requirements found, ending table parsing');
+            // console.log('🔍 No more requirements found, ending table parsing');
             break; // End of table
           }
         }
@@ -148,13 +149,13 @@ const TestGenerator = () => {
         // Add any line that contains table data
         if (line.includes('|')) {
           tableLines.push(line);
-          console.log('🔍 Added table line:', line);
+          // console.log('🔍 Added table line:', line);
         }
       }
     }
     
-    console.log('🔍 Total table lines found:', tableLines.length);
-    console.log('🔍 ALL table lines:', tableLines);
+    // console.log('🔍 Total table lines found:', tableLines.length);
+    // console.log('🔍 ALL table lines:', tableLines);
     
     // Parse table rows
     let requirementCounter = 0; // Use a separate counter for requirement IDs
@@ -162,8 +163,8 @@ const TestGenerator = () => {
     for (let i = 0; i < tableLines.length; i++) {
       const line = tableLines[i];
       const columns = line.split('|').map(col => col.trim()).filter(col => col);
-      console.log(`🔍 [ROW ${i}] Parsing line:`, line);
-      console.log(`🔍 [ROW ${i}] Columns:`, columns);
+      // console.log(`🔍 [ROW ${i}] Parsing line:`, line);
+      // console.log(`🔍 [ROW ${i}] Columns:`, columns);
       
       if (columns.length >= 3) {
         const [id, requirement, acceptanceCriteria] = columns;
@@ -218,7 +219,7 @@ const TestGenerator = () => {
     
     console.log('🔍 Final requirements parsed:', requirements.map(r => ({ id: r.id, req: r.requirement.substring(0, 30) + '...' })));
     return requirements;
-  }, [requirementsSource, jiraTicketPrefix]);
+  };
 
 
 
@@ -575,7 +576,7 @@ const TestGenerator = () => {
       setIsProcessing(false);
       setProcessingFile(null);
     }
-  }, [API_BASE_URL, context, parseRequirementsTable]);
+  }, [API_BASE_URL, context]);
 
   const handleFileUpload = useCallback((event) => {
     // Extract files from the event
@@ -850,7 +851,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
 
 
   // Fetch Zephyr Scale projects
-  const fetchZephyrProjects = useCallback(async () => {
+  const fetchZephyrProjects = async () => {
     try {
       setLoadingProjects(true);
       const response = await axios.get(`${API_BASE_URL}/api/zephyr-projects`);
@@ -866,10 +867,10 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     } finally {
       setLoadingProjects(false);
     }
-  }, [API_BASE_URL]);
+  };
 
   // Fetch Zephyr Scale folders for selected project
-  const fetchZephyrFolders = useCallback(async (projectKey) => {
+  const fetchZephyrFolders = async (projectKey) => {
     if (!projectKey) {
       setZephyrFolders([]);
       return;
@@ -890,7 +891,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     } finally {
       setLoadingFolders(false);
     }
-  }, [API_BASE_URL]);
+  };
 
   // Fetch all folders and organize them hierarchically
   const fetchAllFolders = async (projectKey) => {
@@ -1139,7 +1140,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
         fetchZephyrFolders(zephyrConfig.projectKey);
       }
     }
-  }, [showZephyrConfig, fetchZephyrProjects, fetchZephyrFolders, zephyrConfig.projectKey, zephyrProjects.length]);
+  }, [showZephyrConfig]);
 
   // Rotate through test generation images
   useEffect(() => {
@@ -1202,13 +1203,59 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
     fetchLoadingImages();
   }, [API_BASE_URL]);
 
+  // const handleInsertRequirements = () => {
+  //   // Format requirements nicely before inserting (remove markdown syntax)
+  //   const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
+  //   setContent(formattedRequirements);
+  //   setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
+  // };
 
+  // Helper function to format requirements for insertion (remove markdown, format nicely)
+  // const formatRequirementsForInsertion = (markdownContent) => {
+  //   const lines = markdownContent.split('\n');
+  //   let formattedContent = 'Business Requirements:\n\n';
+  //
+  //   // First, find and include the header row
+  //   let headerRow = '';
+  //   for (let i = 0; i < lines.length; i++) {
+  //     const line = lines[i].trim();
+  //     if (line.startsWith('|') && line.endsWith('|')) {
+  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
+  //       if (parts.length >= 3 && parts[0].toLowerCase().includes('requirement id')) {
+  //         headerRow = line;
+  //         break;
+  //       }
+  //     }
+  //   }
+  //
+  //   // Add header row if found
+  //   if (headerRow) {
+  //     formattedContent += headerRow + '\n';
+  //     // Add separator line
+  //     const headerParts = headerRow.split('|').map(p => p.trim()).filter(p => p);
+  //     const separatorLine = '|' + headerParts.map(() => '---').join('|') + '|';
+  //     formattedContent += separatorLine + '\n';
+  //   }
+  //
+  //   // Add data rows
+  //   for (let i = 0; i < lines.length; i++) {
+  //     const line = lines[i].trim();
+  //     if (line.startsWith('|') && line.endsWith('|')) {
+  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
+  //       if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
+  //         formattedContent += line + '\n';
+  //       }
+  //     }
+  //   }
+  //
+  //   return formattedContent.trim();
+  // };
 
   // New function to format requirements with generated IDs for insertion
   const formatRequirementsForInsertionWithGeneratedIds = (requirements) => {
     let formattedContent = 'Business Requirements:\n\n';
     
-    // Add header row for reference
+    // Add header row
     formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n';
     formattedContent += '|---|---|---|---|\n';
     
@@ -1217,20 +1264,13 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
       formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity || 'CC: 1, Paths: 1'} |\n`;
     });
     
-    // Add the actual requirement content for test generation
-    formattedContent += '\n\nRequirements for Test Generation:\n\n';
-    requirements.forEach(req => {
-      formattedContent += `Requirement ID: ${req.id}\n`;
-      formattedContent += `Business Requirement: ${req.requirement}\n`;
-      formattedContent += `Acceptance Criteria: ${req.acceptanceCriteria}\n`;
-      formattedContent += `Complexity: ${req.complexity || 'CC: 1, Paths: 1'}\n`;
-      formattedContent += '\n';
-    });
-    
     return formattedContent.trim();
   };
 
-
+  // const handleCopyContent = () => {
+  //   navigator.clipboard.writeText(extractedRequirements);
+  //   setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
+  // };
 
   const handleDownloadContent = async () => {
     try {
@@ -1803,7 +1843,7 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
       )}
 
       {/* Test Cases Modal */}
-      {showModal && ((generatedTests && generatedTests.trim()) || featureTabs.length > 0) && (
+      {showModal && (generatedTests && generatedTests.trim() || featureTabs.length > 0) && (
         <div className="modal-overlay" onClick={() => setShowModal(false)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <div className="modal-header">
@@ -2081,8 +2121,8 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                         color: '#6b7280'
                       }}>
                         Select a project ({zephyrProjects.filter(project => 
-                          ((project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
-                          (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase())))
+                          (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                          (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
                         ).length} available)
                       </div>
                       <div style={{
@@ -2124,8 +2164,8 @@ Scenario: ${req.id}: Successfully entering valid data into the "Need More Inform
                         </div>
                         {zephyrProjects
                           .filter(project => 
-                            ((project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
-                            (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase())))
+                            (project.name && project.name.toLowerCase().includes(projectSearch.toLowerCase())) ||
+                            (project.key && project.key.toLowerCase().includes(projectSearch.toLowerCase()))
                           )
                           .map((project) => (
                             <div

@@ -397,8 +397,8 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   
   if (enableLogging) {
     console.log(`🔍 [${requestId}] Starting requirements extraction...`);
-    console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
-    console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
+    // console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+    // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
   }
   
   // Check if content is sufficient
@@ -431,7 +431,8 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   // Analyze workflow content for complexity calculation
   const workflowAnalysis = analyzeWorkflowContent(processedContent);
   if (enableLogging) {
-    console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+    // console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+    console.log(`🔍 [${requestId}] Workflow Analysis:`);
   }
 
   // Clean up the URL to prevent duplication

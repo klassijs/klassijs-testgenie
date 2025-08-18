@@ -852,7 +852,7 @@ router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
       return res.status(400).json({ error: 'Project key is required' });
     }
 
-    console.log('🔍 Testing available endpoints for project:', projectKey);
+    // console.log('🔍 Testing available endpoints for project:', projectKey);
     
     // Test common endpoint patterns
     const testEndpoints = [
@@ -899,7 +899,7 @@ router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
       }
     }
     
-    console.log('🔍 Endpoint test results:', results);
+    // console.log('🔍 Endpoint test results:', results);
     
     res.json({
       success: true,
