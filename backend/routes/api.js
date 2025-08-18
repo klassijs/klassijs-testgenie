@@ -2,11 +2,12 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
+const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile, getCacheStatus, clearCache, countBusinessElementsDeterministically } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, extractBusinessRequirements, isAzureOpenAIConfigured } = require('../services/openaiService');
 const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured, discoverTraceabilityEndpoints, addJiraTicketToCoverage } = require('../services/zephyrService');
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
 const { generateWordDocument } = require('../utils/docxGenerator');
+const { validateRequirementsQuality } = require('../utils/workflowAnalyzer');
 const axios = require('axios'); // Added axios for the debug endpoint
 
 const router = express.Router();
@@ -1027,6 +1028,106 @@ router.post('/jira/import-issues', async (req, res) => {
       error: 'Failed to import Jira issues',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
+    });
+  }
+});
+
+// Requirements validation endpoint
+router.post('/validate-requirements', async (req, res) => {
+  try {
+    const { requirements } = req.body;
+    
+    if (!requirements || !Array.isArray(requirements) || requirements.length === 0) {
+      return res.status(400).json({
+        error: 'Missing or invalid requirements',
+        details: 'Requirements array is required and must not be empty',
+        suggestion: 'Please provide a valid array of requirements to validate'
+      });
+    }
+
+    // Validate requirements using the workflow analyzer
+    const validation = validateRequirementsQuality(requirements);
+
+    res.json({
+      success: true,
+      validation: validation,
+      message: `Requirements validation completed. Overall score: ${validation.overallScore}%`
+    });
+
+  } catch (error) {
+    console.error('Error validating requirements:', error);
+    res.status(500).json({ 
+      error: 'Failed to validate requirements',
+      details: error.message,
+      suggestion: 'Please check your requirements format and try again'
+    });
+  }
+});
+
+// Deterministic business element analysis endpoint
+router.post('/analyze-business-elements', async (req, res) => {
+  try {
+    const { content } = req.body;
+    
+    if (!content || typeof content !== 'string') {
+      return res.status(400).json({
+        error: 'Missing or invalid content',
+        details: 'Content string is required',
+        suggestion: 'Please provide the content to analyze'
+      });
+    }
+
+    // Analyze content deterministically
+    const analysis = countBusinessElementsDeterministically(content);
+
+    res.json({
+      success: true,
+      analysis: analysis,
+      message: `Business element analysis completed. Found ${analysis.count} business elements.`,
+      recommendation: `Based on this analysis, you should expect approximately ${analysis.count} business requirements to be generated.`
+    });
+
+  } catch (error) {
+    console.error('Error analyzing business elements:', error);
+    res.status(500).json({ 
+      error: 'Failed to analyze business elements',
+      details: error.message,
+      suggestion: 'Please check your content format and try again'
+    });
+  }
+});
+
+// Cache management endpoints for consistency monitoring
+router.get('/cache/status', (req, res) => {
+  try {
+    const cacheStatus = getCacheStatus();
+    res.json({
+      success: true,
+      cache: cacheStatus,
+      message: 'Cache status retrieved successfully'
+    });
+  } catch (error) {
+    console.error('Error getting cache status:', error);
+    res.status(500).json({
+      error: 'Failed to get cache status',
+      details: error.message
+    });
+  }
+});
+
+router.post('/cache/clear', (req, res) => {
+  try {
+    const result = clearCache();
+    res.json({
+      success: true,
+      message: result.message,
+      timestamp: new Date().toISOString()
+    });
+  } catch (error) {
+    console.error('Error clearing cache:', error);
+    res.status(500).json({
+      error: 'Failed to clear cache',
+      details: error.message
     });
   }
 });

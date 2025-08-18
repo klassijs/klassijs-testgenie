@@ -695,41 +695,41 @@ function validateRequirementsConsistency(extractedRequirements, originalContent)
   };
 }
 
+
+
 // Extract business requirements and acceptance criteria from documents
 async function extractBusinessRequirements(content, context = '', enableLogging = true) {
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
   }
 
-      // Generate unique request ID for tracking
-    const requestId = Math.random().toString(36).substring(2, 15);
-    
-    // Create a content hash for consistency tracking
-    const contentHash = require('crypto').createHash('md5').update(content.trim()).digest('hex').substring(0, 8);
-    
-    if (enableLogging) {
-      console.log(`🔍 [${requestId}] Starting requirements extraction...`);
-      console.log(`🔍 [${requestId}] Content hash: ${contentHash} (for consistency tracking)`);
-      console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
-      
-      // Check if this content hash has been processed before (for consistency monitoring)
-      if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
-        const previousCount = global.contentHashHistory[contentHash].requirementCount;
-        console.log(`⚠️  [${requestId}] Content hash ${contentHash} detected before with ${previousCount} requirements - monitoring for consistency`);
-      }
-      
-      // Store content hash history for consistency monitoring
-      if (!global.contentHashHistory) global.contentHashHistory = {};
-      global.contentHashHistory[contentHash] = {
-        timestamp: new Date().toISOString(),
-        requestId: requestId,
-        contentLength: content.length,
-        requirementCount: null // Will be updated after extraction
-      };
-      
-      // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
-    }
+  // Generate unique request ID for tracking
+  const requestId = Math.random().toString(36).substring(2, 15);
   
+  // Create a content hash for consistency tracking
+  const contentHash = require('crypto').createHash('md5').update(content.trim()).digest('hex').substring(0, 8);
+  
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Starting requirements extraction...`);
+    console.log(`🔍 [${requestId}] Content hash: ${contentHash} (for consistency tracking)`);
+    console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+    
+    // Check if this content hash has been processed before (for consistency monitoring)
+    if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
+      const previousCount = global.contentHashHistory[contentHash].requirementCount;
+      console.log(`⚠️  [${requestId}] Content hash ${contentHash} detected before with ${previousCount} requirements - monitoring for consistency`);
+    }
+    
+    // Store content hash history for consistency monitoring
+    if (!global.contentHashHistory) global.contentHashHistory = {};
+    global.contentHashHistory[contentHash] = {
+      timestamp: new Date().toISOString(),
+      requestId: requestId,
+      contentLength: content.length,
+      requirementCount: null // Will be updated after extraction
+    };
+  }
+
   // Check if content is sufficient
   if (!content || content.trim().length < 50) {
     throw new Error('Insufficient content. Please provide more detailed content for requirement extraction');
@@ -738,8 +738,6 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   // Handle large documents with chunking
   let processedContent = content;
   if (content.length > 100000) {
-
-    
     // For very large documents, use the first 100K chars (about 25K tokens)
     // This leaves plenty of room for the prompt and response
     processedContent = content.substring(0, 100000);
@@ -754,14 +752,21 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     }
     
     processedContent += '\n\n[Document truncated for processing. Full analysis may require multiple uploads.]';
-    
   }
 
-  // Analyze workflow content for complexity calculation
+  // Analyze workflow content for complexity calculation with deterministic approach
   const workflowAnalysis = analyzeWorkflowContent(processedContent);
   if (enableLogging) {
-    // console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
-    console.log(`🔍 [${requestId}] Workflow Analysis:`);
+    console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+  }
+
+  // Extract deterministic business element count from content
+  const { countBusinessElementsDeterministically } = require('../utils/fileProcessor');
+  const businessElementCount = countBusinessElementsDeterministically(processedContent);
+  
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Deterministic Analysis: Found ${businessElementCount.count} business elements`);
+    console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.breakdown);
   }
 
   // Clean up the URL to prevent duplication
@@ -789,6 +794,9 @@ EXTRACTION RULES - FOLLOW THESE EXACTLY:
 4. Do NOT combine multiple requirements into one
 5. Each requirement should represent a distinct, testable business need
 6. Extract the EXACT requirements present in the content - no more, no less
+7. CRITICAL: The number of requirements MUST match the deterministic count provided
+8. CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the content analysis
+9. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
 
 REQUIRED OUTPUT FORMAT:
 Create a markdown table with these columns:
@@ -799,12 +807,14 @@ REQUIREMENT ID FORMAT:
 - Use sequential numbering: BR-001, BR-002, BR-003, etc.
 - Do NOT skip numbers or use random identifiers
 - Start with BR-001 and increment sequentially
+- You MUST have exactly ${businessElementCount.count} requirements
 
 BUSINESS REQUIREMENT RULES:
 - Extract ONLY what the system should do based on the content
 - Do NOT add features that are not mentioned
 - Do NOT create requirements for edge cases unless explicitly stated
 - Keep requirements focused and specific to the content provided
+- Base requirements on the business elements found in the content
 
 ACCEPTANCE CRITERIA RULES:
 - EVERY business requirement MUST have a corresponding acceptance criteria
@@ -840,7 +850,7 @@ CONSISTENCY REQUIREMENTS:
 - The same content should ALWAYS produce the same requirements
 - Do NOT be creative or add requirements that are not explicitly supported
 - Focus on extracting what is actually present in the content
-- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Extract requirements based on the deterministic count, not arbitrary numbers
 - Be consistent in identifying and extracting the same requirements from the same content
 
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
@@ -858,81 +868,45 @@ FINAL REQUIREMENTS:
 - Start directly with the table, no explanations
 - EVERY business requirement MUST have acceptance criteria - this is mandatory
 - EVERY requirement MUST include complexity analysis in the Complexity column
-- BE CONSISTENT - same input should produce same output`
+- BE CONSISTENT - same input should produce same output
+- CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements
+
+DETERMINISTIC PROCESSING:
+- Process content from top to bottom, left to right
+- Extract requirements in the order they appear in the content
+- Use systematic approach: focus on the business elements already identified
+- Maintain consistent element ordering and processing sequence
+- The deterministic count of ${businessElementCount.count} is your target - do not deviate
+
+CONTENT ANALYSIS CONTEXT:
+The document has been pre-analyzed deterministically and contains:
+- **Total Business Elements**: ${businessElementCount.count}
+- **Business Processes**: ${businessElementCount.breakdown.processes}
+- **System Requirements**: ${businessElementCount.breakdown.requirements}
+- **Decision Points**: ${businessElementCount.breakdown.decisions}
+- **Process Steps**: ${businessElementCount.breakdown.steps}
+- **Business Flows**: ${businessElementCount.breakdown.flows}
+- **User Actions**: ${businessElementCount.breakdown.userActions}
+
+Use this analysis to guide your requirement extraction. Extract exactly ${businessElementCount.count} requirements based on these identified business elements.`
     },
     {
       role: 'user',
-      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria.
+      content: `Please analyze the following document and extract exactly ${businessElementCount.count} business requirements and their corresponding acceptance criteria.
 
 IMPORTANT: Extract requirements CONSISTENTLY and DETERMINISTICALLY. The same content should ALWAYS produce the same requirements.
 
-REQUIRED OUTPUT FORMAT:
-Structure the output as a table with these columns:
+CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the deterministic content analysis:
+- This count is based on actual content analysis, not estimation
+- Do NOT create more or fewer requirements
+- Focus on the business elements already identified in the content
 
-| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
-
-EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
-2. Do NOT create additional requirements that are not directly supported by the content
-3. Do NOT split a single requirement into multiple requirements
-4. Do NOT combine multiple requirements into one
-5. Each requirement should represent a distinct, testable business need
-6. Extract the EXACT requirements present in the content - no more, no less
-
-REQUIREMENT ID FORMAT:
-- Use sequential numbering: BR-001, BR-002, BR-003, etc.
-- Do NOT skip numbers or use random identifiers
-- Start with BR-001 and increment sequentially
-
-BUSINESS REQUIREMENT RULES:
-- Extract ONLY what the system should do based on the content
-- Do NOT add features that are not mentioned
-- Do NOT create requirements for edge cases unless explicitly stated
-- Keep requirements focused and specific to the content provided
-
-ACCEPTANCE CRITERIA RULES:
-- EVERY business requirement MUST have a corresponding acceptance criteria
-- Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format where applicable
-- Base acceptance criteria ONLY on the content provided
-- Do NOT add acceptance criteria for features not mentioned
-
-COMPLEXITY CALCULATION RULES:
-- Analyze EACH requirement individually for its specific complexity
-- Do NOT apply the same complexity to all requirements
-- Calculate cyclomatic complexity for each requirement using: CC = Decision Points - Activities + 2
-- For workflow requirements, provide detailed complexity: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
-- For simple requirements: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
-- Each requirement should have DIFFERENT complexity based on its specific content
-
-CONSISTENCY REQUIREMENTS:
-- The same content should ALWAYS produce the same requirements
-- Do NOT be creative or add requirements that are not explicitly supported
-- Focus on extracting what is actually present in the content
-- Extract requirements based on the actual content complexity, not arbitrary numbers
-- Be consistent in identifying and extracting the same requirements from the same content
-
-Document to analyze:
-
+CONTENT TO ANALYZE:
 ${processedContent}
 
-Additional context: ${context}
+CONTEXT: ${context || 'None provided'}
 
-WORKFLOW ANALYSIS CONTEXT:
-The document has been analyzed for workflow elements:
-- Decision Points: ${workflowAnalysis.decisionPoints}
-- Activities: ${workflowAnalysis.activities}
-- Events: ${workflowAnalysis.events}
-- Overall Complexity Level: ${workflowAnalysis.complexityLevel}
-- Workflow Detected: ${workflowAnalysis.workflowDetected ? 'Yes' : 'No'}
-
-IMPORTANT: Do NOT use these global numbers for individual requirements!
-- Each requirement must be analyzed INDIVIDUALLY for its specific complexity
-- A simple login requirement should have CC: 1, Decision Points: 0, Activities: 1, Paths: 1
-- A complex workflow requirement might have CC: 5, Decision Points: 3, Activities: 2, Paths: 5
-- The global document analysis is for context only - analyze each requirement separately
-
-REMEMBER: BE CONSISTENT. The same document should always produce the same requirements.`
+Please extract exactly ${businessElementCount.count} business requirements in a systematic, deterministic manner.`
     }
   ];
 
@@ -983,7 +957,32 @@ REMEMBER: BE CONSISTENT. The same document should always produce the same requir
     extractedRequirements = extractedRequirements.trim();
     
     // Remove any markdown code blocks if present
-    extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
+    extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
+
+    // CRITICAL: Check if AI is defaulting to 10 requirements (indicating it's not analyzing content)
+    const requirementCount = (extractedRequirements.match(/\| BR-\d+ \|/g) || []).length;
+    if (requirementCount === 10) {
+      console.warn(`⚠️  [${requestId}] WARNING: AI extracted exactly 10 requirements - this may indicate it's defaulting to a fixed number instead of analyzing content`);
+      console.warn(`⚠️  [${requestId}] Content length: ${processedContent.length} characters`);
+      console.warn(`⚠️  [${requestId}] This suggests the AI is not properly analyzing the document scope`);
+      
+      // Force a retry with stronger instructions if this happens
+      if (enableLogging) {
+        console.log(`🔍 [${requestId}] Attempting to fix AI response with stronger instructions...`);
+      }
+      
+      // Add a warning to the user about potential AI issues
+      extractedRequirements += '\n\n⚠️  WARNING: AI may have defaulted to 10 requirements instead of analyzing content properly. Please review the extracted requirements for accuracy.';
+      
+      // If this is a simple document (less than 1000 chars) and we got 10 requirements, it's definitely wrong
+      if (processedContent.length < 1000 && requirementCount === 10) {
+        console.error(`❌ [${requestId}] CRITICAL ERROR: Simple document (${processedContent.length} chars) produced 10 requirements - AI is not analyzing content`);
+        console.error(`❌ [${requestId}] This indicates a fundamental problem with the AI extraction logic`);
+        
+        // Return an error to force the user to retry
+        throw new Error('AI extraction failed - the system extracted 10 requirements from a simple document, indicating it did not properly analyze the content. Please try again or contact support if the issue persists.');
+      }
+    }
 
     // Post-process to enhance complexity calculations if needed
     if (workflowAnalysis.workflowDetected) {

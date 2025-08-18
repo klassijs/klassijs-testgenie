@@ -2169,6 +2169,65 @@ SCENARIO NAMING GUIDELINES:
               <button 
                 className="btn btn-secondary"
                 style={{
+                  backgroundColor: '#06b6d4',
+                  borderColor: '#06b6d4',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(6, 182, 212, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#0891b2';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(6, 182, 212, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#06b6d4';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(6, 182, 212, 0.2)';
+                }}
+                onClick={async () => {
+                  if (editableRequirements.length === 0) {
+                    setStatus({ type: 'warning', message: 'No requirements to validate. Please extract requirements first.' });
+                    return;
+                  }
+                  
+                  try {
+                    const response = await axios.post(`${API_BASE_URL}/api/validate-requirements`, {
+                      requirements: editableRequirements
+                    });
+                    
+                    if (response.data.success) {
+                      const validation = response.data.validation;
+                      const score = validation.overallScore;
+                      const color = score >= 90 ? '#10b981' : score >= 80 ? '#f59e0b' : '#ef4444';
+                      
+                      setStatus({ 
+                        type: 'success', 
+                        message: `Requirements Quality Score: ${score}% - ${validation.recommendations[0]}` 
+                      });
+                      
+                      // Show detailed validation results
+                      console.log('🔍 Requirements Validation Results:', validation);
+                      console.log('🔍 Quality Metrics:', validation.qualityMetrics);
+                      console.log('🔍 Issues:', validation.issues);
+                      console.log('🔍 Warnings:', validation.warnings);
+                      console.log('🔍 Recommendations:', validation.recommendations);
+                    }
+                  } catch (error) {
+                    console.error('Error validating requirements:', error);
+                    setStatus({ 
+                      type: 'error', 
+                      message: 'Failed to validate requirements. Please try again.' 
+                    });
+                  }
+                }}
+              >
+                Validate Quality
+              </button>
+              <button 
+                className="btn btn-secondary"
+                style={{
                   backgroundColor: '#6b7280',
                   borderColor: '#6b7280',
                   color: 'white',
