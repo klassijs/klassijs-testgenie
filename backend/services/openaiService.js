@@ -266,6 +266,208 @@ CRITICAL REQUIREMENTS:
   }
 }
 
+// Validate that refined content preserves original scenario names and feature name
+function validateScenarioNamePreservation(originalContent, refinedContent) {
+  // Extract original feature name
+  const originalFeatureMatch = originalContent.match(/^Feature:\s*(.+)$/m);
+  const originalFeatureName = originalFeatureMatch ? originalFeatureMatch[1].trim() : '';
+  
+  // Extract refined feature name
+  const refinedFeatureMatch = refinedContent.match(/^Feature:\s*(.+)$/m);
+  const refinedFeatureName = refinedFeatureMatch ? refinedFeatureMatch[1].trim() : '';
+  
+  // Check if feature name was changed
+  if (originalFeatureName && refinedFeatureName && originalFeatureName !== refinedFeatureName) {
+    console.warn('⚠️  Feature name was changed during refinement. Restoring original feature name.');
+    // Restore original feature name
+    refinedContent = refinedContent.replace(/^Feature:\s*.+$/m, `Feature: ${originalFeatureName}`);
+  }
+  
+  // Extract original scenario names
+  const originalScenarios = [];
+  const originalLines = originalContent.split('\n');
+  
+  for (const line of originalLines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
+      const scenarioName = trimmedLine.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+      if (scenarioName) {
+        originalScenarios.push(scenarioName);
+      }
+    }
+  }
+  
+  // Extract refined scenario names
+  const refinedScenarios = [];
+  const refinedLines = refinedContent.split('\n');
+  
+  for (const line of refinedLines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
+      const scenarioName = trimmedLine.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+      if (scenarioName) {
+        refinedScenarios.push(scenarioName);
+      }
+    }
+  }
+  
+  // Check if all original scenarios are preserved
+  const missingScenarios = originalScenarios.filter(original => 
+    !refinedScenarios.some(refined => refined === original)
+  );
+  
+  if (missingScenarios.length > 0) {
+    console.warn('⚠️  Some original scenarios were not preserved during refinement:', missingScenarios);
+    
+    // Try to restore missing scenarios by finding them in the original content
+    let restoredContent = refinedContent;
+    
+    for (const missingScenario of missingScenarios) {
+      // Find the original scenario content
+      let inScenario = false;
+      let scenarioContent = '';
+      
+      for (let i = 0; i < originalLines.length; i++) {
+        const line = originalLines[i].trim();
+        
+        if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+          if (inScenario) {
+            break; // End of previous scenario
+          }
+          
+          const scenarioName = line.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+          if (scenarioName === missingScenario) {
+            inScenario = true;
+            scenarioContent = line + '\n';
+          }
+        } else if (inScenario) {
+          if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:') || line.startsWith('Feature:')) {
+            break; // End of current scenario
+          }
+          scenarioContent += line + '\n';
+        }
+      }
+      
+      // Add the missing scenario to the refined content
+      if (scenarioContent) {
+        restoredContent += '\n' + scenarioContent.trim();
+        console.log(`✅ Restored missing scenario: ${missingScenario}`);
+      }
+    }
+    
+    return restoredContent;
+  } else {
+    console.log('✅ All original scenarios were preserved during refinement');
+  }
+  
+      // Check if new scenarios follow the same naming convention
+    const newScenarios = refinedScenarios.filter(refined => 
+      !originalScenarios.some(original => original === refined)
+    );
+    
+    if (newScenarios.length > 0) {
+      console.log(`✅ Added ${newScenarios.length} new scenarios during refinement`);
+      
+      // Validate naming convention for new scenarios
+      if (originalScenarios.length > 0) {
+        const namingPattern = detectNamingPattern(originalScenarios);
+        if (namingPattern) {
+                   if (namingPattern.type === 'jira-tab') {
+           console.log(`🔍 Detected Jira tab naming pattern: ${namingPattern.prefix}`);
+          // For Jira tab patterns, ensure all new scenarios use the exact same prefix
+          const invalidNewScenarios = newScenarios.filter(scenario => {
+            const match = scenario.match(namingPattern.pattern);
+            if (!match) return true; // No pattern match
+            
+            const newPrefix = match[1];
+            return newPrefix !== namingPattern.prefix; // Different prefix
+          });
+          
+          if (invalidNewScenarios.length > 0) {
+            console.warn('⚠️  Some new scenarios do not use the correct tab prefix. Expected:', namingPattern.prefix);
+            console.warn('Invalid scenarios:', invalidNewScenarios);
+            
+            // Auto-correct new scenarios to use the correct prefix
+            let correctedContent = refinedContent;
+            for (const invalidScenario of invalidNewScenarios) {
+              const correctedScenario = invalidScenario.replace(
+                /^([A-Z]+-\d+-\d+):\s*(.+)/,
+                `${namingPattern.prefix}: $2`
+              );
+              correctedContent = correctedContent.replace(invalidScenario, correctedScenario);
+              console.log(`✅ Auto-corrected scenario prefix: ${invalidScenario} → ${correctedScenario}`);
+            }
+            refinedContent = correctedContent;
+          }
+        } else {
+          // For other patterns, just check if they match the pattern
+          const invalidNewScenarios = newScenarios.filter(scenario => 
+            !scenario.match(namingPattern.pattern)
+          );
+          
+          if (invalidNewScenarios.length > 0) {
+            console.warn('⚠️  Some new scenarios do not follow the original naming convention:', invalidNewScenarios);
+          }
+        }
+      }
+    }
+  }
+  
+  return refinedContent;
+}
+
+// Detect naming pattern from existing scenarios
+function detectNamingPattern(scenarios) {
+  if (scenarios.length === 0) return null;
+  
+  // Check for Jira ticket + tab pattern (e.g., "QAE-162-003: Display error message")
+  const jiraTabPattern = /^([A-Z]+-\d+-\d+):\s*.+/;
+  if (scenarios.every(scenario => jiraTabPattern.test(scenario))) {
+    // Extract the prefix (e.g., "QAE-162-003")
+    const firstMatch = scenarios[0].match(jiraTabPattern);
+    if (firstMatch) {
+      return {
+        pattern: jiraTabPattern,
+        prefix: firstMatch[1], // e.g., "QAE-162-003"
+        type: 'jira-tab'
+      };
+    }
+  }
+  
+  // Check for requirement ID pattern (e.g., "BR-001: User Login")
+  const requirementIdPattern = /^[A-Z]{2}-\d+:\s*.+/;
+  if (scenarios.every(scenario => requirementIdPattern.test(scenario))) {
+    return {
+      pattern: requirementIdPattern,
+      type: 'requirement-id'
+    };
+  }
+  
+  // Check for simple descriptive pattern
+  const descriptivePattern = /^[A-Z][a-z\s]+$/;
+  if (scenarios.every(scenario => descriptivePattern.test(scenario))) {
+    return {
+      pattern: descriptivePattern,
+      type: 'descriptive'
+    };
+  }
+  
+  return null;
+}
+
+// Test function for naming pattern detection (can be removed in production)
+function testNamingPatternDetection() {
+  const testScenarios = [
+    'QAE-162-003: Display error message when invalid input',
+    'QAE-162-003: Successfully display valid data',
+    'QAE-162-003: Handle edge case scenarios'
+  ];
+  
+  const pattern = detectNamingPattern(testScenarios);
+  console.log('Test pattern detection:', pattern);
+  // Should output: { pattern: /^([A-Z]+-\d+-\d+):\s*.+/, prefix: "QAE-162-003", type: "jira-tab" }
+}
+
 // Refine test cases using Azure OpenAI
 async function refineTestCases(content, feedback, context = '') {
   if (!isAzureOpenAIConfigured) {
@@ -314,16 +516,31 @@ CRITICAL REQUIREMENTS:
 - Do NOT include any explanations, comments, or descriptions about the test cases.
 - Do NOT include sections like "### Explanation:", "This Gherkin syntax covers...", "Certainly! Below are...", or any introductory/concluding remarks.
 - Start directly with 'Feature:' and end with the last test scenario.
-- Ensure the output is ready to be saved directly as a .feature file.`
+- Ensure the output is ready to be saved directly as a .feature file.
+
+SCENARIO NAMING PRESERVATION:
+- PRESERVE the original scenario names exactly as they appear in the provided content
+- Do NOT change, modify, or rename existing scenarios
+- When adding new scenarios, follow the same naming convention used in the original content
+- If the original content uses requirement IDs (e.g., "BR-001: User Login"), maintain that format for new scenarios
+- If the original content uses Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description")
+- Do NOT increment tab numbers or change the prefix - keep the exact same identifier for all scenarios
+- Keep the exact same Feature name and structure`
     },
     {
       role: 'user',
       content: `Refine the following Gherkin test cases based on this feedback: "${feedback}"
 
+IMPORTANT: You must preserve all existing scenario names exactly as they are. Do NOT change, rename, or modify any existing scenarios.
+
+CRITICAL NAMING REQUIREMENT: If the scenarios use a Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios you create MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description"). Do NOT increment tab numbers or change the prefix.
+
 Current test cases:
 ${content}
 
-Additional context: ${context}`
+Additional context: ${context}
+
+Remember: Keep all existing scenario names unchanged and follow the same naming convention when adding new scenarios. Maintain the exact same prefix for all scenarios.`
     }
   ];
 
@@ -379,7 +596,15 @@ Additional context: ${context}`
       .replace(/```\\n/gi, '') // Remove trailing ```
       .trim(); // Trim any leading/trailing whitespace
 
-    return cleanRefinedTests;
+    // Validate that original scenario names are preserved
+    const validatedRefinedTests = validateScenarioNamePreservation(content, cleanRefinedTests);
+    
+    // Log refinement summary
+    const originalScenarios = (content.match(/Scenario:/g) || []).length;
+    const refinedScenarios = (validatedRefinedTests.match(/Scenario:/g) || []).length;
+    console.log(`✅ Refinement completed: ${originalScenarios} original scenarios, ${refinedScenarios} refined scenarios`);
+
+    return validatedRefinedTests;
   } catch (error) {
     console.error('Azure OpenAI API Error:', error.response?.data || error.message);
     throw new Error(`Azure OpenAI API Error: ${error.response?.status || error.message}`);

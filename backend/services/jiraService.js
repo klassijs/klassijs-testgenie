@@ -186,18 +186,10 @@ function createScenariosFromJiraContent(summary, description, issueKey) {
     }
   }
   
-  // If no scenarios were extracted from description, create intelligent ones from summary
+  // Only proceed if scenarios are found - no default scenarios should be created
   if (scenarios.length === 0) {
-    const mainScenario = {
-      title: `${issueKey}: ${summary}` || `Test ${issueKey}`,
-      steps: []
-    };
-    
-    // Create more intelligent steps based on the summary content
-    const intelligentSteps = createIntelligentSteps(summary, description);
-    mainScenario.steps.push(...intelligentSteps);
-    
-    scenarios.push(mainScenario);
+    console.log('⚠️  No scenarios found in Jira ticket content. Test cases should only be created from actual business requirements and acceptance criteria.');
+    // Return empty scenarios array instead of creating default ones
   }
   
   return scenarios;
