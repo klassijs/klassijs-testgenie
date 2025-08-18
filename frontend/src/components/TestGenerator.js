@@ -1384,6 +1384,8 @@ SCENARIO NAMING GUIDELINES:
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [editableRequirements, setEditableRequirements] = useState([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
   // Rotate through test generation images
   useEffect(() => {
@@ -1508,8 +1510,19 @@ SCENARIO NAMING GUIDELINES:
     };
     
     fetchLoadingImages();
-  }, [API_BASE_URL]);
-
+    }, [API_BASE_URL]);
+  
+  // Initialize editable requirements when extractedRequirements changes
+  useEffect(() => {
+    if (extractedRequirements) {
+      console.log('🔍 extractedRequirements changed, parsing:', extractedRequirements.substring(0, 200));
+      const requirements = parseRequirementsTable(extractedRequirements);
+      console.log('🔍 Parsed requirements:', requirements);
+      setEditableRequirements(requirements);
+      setHasUnsavedChanges(false);
+    }
+  }, [extractedRequirements]);
+  
   // const handleInsertRequirements = () => {
   //   // Format requirements nicely before inserting (remove markdown syntax)
   //   const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
@@ -1893,6 +1906,20 @@ SCENARIO NAMING GUIDELINES:
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
               Extracted Business Requirements
+              {hasUnsavedChanges && (
+                <span style={{ 
+                  marginLeft: '10px', 
+                  fontSize: '0.8rem', 
+                  color: '#f59e0b', 
+                  fontWeight: 'normal',
+                  backgroundColor: '#fef3c7',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid #fbbf24'
+                }}>
+                  ⚠️ Unsaved Changes
+                </span>
+              )}
             </h3>
             
             {/* Proper table display - not markdown */}
@@ -1919,102 +1946,102 @@ SCENARIO NAMING GUIDELINES:
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Parse markdown table into proper table rows with generated IDs
-                    const requirements = parseRequirementsTable(extractedRequirements);
-                    
-                    return requirements.map((req, index) => (
-                      <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
-                          <textarea
-                            defaultValue={req.id}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].id = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontWeight: 'bold'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.requirement}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].requirement = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.acceptanceCriteria}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].acceptanceCriteria = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.complexity || 'CC: 1, Paths: 1'}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].complexity = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontSize: '12px'
-                            }}
-                            placeholder="CC: 1, Paths: 1"
-                          />
-                        </td>
-                      </tr>
-                    ));
-                  })()}
+                  {console.log('🔍 Rendering table with editableRequirements:', editableRequirements)}
+                  {editableRequirements && editableRequirements.length > 0 ? (
+                    editableRequirements.map((req, index) => (
+                    <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
+                        <textarea
+                          value={req.id}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].id = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontWeight: 'bold'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.requirement}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].requirement = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.acceptanceCriteria}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].acceptanceCriteria = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.complexity || 'CC: 1, Paths: 1'}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].complexity = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontSize: '12px'
+                          }}
+                          placeholder="CC: 1, Paths: 1"
+                        />
+                      </td>
+                    </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                        {editableRequirements === null ? 'Loading requirements...' : 'No requirements found'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2024,13 +2051,11 @@ SCENARIO NAMING GUIDELINES:
               <button 
                 className="btn btn-primary"
                 onClick={() => {
-                  // Get the parsed requirements with generated IDs
-                  console.log('🔍 Insert Requirements clicked - extractedRequirements:', extractedRequirements.substring(0, 200));
-                  const requirements = parseRequirementsTable(extractedRequirements);
-                  console.log('🔍 Parsed requirements count:', requirements.length);
+                  // Use the editable requirements state
+                  console.log('🔍 Insert Requirements clicked - editableRequirements count:', editableRequirements.length);
                   
                   // Validate complexity values and show warnings
-                  const complexityWarnings = validateComplexityValues(requirements);
+                  const complexityWarnings = validateComplexityValues(editableRequirements);
                   if (complexityWarnings.length > 0) {
                     console.warn('⚠️ Complexity Validation Warnings:', complexityWarnings);
                     setStatus({ 
@@ -2042,11 +2067,56 @@ SCENARIO NAMING GUIDELINES:
                   }
                   
                   // Format requirements properly with headers and generated IDs for insertion
-                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);
+                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(editableRequirements);
                   setContent(formattedContent);
                 }}
               >
                 Insert Requirements
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => {
+                  // Sync editable requirements back to extractedRequirements with proper markdown table format
+                  console.log('🔍 Save Changes clicked - editableRequirements:', editableRequirements);
+                  
+                  const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
+                  const tableSeparator = '|---|---|---|---|';
+                  const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
+                  const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
+                  
+                  console.log('🔍 New content being saved:', newContent);
+                  
+                  setExtractedRequirements(newContent);
+                  setHasUnsavedChanges(false);
+                  setStatus({ type: 'success', message: 'Changes saved successfully!' });
+                }}
+              >
+                Save Changes
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => {
+                  // Reset to original requirements
+                  const requirements = parseRequirementsTable(extractedRequirements);
+                  setEditableRequirements(requirements);
+                  setHasUnsavedChanges(false);
+                  setStatus({ type: 'info', message: 'Changes reset to original requirements.' });
+                }}
+              >
+                Reset Changes
+              </button>
+              <button 
+                className="btn btn-secondary"
+                onClick={() => {
+                  // Debug button to see current state
+                  console.log('🔍 Debug - Current state:');
+                  console.log('🔍 editableRequirements:', editableRequirements);
+                  console.log('🔍 extractedRequirements:', extractedRequirements);
+                  console.log('🔍 hasUnsavedChanges:', hasUnsavedChanges);
+                  setStatus({ type: 'info', message: 'Check console for debug info' });
+                }}
+              >
+                Debug State
               </button>
               <button 
                 className="btn btn-secondary"
