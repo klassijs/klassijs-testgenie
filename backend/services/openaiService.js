@@ -1,4 +1,82 @@
 const axios = require('axios');
+const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequirementComplexity } = require('../utils/workflowAnalyzer');
+
+/**
+ * Enhance complexity calculations in the extracted requirements
+ * @param {string} requirements - The requirements table from AI
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced requirements with improved complexity calculations
+ */
+function enhanceComplexityCalculations(requirements, workflowAnalysis) {
+  try {
+    const lines = requirements.split('\n');
+    const enhancedLines = [];
+    
+    for (const line of lines) {
+      if (line.includes('|') && line.includes('CC:')) {
+        // This line already has complexity, enhance it if needed
+        const enhancedLine = enhanceExistingComplexity(line, workflowAnalysis);
+        enhancedLines.push(enhancedLine);
+      } else if (line.includes('|') && !line.includes('CC:')) {
+        // This line is missing complexity, add it
+        const enhancedLine = addMissingComplexity(line, workflowAnalysis);
+        enhancedLines.push(enhancedLine);
+      } else {
+        enhancedLines.push(line);
+      }
+    }
+    
+    return enhancedLines.join('\n');
+  } catch (error) {
+    console.error('Error enhancing complexity calculations:', error);
+    return requirements; // Return original if enhancement fails
+  }
+}
+
+/**
+ * Enhance existing complexity calculation
+ * @param {string} line - Table row with existing complexity
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced line
+ */
+function enhanceExistingComplexity(line, workflowAnalysis) {
+  // Extract requirement and acceptance criteria from the line
+  const columns = line.split('|').map(col => col.trim()).filter(col => col);
+  if (columns.length >= 4) {
+    const [id, requirement, acceptanceCriteria, existingComplexity] = columns;
+    
+    // If the complexity looks too generic or is the same as global analysis, recalculate
+    if (existingComplexity.includes('CC: 1, Decision Points: 0, Activities: 1, Paths: 1') || 
+        existingComplexity.includes(`CC: ${workflowAnalysis.cyclomaticComplexity}`)) {
+      
+      // Use smart categorization for this specific requirement
+      const smartComplexity = categorizeRequirementComplexity(requirement, acceptanceCriteria);
+      return line.replace(existingComplexity, smartComplexity);
+    }
+  }
+  return line;
+}
+
+/**
+ * Add missing complexity calculation
+ * @param {string} line - Table row without complexity
+ * @param {Object} workflowAnalysis - Workflow analysis results
+ * @returns {string} Enhanced line
+ */
+function addMissingComplexity(line, workflowAnalysis) {
+  if (line.trim().endsWith('|')) {
+    // Extract requirement and acceptance criteria from the line
+    const columns = line.split('|').map(col => col.trim()).filter(col => col);
+    if (columns.length >= 3) {
+      const [id, requirement, acceptanceCriteria] = columns;
+      
+      // Use smart categorization for this specific requirement
+      const smartComplexity = categorizeRequirementComplexity(requirement, acceptanceCriteria);
+      return line + ` ${smartComplexity} |`;
+    }
+  }
+  return line;
+}
 
 const OPENAI_URL = process.env.OPENAI_URL;
 const OPENAI_DEVELOPMENT_ID = process.env.OPENAI_DEVELOPMENT_ID;
@@ -37,11 +115,18 @@ async function generateTestCases(content, context = '') {
       role: 'system',
       content: `You are a Test Automation Architect creating Cucumber test cases in Gherkin syntax.
 
-Your task is to analyze the EXACT requirement and acceptance criteria provided and generate MULTIPLE test scenarios that thoroughly test that SPECIFIC functionality.
+Your task is to analyze the EXACT requirement and acceptance criteria provided and generate test scenarios that cover EVERY execution path identified in the complexity analysis.
 
 IMPORTANT: You must generate test scenarios that are SPECIFIC to the provided business requirement and acceptance criteria. Do NOT generate generic test scenarios.
 
-For each acceptance criteria, generate AT LEAST 5 different test scenarios including:
+PATH COVERAGE REQUIREMENTS:
+- Analyze the complexity information from the requirement (CC, Decision Points, Paths)
+- Generate test scenarios that cover EVERY identified execution path
+- The number of test scenarios should match or exceed the "Paths" count
+- Each decision point should have separate test scenarios for each branch
+- Ensure complete coverage of all conditional logic and workflow branches
+
+For each acceptance criteria, generate comprehensive test scenarios including:
 
 POSITIVE TEST SCENARIOS:
 - Happy path scenarios (main success flow)
@@ -59,6 +144,13 @@ NEGATIVE TEST SCENARIOS:
 - Invalid state transitions
 - Security-related negative scenarios
 
+WORKFLOW PATH SCENARIOS:
+- Test each decision branch separately
+- Cover all gateway conditions (exclusive, parallel, inclusive)
+- Test all possible workflow paths
+- Include error paths and exception handling
+- Test parallel execution paths
+
 DATA-DRIVEN SCENARIOS:
 - Scenario outlines with multiple examples
 - Different data combinations
@@ -66,7 +158,7 @@ DATA-DRIVEN SCENARIOS:
 
 CRITICAL REQUIREMENTS:
 - Generate ONLY pure Gherkin syntax (Feature, Scenario, Given, When, Then, And, But)
-- Generate MULTIPLE scenarios (3-5 minimum) for each acceptance criteria
+- Generate ENOUGH scenarios to cover ALL identified paths from complexity analysis
 - Include both positive scenarios and negative/edge case scenarios
 - Use descriptive scenario names that clearly indicate what is being tested
 - Do NOT generate generic test scenarios
@@ -76,9 +168,10 @@ CRITICAL REQUIREMENTS:
 - Do NOT include any text that starts with "Example:", "Sample:", "Here's an example:", or similar
 - Start directly with 'Feature:' and end with the last test scenario
 - Ensure the output is ready to be saved directly as a .feature file
-- Each scenario should test a different aspect or variation of the acceptance criteria
+- Each scenario should test a different execution path or decision branch
 - Output ONLY the actual test scenarios, nothing else
-- The Feature name and scenarios must be based on the SPECIFIC business requirement provided`
+- The Feature name and scenarios must be based on the SPECIFIC business requirement provided
+- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis`
     },
     {
       role: 'user',
@@ -89,20 +182,28 @@ ${content}
 
 Additional context: ${context}
 
+PATH COVERAGE REQUIREMENTS:
+- Analyze the complexity information (CC, Decision Points, Paths) from the requirement
+- Generate test scenarios that cover EVERY identified execution path
+- The number of test scenarios should match or exceed the "Paths" count
+- Each decision point should have separate test scenarios for each branch
+- Ensure complete coverage of all conditional logic and workflow branches
+
 CRITICAL REQUIREMENTS:
 - Generate test scenarios that are SPECIFIC to the business requirement and acceptance criteria provided above
 - Do NOT generate generic test scenarios like "User Registration" or "Login"
 - Do NOT create test scenarios for functionality not mentioned in the requirement
 - Each scenario must directly relate to the provided business requirement and acceptance criteria
-- Generate multiple scenarios (positive, negative, edge cases) for this single acceptance criteria
-- Each scenario should test a different aspect or variation of the provided acceptance criteria
+- Generate ENOUGH scenarios to cover ALL identified paths from complexity analysis
+- Each scenario should test a different execution path or decision branch
 - Output ONLY the actual Gherkin test scenarios
 - Do NOT include any examples, explanations, or sample scenarios
 - Start directly with 'Feature:' and end with the last test scenario
 - The Feature name should be based on the business requirement provided
 - If the requirement mentions "ProQuest Orders", the Feature should be about "ProQuest Orders"
 - If the requirement mentions "Salesforce", the scenarios should involve "Salesforce"
-- Use the EXACT terminology from the requirement in your test scenarios`
+- Use the EXACT terminology from the requirement in your test scenarios
+- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis`
     }
   ];
 
@@ -165,6 +266,208 @@ CRITICAL REQUIREMENTS:
   }
 }
 
+// Validate that refined content preserves original scenario names and feature name
+function validateScenarioNamePreservation(originalContent, refinedContent) {
+  // Extract original feature name
+  const originalFeatureMatch = originalContent.match(/^Feature:\s*(.+)$/m);
+  const originalFeatureName = originalFeatureMatch ? originalFeatureMatch[1].trim() : '';
+  
+  // Extract refined feature name
+  const refinedFeatureMatch = refinedContent.match(/^Feature:\s*(.+)$/m);
+  const refinedFeatureName = refinedFeatureMatch ? refinedFeatureMatch[1].trim() : '';
+  
+  // Check if feature name was changed
+  if (originalFeatureName && refinedFeatureName && originalFeatureName !== refinedFeatureName) {
+    console.warn('⚠️  Feature name was changed during refinement. Restoring original feature name.');
+    // Restore original feature name
+    refinedContent = refinedContent.replace(/^Feature:\s*.+$/m, `Feature: ${originalFeatureName}`);
+  }
+  
+  // Extract original scenario names
+  const originalScenarios = [];
+  const originalLines = originalContent.split('\n');
+  
+  for (const line of originalLines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
+      const scenarioName = trimmedLine.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+      if (scenarioName) {
+        originalScenarios.push(scenarioName);
+      }
+    }
+  }
+  
+  // Extract refined scenario names
+  const refinedScenarios = [];
+  const refinedLines = refinedContent.split('\n');
+  
+  for (const line of refinedLines) {
+    const trimmedLine = line.trim();
+    if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
+      const scenarioName = trimmedLine.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+      if (scenarioName) {
+        refinedScenarios.push(scenarioName);
+      }
+    }
+  }
+  
+  // Check if all original scenarios are preserved
+  const missingScenarios = originalScenarios.filter(original => 
+    !refinedScenarios.some(refined => refined === original)
+  );
+  
+  if (missingScenarios.length > 0) {
+    console.warn('⚠️  Some original scenarios were not preserved during refinement:', missingScenarios);
+    
+    // Try to restore missing scenarios by finding them in the original content
+    let restoredContent = refinedContent;
+    
+    for (const missingScenario of missingScenarios) {
+      // Find the original scenario content
+      let inScenario = false;
+      let scenarioContent = '';
+      
+      for (let i = 0; i < originalLines.length; i++) {
+        const line = originalLines[i].trim();
+        
+        if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+          if (inScenario) {
+            break; // End of previous scenario
+          }
+          
+          const scenarioName = line.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
+          if (scenarioName === missingScenario) {
+            inScenario = true;
+            scenarioContent = line + '\n';
+          }
+        } else if (inScenario) {
+          if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:') || line.startsWith('Feature:')) {
+            break; // End of current scenario
+          }
+          scenarioContent += line + '\n';
+        }
+      }
+      
+      // Add the missing scenario to the refined content
+      if (scenarioContent) {
+        restoredContent += '\n' + scenarioContent.trim();
+        console.log(`✅ Restored missing scenario: ${missingScenario}`);
+      }
+    }
+    
+    return restoredContent;
+  } else {
+    console.log('✅ All original scenarios were preserved during refinement');
+  }
+  
+      // Check if new scenarios follow the same naming convention
+    const newScenarios = refinedScenarios.filter(refined => 
+      !originalScenarios.some(original => original === refined)
+    );
+    
+    if (newScenarios.length > 0) {
+      console.log(`✅ Added ${newScenarios.length} new scenarios during refinement`);
+      
+      // Validate naming convention for new scenarios
+      if (originalScenarios.length > 0) {
+        const namingPattern = detectNamingPattern(originalScenarios);
+        if (namingPattern) {
+                   if (namingPattern.type === 'jira-tab') {
+           console.log(`🔍 Detected Jira tab naming pattern: ${namingPattern.prefix}`);
+          // For Jira tab patterns, ensure all new scenarios use the exact same prefix
+          const invalidNewScenarios = newScenarios.filter(scenario => {
+            const match = scenario.match(namingPattern.pattern);
+            if (!match) return true; // No pattern match
+            
+            const newPrefix = match[1];
+            return newPrefix !== namingPattern.prefix; // Different prefix
+          });
+          
+          if (invalidNewScenarios.length > 0) {
+            console.warn('⚠️  Some new scenarios do not use the correct tab prefix. Expected:', namingPattern.prefix);
+            console.warn('Invalid scenarios:', invalidNewScenarios);
+            
+            // Auto-correct new scenarios to use the correct prefix
+            let correctedContent = refinedContent;
+            for (const invalidScenario of invalidNewScenarios) {
+              const correctedScenario = invalidScenario.replace(
+                /^([A-Z]+-\d+-\d+):\s*(.+)/,
+                `${namingPattern.prefix}: $2`
+              );
+              correctedContent = correctedContent.replace(invalidScenario, correctedScenario);
+              console.log(`✅ Auto-corrected scenario prefix: ${invalidScenario} → ${correctedScenario}`);
+            }
+            refinedContent = correctedContent;
+          }
+        } else {
+          // For other patterns, just check if they match the pattern
+          const invalidNewScenarios = newScenarios.filter(scenario => 
+            !scenario.match(namingPattern.pattern)
+          );
+          
+          if (invalidNewScenarios.length > 0) {
+            console.warn('⚠️  Some new scenarios do not follow the original naming convention:', invalidNewScenarios);
+          }
+        }
+      }
+    }
+  }
+  
+  return refinedContent;
+}
+
+// Detect naming pattern from existing scenarios
+function detectNamingPattern(scenarios) {
+  if (scenarios.length === 0) return null;
+  
+  // Check for Jira ticket + tab pattern (e.g., "QAE-162-003: Display error message")
+  const jiraTabPattern = /^([A-Z]+-\d+-\d+):\s*.+/;
+  if (scenarios.every(scenario => jiraTabPattern.test(scenario))) {
+    // Extract the prefix (e.g., "QAE-162-003")
+    const firstMatch = scenarios[0].match(jiraTabPattern);
+    if (firstMatch) {
+      return {
+        pattern: jiraTabPattern,
+        prefix: firstMatch[1], // e.g., "QAE-162-003"
+        type: 'jira-tab'
+      };
+    }
+  }
+  
+  // Check for requirement ID pattern (e.g., "BR-001: User Login")
+  const requirementIdPattern = /^[A-Z]{2}-\d+:\s*.+/;
+  if (scenarios.every(scenario => requirementIdPattern.test(scenario))) {
+    return {
+      pattern: requirementIdPattern,
+      type: 'requirement-id'
+    };
+  }
+  
+  // Check for simple descriptive pattern
+  const descriptivePattern = /^[A-Z][a-z\s]+$/;
+  if (scenarios.every(scenario => descriptivePattern.test(scenario))) {
+    return {
+      pattern: descriptivePattern,
+      type: 'descriptive'
+    };
+  }
+  
+  return null;
+}
+
+// Test function for naming pattern detection (can be removed in production)
+function testNamingPatternDetection() {
+  const testScenarios = [
+    'QAE-162-003: Display error message when invalid input',
+    'QAE-162-003: Successfully display valid data',
+    'QAE-162-003: Handle edge case scenarios'
+  ];
+  
+  const pattern = detectNamingPattern(testScenarios);
+  console.log('Test pattern detection:', pattern);
+  // Should output: { pattern: /^([A-Z]+-\d+-\d+):\s*.+/, prefix: "QAE-162-003", type: "jira-tab" }
+}
+
 // Refine test cases using Azure OpenAI
 async function refineTestCases(content, feedback, context = '') {
   if (!isAzureOpenAIConfigured) {
@@ -213,16 +516,31 @@ CRITICAL REQUIREMENTS:
 - Do NOT include any explanations, comments, or descriptions about the test cases.
 - Do NOT include sections like "### Explanation:", "This Gherkin syntax covers...", "Certainly! Below are...", or any introductory/concluding remarks.
 - Start directly with 'Feature:' and end with the last test scenario.
-- Ensure the output is ready to be saved directly as a .feature file.`
+- Ensure the output is ready to be saved directly as a .feature file.
+
+SCENARIO NAMING PRESERVATION:
+- PRESERVE the original scenario names exactly as they appear in the provided content
+- Do NOT change, modify, or rename existing scenarios
+- When adding new scenarios, follow the same naming convention used in the original content
+- If the original content uses requirement IDs (e.g., "BR-001: User Login"), maintain that format for new scenarios
+- If the original content uses Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description")
+- Do NOT increment tab numbers or change the prefix - keep the exact same identifier for all scenarios
+- Keep the exact same Feature name and structure`
     },
     {
       role: 'user',
       content: `Refine the following Gherkin test cases based on this feedback: "${feedback}"
 
+IMPORTANT: You must preserve all existing scenario names exactly as they are. Do NOT change, rename, or modify any existing scenarios.
+
+CRITICAL NAMING REQUIREMENT: If the scenarios use a Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios you create MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description"). Do NOT increment tab numbers or change the prefix.
+
 Current test cases:
 ${content}
 
-Additional context: ${context}`
+Additional context: ${context}
+
+Remember: Keep all existing scenario names unchanged and follow the same naming convention when adding new scenarios. Maintain the exact same prefix for all scenarios.`
     }
   ];
 
@@ -278,18 +596,139 @@ Additional context: ${context}`
       .replace(/```\\n/gi, '') // Remove trailing ```
       .trim(); // Trim any leading/trailing whitespace
 
-    return cleanRefinedTests;
+    // Validate that original scenario names are preserved
+    const validatedRefinedTests = validateScenarioNamePreservation(content, cleanRefinedTests);
+    
+    // Log refinement summary
+    const originalScenarios = (content.match(/Scenario:/g) || []).length;
+    const refinedScenarios = (validatedRefinedTests.match(/Scenario:/g) || []).length;
+    console.log(`✅ Refinement completed: ${originalScenarios} original scenarios, ${refinedScenarios} refined scenarios`);
+
+    return validatedRefinedTests;
   } catch (error) {
     console.error('Azure OpenAI API Error:', error.response?.data || error.message);
     throw new Error(`Azure OpenAI API Error: ${error.response?.status || error.message}`);
   }
 }
 
+// Validate consistency of extracted requirements
+function validateRequirementsConsistency(extractedRequirements, originalContent) {
+  const issues = [];
+  let requirementCount = 0;
+  let consistencyScore = 100;
+  
+  try {
+    // Count requirements (more flexible pattern matching)
+    const requirementMatches = extractedRequirements.match(/\| BR-\d+\s*\|/g);
+    requirementCount = requirementMatches ? requirementMatches.length : 0;
+    
+    // If no requirements found with strict pattern, try more flexible matching
+    if (requirementCount === 0) {
+      const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
+      requirementCount = flexibleMatches ? flexibleMatches.length : 0;
+      if (requirementCount > 0) {
+        console.log(`ℹ️  Found ${requirementCount} requirements with flexible pattern matching`);
+      }
+    }
+    
+    // Check for table structure consistency (more flexible)
+    const tableRows = extractedRequirements.split('\n').filter(line => line.includes('|'));
+    const validRows = tableRows.filter(row => row.split('|').length >= 4);
+    
+    // Allow for some flexibility in table structure
+    const expectedRows = requirementCount + 1; // +1 for header row
+    const rowDifference = Math.abs(validRows.length - expectedRows);
+    
+    if (rowDifference > 2) { // Allow up to 2 rows difference
+      issues.push(`Table structure inconsistency: Expected ${expectedRows} rows, found ${validRows.length} (difference: ${rowDifference})`);
+      consistencyScore -= 10; // Reduced penalty for table structure issues
+    } else if (rowDifference > 0) {
+      console.log(`ℹ️  Table structure has minor differences: Expected ${expectedRows} rows, found ${validRows.length}`);
+    }
+    
+    // Check for sequential numbering
+    const requirementIds = [];
+    for (let i = 1; i <= requirementCount; i++) {
+      const expectedId = `BR-${String(i).padStart(3, '0')}`;
+      if (!extractedRequirements.includes(expectedId)) {
+        issues.push(`Missing sequential requirement ID: ${expectedId}`);
+        consistencyScore -= 10;
+      }
+      requirementIds.push(expectedId);
+    }
+    
+    // Check for duplicate IDs
+    const duplicateIds = requirementIds.filter(id => {
+      const regex = new RegExp(`\\| ${id} \\|`, 'g');
+      const matches = extractedRequirements.match(regex);
+      return matches && matches.length > 1;
+    });
+    
+    if (duplicateIds.length > 0) {
+      issues.push(`Duplicate requirement IDs found: ${duplicateIds.join(', ')}`);
+      consistencyScore -= 15;
+    }
+    
+    // Check for reasonable requirement extraction based on content
+    const contentLength = originalContent.length;
+    if (contentLength < 1000 && requirementCount > 8) {
+      issues.push(`Very high requirement count (${requirementCount}) for short content (${contentLength} chars) - may indicate over-extraction`);
+      consistencyScore -= 15;
+    } else if (contentLength > 10000 && requirementCount < 2) {
+      issues.push(`Very low requirement count (${requirementCount}) for long content (${contentLength} chars) - may indicate under-extraction`);
+      consistencyScore -= 15;
+    }
+    
+    // Ensure consistency score doesn't go below 0
+    consistencyScore = Math.max(0, consistencyScore);
+    
+  } catch (error) {
+    issues.push(`Validation error: ${error.message}`);
+    consistencyScore = 0;
+  }
+  
+  return {
+    requirementCount,
+    consistencyScore,
+    issues,
+    isValid: consistencyScore >= 80
+  };
+}
+
 // Extract business requirements and acceptance criteria from documents
-async function extractBusinessRequirements(content, context = '') {
+async function extractBusinessRequirements(content, context = '', enableLogging = true) {
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
   }
+
+      // Generate unique request ID for tracking
+    const requestId = Math.random().toString(36).substring(2, 15);
+    
+    // Create a content hash for consistency tracking
+    const contentHash = require('crypto').createHash('md5').update(content.trim()).digest('hex').substring(0, 8);
+    
+    if (enableLogging) {
+      console.log(`🔍 [${requestId}] Starting requirements extraction...`);
+      console.log(`🔍 [${requestId}] Content hash: ${contentHash} (for consistency tracking)`);
+      console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+      
+      // Check if this content hash has been processed before (for consistency monitoring)
+      if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
+        const previousCount = global.contentHashHistory[contentHash].requirementCount;
+        console.log(`⚠️  [${requestId}] Content hash ${contentHash} detected before with ${previousCount} requirements - monitoring for consistency`);
+      }
+      
+      // Store content hash history for consistency monitoring
+      if (!global.contentHashHistory) global.contentHashHistory = {};
+      global.contentHashHistory[contentHash] = {
+        timestamp: new Date().toISOString(),
+        requestId: requestId,
+        contentLength: content.length,
+        requirementCount: null // Will be updated after extraction
+      };
+      
+      // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
+    }
   
   // Check if content is sufficient
   if (!content || content.trim().length < 50) {
@@ -318,6 +757,13 @@ async function extractBusinessRequirements(content, context = '') {
     
   }
 
+  // Analyze workflow content for complexity calculation
+  const workflowAnalysis = analyzeWorkflowContent(processedContent);
+  if (enableLogging) {
+    // console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+    console.log(`🔍 [${requestId}] Workflow Analysis:`);
+  }
+
   // Clean up the URL to prevent duplication
   let baseUrl = OPENAI_URL;
   if (baseUrl.endsWith('/')) {
@@ -334,16 +780,68 @@ async function extractBusinessRequirements(content, context = '') {
       role: 'system',
       content: `You are a Business Analyst specializing in extracting business requirements from various document types including diagrams, flowcharts, and technical specifications.
 
-Extract business requirements and create a markdown table with these columns:
+Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
 
-| Requirement ID | Business Requirement | Acceptance Criteria |
+EXTRACTION RULES - FOLLOW THESE EXACTLY:
+1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
+2. Do NOT create additional requirements that are not directly supported by the content
+3. Do NOT split a single requirement into multiple requirements
+4. Do NOT combine multiple requirements into one
+5. Each requirement should represent a distinct, testable business need
+6. Extract the EXACT requirements present in the content - no more, no less
 
-CRITICAL REQUIREMENTS:
+REQUIRED OUTPUT FORMAT:
+Create a markdown table with these columns:
+
+| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
+
+REQUIREMENT ID FORMAT:
+- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Do NOT skip numbers or use random identifiers
+- Start with BR-001 and increment sequentially
+
+BUSINESS REQUIREMENT RULES:
+- Extract ONLY what the system should do based on the content
+- Do NOT add features that are not mentioned
+- Do NOT create requirements for edge cases unless explicitly stated
+- Keep requirements focused and specific to the content provided
+
+ACCEPTANCE CRITERIA RULES:
 - EVERY business requirement MUST have a corresponding acceptance criteria
-- NO requirement should be left without acceptance criteria
-- If a business requirement is identified, you MUST create acceptance criteria for it
 - Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format for acceptance criteria where applicable
+- Use Given-When-Then format where applicable
+- Base acceptance criteria ONLY on the content provided
+- Do NOT add acceptance criteria for features not mentioned
+
+COMPLEXITY CALCULATION RULES:
+- CRITICAL: Analyze EACH requirement individually for its specific complexity
+- NEVER apply the same complexity to all requirements
+- NEVER use global document complexity for individual requirements
+- For each requirement, calculate the cyclomatic complexity using this ACCURATE formula:
+  CC = E - N + 2P
+  Where:
+  E = number of edges (transitions/flows between elements)
+  N = number of nodes (activities, decisions, events)
+  P = number of connected components (usually 1 for single workflow)
+- Decision points include: exclusive gateways, parallel gateways, inclusive gateways, conditional flows
+- Activities include: tasks, user tasks, service tasks, subprocesses
+- Events include: start events, end events, intermediate events
+- Edges include: sequence flows, message flows, conditional flows, default flows
+- If a requirement involves workflows or decision logic, provide detailed complexity analysis
+- Format complexity as: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- For simple requirements without workflows, use: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- EXAMPLES of different complexities:
+  * Simple login: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+  * Form validation: "CC: 3, Decision Points: 2, Activities: 2, Paths: 3"
+  * Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
+- IMPORTANT: Each requirement MUST have DIFFERENT complexity based on its specific content
+
+CONSISTENCY REQUIREMENTS:
+- The same content should ALWAYS produce the same requirements
+- Do NOT be creative or add requirements that are not explicitly supported
+- Focus on extracting what is actually present in the content
+- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Be consistent in identifying and extracting the same requirements from the same content
 
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - When analyzing diagram content, focus on business processes, systems, actors, and flows
@@ -352,41 +850,89 @@ SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - Convert visual elements into functional requirements
 - Identify data flows, system integrations, and user interactions
 - Look for business rules, decision points, and process steps
+- Count decision points (gateways) and activities for complexity calculation
 
-Ensure that:
+FINAL REQUIREMENTS:
 - Requirements are written in clear, concise, and testable language
 - Acceptance criteria follow the Given-When-Then format where applicable
-- Group related requirements logically if needed
 - Start directly with the table, no explanations
-- For diagram content, create requirements that reflect the business processes shown
-- EVERY business requirement MUST have acceptance criteria - this is mandatory`
+- EVERY business requirement MUST have acceptance criteria - this is mandatory
+- EVERY requirement MUST include complexity analysis in the Complexity column
+- BE CONSISTENT - same input should produce same output`
     },
     {
       role: 'user',
-      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria. Structure the output as a table with the following columns:
+      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria.
 
-Requirement ID
-Business Requirement (What the system should do)
-Acceptance Criteria (How we know the requirement is met)
+IMPORTANT: Extract requirements CONSISTENTLY and DETERMINISTICALLY. The same content should ALWAYS produce the same requirements.
 
-CRITICAL REQUIREMENTS:
+REQUIRED OUTPUT FORMAT:
+Structure the output as a table with these columns:
+
+| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
+
+EXTRACTION RULES - FOLLOW THESE EXACTLY:
+1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
+2. Do NOT create additional requirements that are not directly supported by the content
+3. Do NOT split a single requirement into multiple requirements
+4. Do NOT combine multiple requirements into one
+5. Each requirement should represent a distinct, testable business need
+6. Extract the EXACT requirements present in the content - no more, no less
+
+REQUIREMENT ID FORMAT:
+- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Do NOT skip numbers or use random identifiers
+- Start with BR-001 and increment sequentially
+
+BUSINESS REQUIREMENT RULES:
+- Extract ONLY what the system should do based on the content
+- Do NOT add features that are not mentioned
+- Do NOT create requirements for edge cases unless explicitly stated
+- Keep requirements focused and specific to the content provided
+
+ACCEPTANCE CRITERIA RULES:
 - EVERY business requirement MUST have a corresponding acceptance criteria
-- NO requirement should be left without acceptance criteria
-- If you identify a business requirement, you MUST create acceptance criteria for it
 - Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format for acceptance criteria where applicable
+- Use Given-When-Then format where applicable
+- Base acceptance criteria ONLY on the content provided
+- Do NOT add acceptance criteria for features not mentioned
 
-Ensure that:
-- Requirements are written in clear, concise, and testable language
-- Acceptance criteria follow the Given-When-Then format where applicable
-- Group related requirements logically if needed
-- EVERY business requirement MUST have acceptance criteria - this is mandatory
+COMPLEXITY CALCULATION RULES:
+- Analyze EACH requirement individually for its specific complexity
+- Do NOT apply the same complexity to all requirements
+- Calculate cyclomatic complexity for each requirement using: CC = Decision Points - Activities + 2
+- For workflow requirements, provide detailed complexity: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- For simple requirements: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- Each requirement should have DIFFERENT complexity based on its specific content
+
+CONSISTENCY REQUIREMENTS:
+- The same content should ALWAYS produce the same requirements
+- Do NOT be creative or add requirements that are not explicitly supported
+- Focus on extracting what is actually present in the content
+- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Be consistent in identifying and extracting the same requirements from the same content
 
 Document to analyze:
 
 ${processedContent}
 
-Additional context: ${context}`
+Additional context: ${context}
+
+WORKFLOW ANALYSIS CONTEXT:
+The document has been analyzed for workflow elements:
+- Decision Points: ${workflowAnalysis.decisionPoints}
+- Activities: ${workflowAnalysis.activities}
+- Events: ${workflowAnalysis.events}
+- Overall Complexity Level: ${workflowAnalysis.complexityLevel}
+- Workflow Detected: ${workflowAnalysis.workflowDetected ? 'Yes' : 'No'}
+
+IMPORTANT: Do NOT use these global numbers for individual requirements!
+- Each requirement must be analyzed INDIVIDUALLY for its specific complexity
+- A simple login requirement should have CC: 1, Decision Points: 0, Activities: 1, Paths: 1
+- A complex workflow requirement might have CC: 5, Decision Points: 3, Activities: 2, Paths: 5
+- The global document analysis is for context only - analyze each requirement separately
+
+REMEMBER: BE CONSISTENT. The same document should always produce the same requirements.`
     }
   ];
 
@@ -398,7 +944,7 @@ Additional context: ${context}`
         {
           messages: messages,
           max_tokens: 4000,
-          temperature: 0.3,
+          temperature: 0.1,
           response_format: { type: "text" }
         },
         {
@@ -439,14 +985,69 @@ Additional context: ${context}`
     // Remove any markdown code blocks if present
     extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
 
+    // Post-process to enhance complexity calculations if needed
+    if (workflowAnalysis.workflowDetected) {
+      extractedRequirements = enhanceComplexityCalculations(extractedRequirements, workflowAnalysis);
+    }
+
+    // Validate consistency of extracted requirements
+    const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent);
+    if (validationResult.issues.length > 0) {
+      console.warn(`⚠️  [${requestId}] Requirements consistency issues detected:`, validationResult.issues);
+    }
+
+    // Update content hash history with requirements count
+    if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
+      global.contentHashHistory[contentHash].requirementCount = validationResult.requirementCount;
+      global.contentHashHistory[contentHash].consistencyScore = validationResult.consistencyScore;
+      
+      // Check for consistency issues with previous extractions
+      const previousExtractions = Object.entries(global.contentHashHistory)
+        .filter(([hash, data]) => hash === contentHash && data.requirementCount !== null)
+        .sort((a, b) => new Date(b[1].timestamp) - new Date(a[1].timestamp));
+      
+      if (previousExtractions.length > 1) {
+        const currentCount = validationResult.requirementCount;
+        const previousCount = previousExtractions[1][1].requirementCount;
+        
+        if (currentCount !== previousCount) {
+          console.warn(`⚠️  [${requestId}] INCONSISTENCY DETECTED: Same content produced ${previousCount} requirements before, now ${currentCount} requirements`);
+          console.warn(`⚠️  [${requestId}] Previous extraction: ${previousExtractions[1][1].timestamp}`);
+          console.warn(`⚠️  [${requestId}] Current extraction: ${new Date().toISOString()}`);
+          console.warn(`⚠️  [${requestId}] This may indicate the AI is not consistently identifying the same requirements`);
+        } else {
+          console.log(`✅ [${requestId}] Consistency confirmed: Same content produced ${currentCount} requirements as before`);
+        }
+      }
+    }
+
+    if (enableLogging) {
+      console.log(`🔍 [${requestId}] Successfully extracted requirements`);
+      console.log(`🔍 [${requestId}] Requirements count: ${validationResult.requirementCount}`);
+      console.log(`🔍 [${requestId}] Consistency score: ${validationResult.consistencyScore}%`);
+    }
+    
     return {
       success: true,
       content: extractedRequirements,
-      message: 'Successfully extracted business requirements and acceptance criteria'
+      message: 'Successfully extracted business requirements and acceptance criteria',
+      metadata: {
+        workflowAnalysis: workflowAnalysis,
+        complexityLevel: workflowAnalysis.complexityLevel,
+        decisionPoints: workflowAnalysis.decisionPoints,
+        activities: workflowAnalysis.activities,
+        requestId: requestId,
+        contentHash: contentHash,
+        requirementsValidation: validationResult
+      }
     };
 
   } catch (error) {
-    console.error('Error extracting business requirements:', error);
+    if (enableLogging) {
+      console.error(`🔍 [${requestId}] Error extracting business requirements:`, error);
+    } else {
+      console.error('Error extracting business requirements:', error);
+    }
     
     let errorMessage = 'Failed to extract business requirements';
     let suggestion = 'Please try again';
