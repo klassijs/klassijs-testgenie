@@ -1472,10 +1472,17 @@ SCENARIO NAMING GUIDELINES:
   useEffect(() => {
     const fetchLoadingImages = async () => {
       try {
+        console.log('🔍 Fetching loading images...');
+        setImagesLoaded(false);
         const response = await axios.get(`${API_BASE_URL}/api/loading-images`);
+        console.log('🔍 Loading images API response:', response.data);
+        
         if (response.data.success) {
+          console.log('🔍 Setting loading images from API:', response.data.images);
           setLoadingImages(response.data.images);
+          setImagesLoaded(true);
         } else {
+          console.log('⚠️  API failed, using fallback images');
           // Fallback to static images if API fails
           const fallbackImages = [
             { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1484,6 +1491,7 @@ SCENARIO NAMING GUIDELINES:
             { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
           ];
           setLoadingImages(fallbackImages);
+          setImagesLoaded(true);
         }
       } catch (error) {
         console.warn('⚠️  Failed to fetch loading images, using fallback:', error);
@@ -1495,6 +1503,7 @@ SCENARIO NAMING GUIDELINES:
           { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
         ];
         setLoadingImages(fallbackImages);
+        setImagesLoaded(true);
       }
     };
     
@@ -1668,6 +1677,7 @@ SCENARIO NAMING GUIDELINES:
               </div>
               <div className="test-generation-images">
                 <div className="image-container">
+                  {console.log('🔍 Debug - loadingImages:', loadingImages, 'imagesLoaded:', imagesLoaded)}
                   {loadingImages && loadingImages.length > 0 ? (
                     loadingImages.map((imageStep, index) => (
                       <div 
@@ -1679,6 +1689,8 @@ SCENARIO NAMING GUIDELINES:
                           src={`/images/loading/${imageStep.image}`} 
                           alt={imageStep.title} 
                           className="loading-image" 
+                          onLoad={() => console.log(`✅ Image loaded: ${imageStep.image}`)}
+                          onError={(e) => console.error(`❌ Image failed to load: ${imageStep.image}`, e)}
                         />
                         <span>{imageStep.title}</span>
                       </div>
