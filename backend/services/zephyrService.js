@@ -1538,10 +1538,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       testCaseDisplayName = `${testCaseName.trim()} - ${scenario.name}`;
     }
     
-    // Debug: Log the status parameter being received
-    console.log('🔍 DEBUG: Status parameter received:', status);
-    console.log('🔍 DEBUG: Status parameter type:', typeof status);
-    
     const testCaseData = {
       name: testCaseDisplayName,
       projectKey: targetProjectKey,
@@ -1551,12 +1547,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         'isAutomatable': isAutomatable // Use the value passed in by the user
       }
     };
-
-    // Debug: Log the test case data being sent
-    console.log('🔍 DEBUG: Test case data being sent to Zephyr:', JSON.stringify(testCaseData, null, 2));
-    console.log('🔍 DEBUG: isAutomatable parameter:', isAutomatable);
-    console.log('🔍 DEBUG: isAutomatable type:', typeof isAutomatable);
-    console.log('🔍 DEBUG: Status being sent:', testCaseData.status);
 
     // Set folder ID if provided
     if (folderId) {
@@ -1584,10 +1574,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
       try {
         // Create test case in Zephyr Scale
         console.log('Sending test case creation request to Zephyr Scale...');
-        console.log('🔍 DEBUG: API endpoint:', `${zephyrBaseUrl}/testcases`);
-        console.log('🔍 DEBUG: Request headers:', { 'Authorization': `Bearer ${ZEPHYR_API_TOKEN.substring(0, 20)}...`, 'Content-Type': 'application/json' });
-        console.log('🔍 DEBUG: Final test case data being sent:', JSON.stringify(testCaseData, null, 2));
-        console.log('🔍 DEBUG: customFields object:', testCaseData.customFields);
         
         zephyrResponse = await axios.post(`${zephyrBaseUrl}/testcases`, testCaseData, {
           headers: {
@@ -1597,19 +1583,8 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
           timeout: 30000
         });
 
-        console.log('🔍 DEBUG: Test case creation response:', {
-          status: zephyrResponse.status,
-          testCaseKey: zephyrResponse.data.key,
-          testCaseId: zephyrResponse.data.id,
-          assignedFolder: zephyrResponse.data.folder,
-          requestedFolder: folderId
-        });
-        
-        console.log('🔍 DEBUG: Full API response data:', JSON.stringify(zephyrResponse.data, null, 2));
-        
         // Verify the test case actually exists by fetching it back
         try {
-          console.log('🔍 DEBUG: Verifying test case exists by fetching it back...');
           const verifyResponse = await axios.get(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, {
             headers: {
               'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
@@ -1617,14 +1592,8 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             },
             timeout: 10000
           });
-          console.log('🔍 DEBUG: Verification successful - test case exists:', {
-            key: verifyResponse.data.key,
-            name: verifyResponse.data.name,
-            folder: verifyResponse.data.folder,
-            project: verifyResponse.data.project
-          });
         } catch (verifyError) {
-          console.log('🔍 DEBUG: Verification failed - test case does not exist:', verifyError.message);
+          console.log('Could not verify test case exists:', verifyError.message);
         }
 
         // Check if folder assignment was successful
@@ -1635,8 +1604,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
           
           // Try to assign the test case to the folder after creation
           try {
-            console.log('🔍 DEBUG: Attempting to move test case to folder after creation...');
-            
             // First get the full test case data to include all required fields
             const fullTestCaseData = await axios.get(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, {
               headers: {
@@ -1651,19 +1618,13 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               id: fullTestCaseData.data.id,
               key: fullTestCaseData.data.key,
               name: fullTestCaseData.data.name,
-              status: fullTestCaseData.data.status,
+              status: { id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : status === "Approved" ? 3233490 : 3233488 },
               priority: fullTestCaseData.data.priority,
               project: fullTestCaseData.data.project,
               folder: { id: folderId },
               customFields: {
                 'isAutomatable': isAutomatable, // Include the original value
                 'isAutomated': null // Include this field as required by Zephyr
-              },
-              status: { 
-                id: status === "Draft" ? 3233488 : 
-                     status === "Deprecated" ? 3233489 : 
-                     status === "Approved" ? 3233490 : 
-                     3233488 // Default to Draft
               }
             }, {
               headers: {
@@ -1673,31 +1634,10 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               timeout: 10000
             });
             
-            console.log('🔍 DEBUG: Folder assignment successful:', {
-              status: moveResponse.status,
-              data: moveResponse.data
-            });
-            
-            // Verify the folder assignment worked
-            const verifyFolderResponse = await axios.get(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, {
-              headers: {
-                'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
-                'Content-Type': 'application/json'
-              },
-              timeout: 10000
-            });
-            
-            console.log('🔍 DEBUG: Final folder verification:', {
-              key: verifyFolderResponse.data.key,
-              folder: verifyFolderResponse.data.folder,
-              project: verifyFolderResponse.data.project
-            });
+            console.log('Test case successfully moved to folder');
             
           } catch (moveError) {
-            console.log('🔍 DEBUG: Post-creation folder assignment failed:', moveError.message);
-            if (moveError.response) {
-              console.log('🔍 DEBUG: Move error details:', moveError.response.data);
-            }
+            console.log('Post-creation folder assignment failed:', moveError.message);
           }
         }
         
@@ -1761,12 +1701,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         
         // Log the direct URL to view the test case
         const testCaseUrl = `${zephyrBaseUrl.replace('/v2', '')}/testcases/${zephyrResponse.data.key}`;
-        
-        console.log('🔍 DEBUG: Test case URL:', testCaseUrl);
-        console.log('🔍 DEBUG: Test case key:', zephyrResponse.data.key);
-        console.log('🔍 DEBUG: Test case ID:', zephyrResponse.data.id);
-        console.log('🔍 DEBUG: Project key used:', targetProjectKey);
-        console.log('🔍 DEBUG: Expected project key:', projectKey || 'Using default from env');
         
         createdTestCases.push({
           name: testCaseData.name,
