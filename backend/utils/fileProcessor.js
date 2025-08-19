@@ -59,9 +59,7 @@ function detectBusinessElements(content, config = BUSINESS_ELEMENT_CONFIG) {
   const businessElements = [];
   let currentSection = '';
 
-  console.log(`ℹ️  Using consistent detection mode for all documents`);
-  console.log(`ℹ️  - Total lines: ${lines.length}`);
-  console.log(`ℹ️  - Content length: ${content.length}`);
+
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
@@ -359,102 +357,7 @@ function detectBusinessElements(content, config = BUSINESS_ELEMENT_CONFIG) {
     }
   }
 
-  // Log element count for transparency
-  console.log(`ℹ️  Found ${uniqueElements.length} business elements`);
-  
-  if (uniqueElements.length > 100) {
-    console.log(`ℹ️  Found ${uniqueElements.length} business elements - reviewing for quality...`);
-    
-    // Log breakdown by priority to help understand the count
-    const priorityBreakdown = {
-      high: uniqueElements.filter(e => e.priority === 'high').length,
-      medium: uniqueElements.filter(e => e.priority === 'medium').length,
-      low: uniqueElements.filter(e => e.priority === 'low').length
-    };
-    
-    console.log(`ℹ️  Priority breakdown: High: ${priorityBreakdown.high}, Medium: ${priorityBreakdown.medium}, Low: ${priorityBreakdown.low}`);
-    
-    // Quality assessment - look for potential noise patterns
-    const potentialNoise = uniqueElements.filter(e => {
-      const text = e.text.toLowerCase();
-      // Check for very generic or repetitive patterns
-      return (
-        // Generic system statements without specific business functions
-        (text.includes('the system should support') && !text.includes('create') && !text.includes('generate') && !text.includes('export') && !text.includes('import') && !text.includes('update') && !text.includes('process') && !text.includes('handle') && !text.includes('manage') && !text.includes('track') && !text.includes('calculate')) ||
-        (text.includes('the system must provide') && !text.includes('create') && !text.includes('generate') && !text.includes('export') && !text.includes('import') && !text.includes('update') && !text.includes('process') && !text.includes('handle') && !text.includes('manage') && !text.includes('track') && !text.includes('calculate')) ||
-        (text.includes('the system will display') && !text.includes('create') && !text.includes('generate') && !text.includes('export') && !text.includes('import') && !text.includes('update') && !text.includes('process') && !text.includes('handle') && !text.includes('manage') && !text.includes('track') && !text.includes('calculate')) ||
-        (text.includes('the system shall allow') && !text.includes('create') && !text.includes('generate') && !text.includes('export') && !text.includes('import') && !text.includes('update') && !text.includes('process') && !text.includes('handle') && !text.includes('manage') && !text.includes('track') && !text.includes('calculate')) ||
-        // Page references and generic entities
-        text.includes('page') && text.length < 80 ||
-        text.includes('customer') && text.length < 80 ||
-        text.includes('sales team') && text.length < 80 ||
-        text.includes('oup') && text.length < 80 ||
-        // Very short generic statements
-        text.includes('the system should') && text.length < 60 ||
-        text.includes('the system must') && text.length < 60 ||
-        text.includes('the system will') && text.length < 60 ||
-        text.includes('the system can') && text.length < 60 ||
-        text.includes('the system has') && text.length < 60 ||
-        text.includes('the system provides') && text.length < 60 ||
-        text.includes('the system supports') && text.length < 60 ||
-        text.includes('the system allows') && text.length < 60 ||
-        text.includes('the system enables') && text.length < 60 ||
-        text.includes('the system includes') && text.length < 60 ||
-        // Additional noise patterns
-        text.includes('access has been granted') ||
-        text.includes('us only') ||
-        text.includes('in uk customer is directed') ||
-        text.includes('narrative') ||
-        text.includes('sequence flow') ||
-        text.includes('message') ||
-        text.includes('timer') ||
-        text.includes('intermediate') ||
-        text.includes('data object') ||
-        text.includes('data store') ||
-        text.includes('association') ||
-        text.includes('default sequence flow') ||
-        text.includes('other intermediate') ||
-        text.includes('intermediate event') ||
-        text.includes('version') ||
-        text.includes('date') ||
-        text.includes('description') ||
-        text.includes('author') ||
-        text.includes('document creation') ||
-        text.includes('document name') ||
-        text.includes('programme and project name') ||
-        text.includes('academic division online product sales process') ||
-        text.includes('flexible selling') ||
-        text.includes('title-by-title project')
-      );
-    });
-    
-    if (potentialNoise.length > 20) {
-      console.warn(`⚠️  Warning: Found ${potentialNoise.length} potentially generic system statements - these may inflate the count`);
-      console.warn(`⚠️  Examples: ${potentialNoise.slice(0, 3).map(e => e.text.substring(0, 50) + '...').join(', ')}`);
-      
-      // Show what we're actually looking for
-      console.log(`ℹ️  Quality Focus: Looking for requirements with specific business functions like:`);
-      console.log(`ℹ️  - create, generate, export, import, update, process, handle, manage, track, calculate`);
-      console.log(`ℹ️  - NOT generic statements like "the system should support customer"`);
-    }
-    
-    // If we have a lot of low-priority items, they might be noise
-    if (priorityBreakdown.low > 50) {
-      console.warn(`⚠️  Warning: High number of low-priority elements (${priorityBreakdown.low}) - some may be noise`);
-    }
-    
-    // Show quality metrics
-    const qualityElements = uniqueElements.filter(e => {
-      const text = e.text.toLowerCase();
-      return text.includes('create') || text.includes('generate') || text.includes('export') || 
-             text.includes('import') || text.includes('update') || text.includes('process') || 
-             text.includes('handle') || text.includes('manage') || text.includes('track') || 
-             text.includes('calculate');
-    });
-    
-    console.log(`ℹ️  Quality Metrics: ${qualityElements.length}/${uniqueElements.length} elements contain specific business functions`);
-    console.log(`ℹ️  Quality Score: ${Math.round((qualityElements.length / uniqueElements.length) * 100)}%`);
-  }
+
 
   // Return the expected object structure that the rest of the code expects
   return {
@@ -516,7 +419,7 @@ function adjustBusinessElementConfig(adjustments = {}) {
   return newConfig;
 }
 
-// No caching - always process fresh for accuracy
+
 // const fileCache = new Map();
 // const CACHE_MAX_SIZE = 100;
 
@@ -639,14 +542,14 @@ function analyzeImageContent(fileName, extension) {
   };
 }
 
-// No caching needed
+
 // function cleanCache() {
-//   // No caching needed
+//   
 // }
 
 // Helper function to create deterministic content hash
 // function createDeterministicHash(buffer, filename) {
-//   // No caching needed
+//   
 //   return "no-cache";
 // }
 
@@ -658,8 +561,8 @@ async function extractFileContent(file) {
     const originalName = file.originalname;
     const extension = path.extname(originalName);
 
-    // No caching - always process fresh for accuracy
-    // // No file hash needed
+    
+    
 
     // Handle different file types
     if (mimeType === 'application/pdf') {
@@ -726,8 +629,7 @@ async function extractFileContent(file) {
         
         const enhancedResult = `${result}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
         
-        // No caching - always process fresh for accuracy
-        console.log(`📋 Processed PDF content for ${originalName} (deterministic count: ${businessElementCount.count})`);
+        
         
         return enhancedResult;
         
@@ -744,8 +646,7 @@ async function extractFileContent(file) {
       
       const enhancedContent = `${textContent}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
       
-      // No caching - always process fresh for accuracy
-      console.log(`📋 Processed text content for ${originalName} (deterministic count: ${businessElementCount.count})`);
+              
       
       return enhancedContent;
     } else if (mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
@@ -836,9 +737,7 @@ async function extractFileContent(file) {
             
             const enhancedContent = `${extractedContent}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
             
-            // No caching - always process fresh for accuracy
             
-            console.log(`📋 Processed content`);
             
             return enhancedContent;
           }
@@ -854,10 +753,8 @@ async function extractFileContent(file) {
         
         const enhancedContent = `${extractedContent}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
         
-        // Cache the result for consistency
-        // No caching - always process fresh for accuracy
         
-        console.log(`📋 Processed content`);
+        
         
         return enhancedContent;
         
@@ -868,10 +765,8 @@ async function extractFileContent(file) {
         
         const extractedContent = result.value;
         
-        // Cache the fallback result for consistency
-        // No caching
         
-        console.log(`📋 Processed content`);
+        
         
         return extractedContent;
       }
@@ -881,10 +776,8 @@ async function extractFileContent(file) {
       
       const result = `# Image File Analysis\n\n## File: ${originalName}\n\n### Image Type: ${extension.toUpperCase()}\n\n### Analysis:\n${imageAnalysis.description}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${imageAnalysis.businessElements.count}\n- **Business Processes**: ${imageAnalysis.businessElements.breakdown.processes}\n- **System Requirements**: ${imageAnalysis.businessElements.breakdown.requirements}\n- **Decision Points**: ${imageAnalysis.businessElements.breakdown.decisions}\n- **Process Steps**: ${imageAnalysis.businessElements.breakdown.steps}\n- **Business Flows**: ${imageAnalysis.businessElements.breakdown.flows}\n- **User Actions**: ${imageAnalysis.businessElements.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${imageAnalysis.businessElements.count} business requirements** based on image content analysis.\n\n### Note:\nThis is an image file that may require manual review or OCR processing for detailed text extraction.`;
       
-      // Cache image file results for consistency
-      // No caching
       
-      console.log(`📋 Processed content`);
+      
       
       return result;
     } else if (isExcelFile(mimeType, extension)) {
@@ -1089,19 +982,19 @@ async function extractFileContent(file) {
           
           const result = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
           
-          // Cache the result for consistency
-          // No caching
           
-          // Clean cache if needed
-          // No caching needed
           
-          console.log(`📋 Processed content`);
+          
+          
+          
+          
+          // console.log(`📋 Processed content`);
           
           return result;
         } else {
           const result = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that should be reviewed manually to create appropriate test cases based on the data relationships and business logic.`;
           
-          // No caching - always process fresh for accuracy
+          
           
           return result;
         }
@@ -1110,8 +1003,8 @@ async function extractFileContent(file) {
         
         const errorResult = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that requires manual analysis to create appropriate test cases.`;
         
-        // Cache error results to prevent repeated failures
-        // No caching - always process fresh for accuracy
+        
+        
         
         return errorResult;
       }
@@ -1279,19 +1172,19 @@ async function extractFileContent(file) {
           
           const result = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
           
-          // Cache the result for consistency
-          // No caching
           
-          // Clean cache if needed
-          // No caching needed
           
-          console.log(`📋 Processed content`);
+          
+          
+          
+          
+          // console.log(`📋 Processed content`);
           
           return result;
         } else {
           const result = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that should be reviewed manually to create appropriate test cases based on the presentation content and flow.`;
           
-          // No caching - always process fresh for accuracy
+          
           
           return result;
         }
@@ -1300,8 +1193,8 @@ async function extractFileContent(file) {
         
         const errorResult = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that require manual analysis to create appropriate test cases.`;
         
-        // Cache error results to prevent repeated failures
-        // No caching - always process fresh for accuracy
+        
+        
         
         return errorResult;
       }
@@ -1605,20 +1498,20 @@ async function extractFileContent(file) {
           
           const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
           
-          // Cache the result for consistency
-          // No caching
           
-          // Clean cache if needed
-          // No caching needed
           
-          console.log(`📋 Processed content`);
+          
+          
+          
+          
+          // console.log(`📋 Processed content`);
           
           return result;
         } else {
           const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file contains visual elements that require manual analysis. The diagram structure and relationships should be reviewed manually to create appropriate test cases.`;
           
-          // Cache even empty results for consistency
-          // No caching - always process fresh for accuracy
+          
+          
           
           return result;
         }
@@ -1627,8 +1520,8 @@ async function extractFileContent(file) {
         
         const errorResult = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file requires manual analysis. Please review the diagram structure and create test cases based on the visual elements and relationships shown.`;
         
-        // Cache error results to prevent repeated failures
-        // No caching - always process fresh for accuracy
+        
+        
         
         return errorResult;
       }
@@ -1638,7 +1531,7 @@ async function extractFileContent(file) {
   } catch (error) {
     console.error(`Error extracting content from ${file.originalname}:`, error);
     
-    // No caching - always process fresh for accuracy
+    
     
     throw new Error(`Failed to extract content from ${file.originalname}: ${error.message}`);
   }
@@ -1700,7 +1593,7 @@ module.exports = {
   // Deterministic counting functions
   countBusinessElementsDeterministically,
   detectBusinessElements,
-  // No caching - always process fresh for accuracy
+  
   // Configuration adjustment function
   adjustBusinessElementConfig
 }; 
