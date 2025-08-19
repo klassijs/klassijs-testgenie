@@ -1387,7 +1387,7 @@ SCENARIO NAMING GUIDELINES:
   const [editableRequirements, setEditableRequirements] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
-  // Rotate through test generation images
+  // Rotate through test generation images with improved reliability
   useEffect(() => {
     // Only proceed if we're generating, have images, and images are loaded
     if (!isGenerating || !loadingImages || loadingImages.length === 0 || !imagesLoaded) {
@@ -1396,75 +1396,58 @@ SCENARIO NAMING GUIDELINES:
     
     let isMounted = true;
     let intervalId = null;
+    let currentImage = 0;
     
-    // Wait for next tick to ensure DOM elements are rendered
-    const timeoutId = setTimeout(() => {
+    // Function to safely rotate images
+    const rotateImages = () => {
       try {
         // Check if component is still mounted
         if (!isMounted) return;
         
+        // Get all test-image elements
         const images = document.querySelectorAll('.test-image');
         
         // Only proceed if images exist
         if (!images || images.length === 0) {
-          console.log('⚠️  No test-image elements found, skipping image rotation');
+          console.log('⚠️  No test-image elements found, retrying in 500ms');
+          // Retry after a short delay
+          setTimeout(rotateImages, 500);
           return;
         }
         
-        let currentImage = 0;
+        console.log(`🔄 Rotating to image ${currentImage + 1} of ${images.length}`);
         
-        const rotateImages = () => {
-          try {
-            // Check if component is still mounted
-            if (!isMounted) return;
-            
-            // Safety check - ensure images still exist
-            const currentImages = document.querySelectorAll('.test-image');
-            if (!currentImages || currentImages.length === 0) {
-              console.log('⚠️  Test-image elements no longer exist, stopping rotation');
-              return;
-            }
-            
-            // Remove active class from all images
-            currentImages.forEach(img => {
-              try {
-                if (img && img.classList && typeof img.classList.remove === 'function') {
-                  img.classList.remove('active');
-                }
-              } catch (error) {
-                console.warn('⚠️  Error removing active class from image:', error);
-              }
-            });
-            
-            // Add active class to current image
-            if (currentImages[currentImage] && 
-                currentImages[currentImage].classList && 
-                typeof currentImages[currentImage].classList.add === 'function') {
-              currentImages[currentImage].classList.add('active');
-            }
-            
-            // Move to next image
-            currentImage = (currentImage + 1) % currentImages.length;
-          } catch (error) {
-            console.error('❌ Error in rotateImages function:', error);
+        // Remove active class from all images
+        images.forEach((img, index) => {
+          if (img && img.classList) {
+            img.classList.remove('active');
+            console.log(`📷 Image ${index + 1}: removed active class`);
           }
-        };
+        });
         
-        // Rotate images every 2 seconds (matching progress bar animation)
-        intervalId = setInterval(rotateImages, 2000);
+        // Add active class to current image
+        if (images[currentImage]) {
+          images[currentImage].classList.add('active');
+          console.log(`📷 Image ${currentImage + 1}: added active class`);
+        }
         
-        // Start with first image
-        rotateImages();
+        // Move to next image
+        currentImage = (currentImage + 1) % images.length;
         
       } catch (error) {
-        console.error('❌ Error setting up image rotation:', error);
+        console.error('❌ Error in rotateImages function:', error);
       }
-    }, 100); // Small delay to ensure DOM is ready
+    };
+    
+    // Start rotation immediately
+    rotateImages();
+    
+    // Set up interval for continuous rotation
+    intervalId = setInterval(rotateImages, 2000);
     
     // Cleanup function
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
       if (intervalId) {
         clearInterval(intervalId);
       }
@@ -1690,24 +1673,34 @@ SCENARIO NAMING GUIDELINES:
               </div>
               <div className="test-generation-images">
                 <div className="image-container">
-                  {console.log('🔍 Debug - loadingImages:', loadingImages, 'imagesLoaded:', imagesLoaded)}
+                  <div style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '5px', fontSize: '12px', zIndex: 100 }}>
+                    Debug: {loadingImages ? `${loadingImages.length} images loaded` : 'No images'} | ImagesLoaded: {imagesLoaded ? 'Yes' : 'No'}
+                  </div>
                   {loadingImages && loadingImages.length > 0 ? (
-                    loadingImages.map((imageStep, index) => (
-                      <div 
-                        key={index}
-                        className={`test-image ${index === 0 ? 'active' : ''}`} 
-                        data-image={index + 1}
-                      >
-                        <img 
-                          src={`/images/loading/${imageStep.image}`} 
-                          alt={imageStep.title} 
-                          className="loading-image" 
-                          onLoad={() => console.log(`✅ Image loaded: ${imageStep.image}`)}
-                          onError={(e) => console.error(`❌ Image failed to load: ${imageStep.image}`, e)}
-                        />
-                        <span>{imageStep.title}</span>
-                      </div>
-                    ))
+                    <>
+                      {console.log('🔍 Rendering images:', loadingImages)}
+                      {loadingImages.map((imageStep, index) => (
+                        <div 
+                          key={index}
+                          className={`test-image ${index === 0 ? 'active' : ''}`} 
+                          data-image={index + 1}
+                        >
+                          <img 
+                            src={`/images/loading/${imageStep.image}`} 
+                            alt={imageStep.title} 
+                            className="loading-image" 
+                            onLoad={() => {
+                              console.log(`✅ Image loaded successfully: ${imageStep.image}`);
+                            }}
+                            onError={(e) => {
+                              console.error(`❌ Image failed to load: ${imageStep.image}`, e);
+                              console.error('Error details:', e);
+                            }}
+                          />
+                          <span>{imageStep.title}</span>
+                        </div>
+                      ))}
+                    </>
                   ) : (
                     <div className="test-image active">
                       <div className="loading-placeholder">

@@ -1154,21 +1154,30 @@ body {
 
 .test-image {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: none;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transform: translateY(20px);
   transition: all 0.5s ease-in-out;
+  width: 100%;
+  text-align: center;
+  z-index: 10;
 }
 
 .test-image.active {
+  display: flex !important;
   opacity: 1;
-  transform: translateY(0);
+}
+
+/* Debug: Make sure images are visible */
+.test-image img {
+  max-width: 100%;
+  height: auto;
+  display: block;
 }
 
 .loading-image {

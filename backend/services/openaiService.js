@@ -908,6 +908,8 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 
   // Handle large documents with chunking
   let processedContent = content;
+  let isChunked = false;
+  
   if (content.length > 100000) {
     // For very large documents, use the first 100K chars (about 25K tokens)
     // This leaves plenty of room for the prompt and response
@@ -923,6 +925,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     }
     
     processedContent += '\n\n[Document truncated for processing. Full analysis may require multiple uploads.]';
+    isChunked = true;
   }
 
   // Analyze workflow content for complexity calculation with deterministic approach
@@ -938,6 +941,22 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   if (enableLogging) {
     console.log(`🔍 [${requestId}] Deterministic Analysis: Found ${businessElementCount.count} business elements`);
     console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.breakdown);
+    
+    // CRITICAL: Check if the deterministic count seems reasonable
+    const contentLength = processedContent.length;
+    const requirementsPerChar = businessElementCount.count / contentLength;
+    const requirementsPerK = requirementsPerChar * 1000;
+    
+    console.log(`🔍 [${requestId}] Content Analysis:`);
+    console.log(`🔍 [${requestId}] - Content length: ${contentLength} characters`);
+    console.log(`🔍 [${requestId}] - Requirements per character: ${requirementsPerChar.toFixed(6)}`);
+    console.log(`🔍 [${requestId}] - Requirements per 1000 chars: ${requirementsPerK.toFixed(2)}`);
+    
+    // Warn if the count seems unreasonably high
+    if (requirementsPerK > 10) {
+      console.warn(`⚠️  [${requestId}] WARNING: Very high requirement density (${requirementsPerK.toFixed(2)} per 1000 chars) - deterministic count may be inflated`);
+      console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${businessElementCount.count} requirements`);
+    }
   }
 
   // Clean up the URL to prevent duplication
@@ -963,22 +982,26 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
 
 CRITICAL EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
-2. CRITICAL: Every bullet point (•) that contains business logic MUST become a separate requirement
-3. CRITICAL: Lines starting with "if" or "when" MUST be extracted as business requirements
-4. CRITICAL: Lines containing "then" statements MUST be extracted as business requirements
-5. CRITICAL: Conditional business rules (if X then Y) MUST be extracted as separate requirements
-6. CRITICAL: Do NOT combine multiple bullet points into single requirements
-7. CRITICAL: Each bullet point with business content = 1 separate requirement
-8. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
-9. Do NOT create additional requirements that are not directly supported by the content
-10. Do NOT split a single requirement into multiple requirements
-11. Do NOT combine multiple requirements into one
-12. Each requirement should represent a distinct, testable business need
-13. Extract the EXACT requirements present in the content - no more, no less
-14. CRITICAL: The number of requirements MUST match the deterministic count provided
-15. CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the content analysis
-16. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
+1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO MORE, NO LESS
+2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
+3. CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
+4. CRITICAL: Every bullet point (•) that contains business logic MUST become a separate requirement
+5. CRITICAL: Lines starting with "if" or "when" MUST be extracted as business requirements
+6. CRITICAL: Lines containing "then" statements MUST be extracted as business requirements
+7. CRITICAL: Conditional business rules (if X then Y) MUST be extracted as separate requirements
+8. CRITICAL: Do NOT combine multiple bullet points into single requirements
+9. CRITICAL: Each bullet point with business content = 1 separate requirement
+10. CRITICAL: Extract ALL business requirements present in the content to reach ${businessElementCount.count}
+11. CRITICAL: Do NOT stop until you have exactly ${businessElementCount.count} requirements
+12. CRITICAL: Do NOT create additional requirements that are not directly supported by the content
+13. CRITICAL: Do NOT split a single requirement into multiple requirements
+14. CRITICAL: Do NOT combine multiple requirements into one
+15. CRITICAL: Each requirement should represent a distinct, testable business need
+16. CRITICAL: Extract the EXACT requirements present in the content - no more, no less
+17. CRITICAL: The number of requirements MUST match the deterministic count provided
+18. CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the content analysis
+19. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
+20. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are not analyzing the content thoroughly enough
 
 CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS:
 • where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
@@ -1103,7 +1126,13 @@ FINAL REQUIREMENTS:
 - EVERY business requirement MUST have acceptance criteria - this is mandatory
 - EVERY requirement MUST include complexity analysis in the Complexity column
 - BE CONSISTENT - same input should produce same output
-- CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements
+
+🚨 FINAL COUNT REQUIREMENT:
+- CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements
+- CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
+- CRITICAL: The deterministic analysis found ${businessElementCount.count} elements - match this count
+- CRITICAL: If you have fewer than ${businessElementCount.count} requirements, you are missing content
+- CRITICAL: Analyze the content more thoroughly to find ALL business requirements
 
 REMINDER: You MUST extract EACH "where" line and EACH bullet point as a separate requirement.
 
@@ -1123,6 +1152,20 @@ The document has been pre-analyzed deterministically and contains:
 - **Process Steps**: ${businessElementCount.breakdown.steps}
 - **Business Flows**: ${businessElementCount.breakdown.flows}
 - **User Actions**: ${businessElementCount.breakdown.userActions}
+
+🚨 CONTENT LENGTH ANALYSIS:
+- **Document Length**: ${processedContent.length} characters
+- **Expected Requirements**: ${businessElementCount.count}
+- **Content Density**: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- **Analysis Required**: This document contains substantial business content that MUST be fully analyzed
+
+⚠️  CRITICAL INSTRUCTION:
+- The document contains ${businessElementCount.count} business elements
+- You MUST extract ALL of them as separate requirements
+- Do NOT stop until you have ${businessElementCount.count} requirements
+- If you cannot find ${businessElementCount.count} requirements, you are missing content
+- Analyze EVERY section, paragraph, and line for business requirements
+- Look for hidden requirements, implicit business rules, and process steps
 
 Use this analysis to guide your requirement extraction. Extract exactly ${businessElementCount.count} requirements based on these identified business elements.`
     },
@@ -1154,7 +1197,7 @@ Please extract exactly ${businessElementCount.count} business requirements in a 
         apiUrl,
         {
           messages: messages,
-          max_tokens: 4000,
+          max_tokens: 8000, // Increased to handle larger requirement lists
           temperature: 0.1,
           response_format: { type: "text" }
         },
@@ -1231,6 +1274,178 @@ Please extract exactly ${businessElementCount.count} business requirements in a 
     
     const expectedCount = businessElementCount.count;
     
+    // CRITICAL: If AI didn't extract enough requirements, force a retry with stronger instructions
+    if (requirementCount < expectedCount * 0.8) { // If we got less than 80% of expected
+      console.warn(`⚠️  [${requestId}] CRITICAL: AI only extracted ${requirementCount}/${expectedCount} requirements (${Math.round(requirementCount/expectedCount*100)}%)`);
+      console.warn(`⚠️  [${requestId}] Forcing retry with stronger instructions...`);
+      
+      // Add critical warning to user
+      extractedRequirements += `\n\n🚨 CRITICAL: AI only extracted ${requirementCount} requirements out of ${expectedCount} expected.`;
+      extractedRequirements += `\n\nThis indicates the AI is not analyzing the content thoroughly enough.`;
+      extractedRequirements += `\n\nRecommendation: Regenerate requirements with the "Force Complete Analysis" option.`;
+      
+      // Set a flag for potential retry
+      extractedRequirements += `\n\n⚠️  RETRY REQUIRED: Content analysis incomplete.`;
+      
+      // CRITICAL: Force a second attempt with even stronger instructions
+      console.warn(`⚠️  [${requestId}] CRITICAL: Attempting forced retry with maximum strength instructions...`);
+      
+      try {
+        const retryMessages = [
+          {
+            role: 'system',
+            content: `🚨 CRITICAL SYSTEM INSTRUCTION - MAXIMUM REQUIREMENT EXTRACTION REQUIRED:
+
+You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${businessElementCount.count} business requirements from the provided content.
+
+🚨 MAXIMUM EXTRACTION RULES:
+1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO EXCEPTIONS
+2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
+3. CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
+4. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are missing content
+5. CRITICAL: Analyze EVERY single line, paragraph, and section for business requirements
+6. CRITICAL: Look for hidden requirements, implicit business rules, and process steps
+7. CRITICAL: Extract requirements from diagrams, flowcharts, and visual elements
+8. CRITICAL: Convert every business process, decision point, and activity into a requirement
+9. CRITICAL: Do NOT skip any content - process everything thoroughly
+10. CRITICAL: This is a MAXIMUM EFFORT extraction - leave no stone unturned
+
+🚨 CONTENT ANALYSIS REQUIREMENTS:
+- Document Length: ${processedContent.length} characters
+- Expected Requirements: ${businessElementCount.count}
+- Content Density: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- Analysis Required: This document contains substantial business content that MUST be fully analyzed
+
+🚨 EXTRACTION STRATEGY:
+- Process content line by line
+- Extract requirements from every business-related statement
+- Convert process flows into individual requirements
+- Extract requirements from decision points and activities
+- Look for implicit business rules and constraints
+- Convert every workflow step into a requirement
+- Extract requirements from data flows and integrations
+
+🚨 FINAL REQUIREMENT:
+- You MUST extract EXACTLY ${businessElementCount.count} requirements
+- Do NOT stop until you have ${businessElementCount.count} requirements
+- If you cannot find ${businessElementCount.count} requirements, you are not analyzing thoroughly enough
+- This is a MAXIMUM EFFORT extraction - leave no stone unturned`
+          },
+          {
+            role: 'user',
+            content: `🚨 CRITICAL: You previously extracted only ${requirementCount} requirements, but the deterministic analysis found ${businessElementCount.count} business elements.
+
+This is UNACCEPTABLE. You MUST extract EXACTLY ${businessElementCount.count} requirements.
+
+CONTENT TO ANALYZE (ANALYZE EVERY SINGLE CHARACTER):
+${processedContent}
+
+🚨 CRITICAL INSTRUCTION: Extract EXACTLY ${businessElementCount.count} requirements. Do NOT stop until you have ${businessElementCount.count} requirements. This is a MAXIMUM EFFORT extraction.`
+          }
+        ];
+
+        console.log(`🔄 [${requestId}] Attempting forced retry with maximum strength instructions...`);
+        
+        const retryResponse = await makeOpenAIRequest(
+          apiUrl,
+          {
+            messages: retryMessages,
+            max_tokens: 12000, // Maximum tokens for retry
+            temperature: 0.0, // Zero temperature for maximum consistency
+            response_format: { type: "text" }
+          },
+          {
+            'api-key': OPENAI_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        );
+
+        if (retryResponse.data && retryResponse.data.choices && retryResponse.data.choices[0] && retryResponse.data.choices[0].message) {
+          const retryRequirements = retryResponse.data.choices[0].message.content.trim();
+          
+          console.log(`🔄 [${requestId}] Retry response received, length: ${retryRequirements.length} characters`);
+          console.log(`🔄 [${requestId}] Retry response preview: ${retryRequirements.substring(0, 500)}...`);
+          
+          // Check retry count
+          const retryCount = (retryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+          console.log(`🔄 [${requestId}] Retry extracted ${retryCount} requirements`);
+          
+          if (retryCount > requirementCount) {
+            console.log(`✅ [${requestId}] Retry successful! Got ${retryCount} requirements instead of ${requirementCount}`);
+            extractedRequirements = retryRequirements;
+            requirementCount = retryCount;
+            
+            // Update the success message
+            extractedRequirements += `\n\n✅ RETRY SUCCESSFUL: Extracted ${retryCount} requirements (previous: ${requirementCount})`;
+          } else if (retryCount === 0) {
+            console.error(`❌ [${requestId}] Retry failed completely - extracted 0 requirements`);
+            console.error(`❌ [${requestId}] Retry response: ${retryRequirements}`);
+            
+            // Try a simpler retry approach
+            console.log(`🔄 [${requestId}] Attempting simplified retry...`);
+            
+            const simpleRetryMessages = [
+              {
+                role: 'system',
+                content: `You are a Business Analyst. Extract EXACTLY ${businessElementCount.count} business requirements from the content. Use simple, clear language.`
+              },
+              {
+                role: 'user',
+                content: `Extract exactly ${businessElementCount.count} business requirements from this content. Start with BR-001 and go to BR-${businessElementCount.count}. Keep requirements simple and clear.
+
+Content: ${processedContent.substring(0, 20000)}`
+              }
+            ];
+            
+            try {
+              const simpleRetryResponse = await makeOpenAIRequest(
+                apiUrl,
+                {
+                  messages: simpleRetryMessages,
+                  max_tokens: 8000,
+                  temperature: 0.1,
+                  response_format: { type: "text" }
+                },
+                {
+                  'api-key': OPENAI_API_KEY,
+                  'Content-Type': 'application/json'
+                }
+              );
+              
+              if (simpleRetryResponse.data && simpleRetryResponse.data.choices && simpleRetryResponse.data.choices[0] && simpleRetryResponse.data.choices[0].message) {
+                const simpleRetryRequirements = simpleRetryResponse.data.choices[0].message.content.trim();
+                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+                
+                console.log(`🔄 [${requestId}] Simple retry extracted ${simpleRetryCount} requirements`);
+                
+                if (simpleRetryCount > requirementCount) {
+                  console.log(`✅ [${requestId}] Simple retry successful! Got ${simpleRetryCount} requirements`);
+                  extractedRequirements = simpleRetryRequirements;
+                  requirementCount = simpleRetryCount;
+                  extractedRequirements += `\n\n✅ SIMPLE RETRY SUCCESSFUL: Extracted ${simpleRetryCount} requirements`;
+                } else {
+                  console.warn(`⚠️  [${requestId}] Simple retry also failed: ${simpleRetryCount} requirements`);
+                  extractedRequirements += `\n\n⚠️  SIMPLE RETRY FAILED: Still only ${simpleRetryCount} requirements extracted.`;
+                }
+              }
+            } catch (simpleRetryError) {
+              console.error(`❌ [${requestId}] Simple retry also failed:`, simpleRetryError);
+              extractedRequirements += `\n\n❌ SIMPLE RETRY FAILED: ${simpleRetryError.message}`;
+            }
+          } else {
+            console.warn(`⚠️  [${requestId}] Retry failed to improve count: ${retryCount} vs ${requirementCount}`);
+            extractedRequirements += `\n\n⚠️  RETRY ATTEMPTED: Still only ${retryCount} requirements extracted.`;
+          }
+        } else {
+          console.error(`❌ [${requestId}] Retry response structure invalid:`, retryResponse.data);
+          extractedRequirements += `\n\n❌ RETRY FAILED: Invalid response structure from AI.`;
+        }
+      } catch (retryError) {
+        console.error(`❌ [${requestId}] Retry failed:`, retryError);
+        extractedRequirements += `\n\n❌ RETRY FAILED: ${retryError.message}`;
+      }
+    }
+    
     // Debug: Let's see exactly what the AI generated
     console.log(`🔍 [${requestId}] AI Response Preview (first 1000 chars):`);
     console.log(extractedRequirements.substring(0, 1000));
@@ -1249,12 +1464,17 @@ Please extract exactly ${businessElementCount.count} business requirements in a 
       console.warn(`⚠️  [${requestId}] WARNING: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
       console.warn(`⚠️  [${requestId}] Content length: ${processedContent.length} characters`);
       
-      // Only warn if there's a significant mismatch (more than 2 requirements difference)
+      // CRITICAL: Always warn about mismatches and provide guidance
       if (Math.abs(requirementCount - expectedCount) > 2) {
-        console.warn(`⚠️  [${requestId}] Significant mismatch detected - AI may not be following the deterministic count`);
+        console.warn(`⚠️  [${requestId}] CRITICAL MISMATCH: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
+        console.warn(`⚠️  [${requestId}] This indicates the AI is not following the deterministic count requirement`);
         
-        // Add a warning to the user about the mismatch
-        extractedRequirements += `\n\n⚠️  NOTE: AI extracted ${requirementCount} requirements, but the deterministic analysis found ${expectedCount} business elements. Please review for accuracy.`;
+        // Add a critical warning to the user about the mismatch
+        extractedRequirements += `\n\n🚨 CRITICAL WARNING: AI extracted ${requirementCount} requirements, but the deterministic analysis found ${expectedCount} business elements.`;
+        extractedRequirements += `\n\nThis suggests the AI did not analyze the content thoroughly enough.`;
+        extractedRequirements += `\n\nExpected: ${expectedCount} requirements`;
+        extractedRequirements += `\n\nExtracted: ${requirementCount} requirements`;
+        extractedRequirements += `\n\nRecommendation: Regenerate requirements to get the full count.`;
       }
     } else {
       console.log(`✅ [${requestId}] AI correctly extracted ${requirementCount} requirements as expected`);
