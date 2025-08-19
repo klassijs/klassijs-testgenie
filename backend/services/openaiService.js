@@ -319,7 +319,7 @@ CRITICAL REQUIREMENTS:
   }
 }
 
-// Remove duplicate scenarios from generated test cases
+// Remove duplicate scenarios from generated test cases and add spacing between scenarios
 function removeDuplicateScenarios(gherkinContent) {
   const lines = gherkinContent.split('\n');
   const uniqueScenarios = [];
@@ -390,7 +390,25 @@ function removeDuplicateScenarios(gherkinContent) {
     }
   }
   
-  return uniqueScenarios.join('\n');
+  // Add spacing between scenarios for better readability
+  const spacedScenarios = [];
+  
+  for (let i = 0; i < uniqueScenarios.length; i++) {
+    const line = uniqueScenarios[i];
+    
+    // Check if this line starts a new scenario
+    if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+      // Add a blank line before the scenario (except for the first one)
+      if (i > 0) {
+        spacedScenarios.push(''); // Add blank line before every scenario
+      }
+      spacedScenarios.push(line);
+    } else {
+      spacedScenarios.push(line);
+    }
+  }
+  
+  return spacedScenarios.join('\n');
 }
 
 // Validate that refined content preserves original scenario names and feature name

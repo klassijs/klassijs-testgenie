@@ -2147,6 +2147,7 @@ SCENARIO NAMING GUIDELINES:
               >
                 Reset Changes
               </button>
+              {/* Debug State button - Hidden during production, uncomment for development/testing
               <button 
                 className="btn btn-secondary"
                 style={{
@@ -2166,6 +2167,7 @@ SCENARIO NAMING GUIDELINES:
               >
                 Debug State
               </button>
+              */}
               <button 
                 className="btn btn-secondary"
                 style={{
