@@ -1,6 +1,27 @@
 const axios = require('axios');
 const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequirementComplexity } = require('../utils/workflowAnalyzer');
 
+// Retry helper function with exponential backoff for rate limiting
+async function makeOpenAIRequest(apiUrl, requestData, headers, maxRetries = 3) {
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const response = await axios.post(apiUrl, requestData, { headers });
+      return response;
+    } catch (error) {
+      // If it's a 429 (rate limit) and we have retries left, wait and retry
+      if (error.response?.status === 429 && attempt < maxRetries) {
+        const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+        console.log(`⚠️  Rate limited (429). Retrying in ${waitTime/1000}s... (Attempt ${attempt}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, waitTime));
+        continue;
+      }
+      
+      // If it's not a 429 or we're out of retries, throw the error
+      throw error;
+    }
+  }
+}
+
 /**
  * Enhance complexity calculations in the extracted requirements
  * @param {string} requirements - The requirements table from AI
@@ -171,7 +192,38 @@ CRITICAL REQUIREMENTS:
 - Each scenario should test a different execution path or decision branch
 - Output ONLY the actual test scenarios, nothing else
 - The Feature name and scenarios must be based on the SPECIFIC business requirement provided
-- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis`
+- PATH COVERAGE IS MANDATORY: Generate scenarios for every path identified in the complexity analysis
+
+DUPLICATION PREVENTION:
+- CRITICAL: Do NOT generate scenarios with duplicate or nearly identical steps
+- CRITICAL: Each scenario must test a UNIQUE execution path or decision branch
+- CRITICAL: If two scenarios would have the same steps, combine them into one scenario with examples
+- CRITICAL: Use Scenario Outline with Examples for similar scenarios with different data
+- CRITICAL: Each scenario must add value and test something different
+- CRITICAL: Avoid generating multiple scenarios that test the same functionality with minor wording changes
+
+EXAMPLES OF WHAT NOT TO DO (DUPLICATE SCENARIOS):
+❌ WRONG - Duplicate scenarios with same steps:
+Scenario: BR-001: User navigates to journal issue and no option for "Silverchair - Journals" is displayed
+Given I have navigated to a journal Issue package in Atlas
+When I view the Workflow dropdown options
+Then I do not see an option for "Silverchair - Journals"
+
+Scenario: BR-001: User navigates to article package and no option for "Silverchair - Journals" is displayed
+Given I have navigated to an Article package in Atlas
+When I view the Workflow dropdown options
+Then I do not see an option for "Silverchair - Journals"
+
+✅ CORRECT - Single scenario with examples:
+Scenario Outline: BR-001: User navigates to different package types and no option for "Silverchair - Journals" is displayed
+Given I have navigated to a <package_type> package in Atlas
+When I view the Workflow dropdown options
+Then I do not see an option for "Silverchair - Journals"
+
+Examples:
+| package_type |
+| journal Issue |
+| Article |`
     },
     {
       role: 'user',
@@ -208,7 +260,7 @@ CRITICAL REQUIREMENTS:
   ];
 
   try {
-    const response = await axios.post(
+    const response = await makeOpenAIRequest(
       apiUrl,
       {
         messages: messages,
@@ -217,10 +269,8 @@ CRITICAL REQUIREMENTS:
         response_format: { type: "text" }
       },
       {
-        headers: {
-          'api-key': OPENAI_API_KEY,
-          'Content-Type': 'application/json'
-        }
+        'api-key': OPENAI_API_KEY,
+        'Content-Type': 'application/json'
       }
     );
 
@@ -259,11 +309,106 @@ CRITICAL REQUIREMENTS:
       .replace(/```\\n/gi, '') // Remove trailing ```
       .trim(); // Trim any leading/trailing whitespace
 
-    return cleanGeneratedTests;
+    // Remove duplicate scenarios
+    const deduplicatedTests = removeDuplicateScenarios(cleanGeneratedTests);
+
+    return deduplicatedTests;
   } catch (error) {
     console.error('Azure OpenAI API Error:', error.response?.data || error.message);
     throw new Error(`Azure OpenAI API Error: ${error.response?.status || error.message}`);
   }
+}
+
+// Remove duplicate scenarios from generated test cases and add spacing between scenarios
+function removeDuplicateScenarios(gherkinContent) {
+  const lines = gherkinContent.split('\n');
+  const uniqueScenarios = [];
+  const seenSteps = new Set();
+  let currentScenario = null;
+  let currentSteps = [];
+  let inScenario = false;
+  
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    
+    // Check if this is a new scenario
+    if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+      // Process previous scenario if exists
+      if (currentScenario && currentSteps.length > 0) {
+        const stepsKey = currentSteps.join('\n').toLowerCase().replace(/\s+/g, ' ').trim();
+        if (!seenSteps.has(stepsKey)) {
+          seenSteps.add(stepsKey);
+          uniqueScenarios.push(currentScenario, ...currentSteps);
+        }
+      }
+      
+      // Start new scenario
+      currentScenario = line;
+      currentSteps = [];
+      inScenario = true;
+      continue;
+    }
+    
+    // Check if we're still in a scenario
+    if (inScenario) {
+      if (line.startsWith('Feature:') || line.startsWith('Background:') || 
+          (line.startsWith('Scenario:') && i > 0) || line.startsWith('Scenario Outline:')) {
+        // End of current scenario
+        inScenario = false;
+        
+        // Process the completed scenario
+        if (currentScenario && currentSteps.length > 0) {
+          const stepsKey = currentSteps.join('\n').toLowerCase().replace(/\s+/g, ' ').trim();
+          if (!seenSteps.has(stepsKey)) {
+            seenSteps.add(stepsKey);
+            uniqueScenarios.push(currentScenario, ...currentSteps);
+          }
+        }
+        
+        // Reset for next scenario
+        currentScenario = null;
+        currentSteps = [];
+      } else if (line && (line.startsWith('Given') || line.startsWith('When') || 
+                          line.startsWith('Then') || line.startsWith('And') || 
+                          line.startsWith('But') || line.startsWith('Examples:'))) {
+        currentSteps.push(line);
+      }
+    }
+    
+    // Add non-scenario lines (Feature, Background, etc.)
+    if (!inScenario) {
+      uniqueScenarios.push(line);
+    }
+  }
+  
+  // Process the last scenario if exists
+  if (currentScenario && currentSteps.length > 0) {
+    const stepsKey = currentSteps.join('\n').toLowerCase().replace(/\s+/g, ' ').trim();
+    if (!seenSteps.has(stepsKey)) {
+      seenSteps.add(stepsKey);
+      uniqueScenarios.push(currentScenario, ...currentSteps);
+    }
+  }
+  
+  // Add spacing between scenarios for better readability
+  const spacedScenarios = [];
+  
+  for (let i = 0; i < uniqueScenarios.length; i++) {
+    const line = uniqueScenarios[i];
+    
+    // Check if this line starts a new scenario
+    if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
+      // Add a blank line before the scenario (except for the first one)
+      if (i > 0) {
+        spacedScenarios.push(''); // Add blank line before every scenario
+      }
+      spacedScenarios.push(line);
+    } else {
+      spacedScenarios.push(line);
+    }
+  }
+  
+  return spacedScenarios.join('\n');
 }
 
 // Validate that refined content preserves original scenario names and feature name
@@ -545,7 +690,7 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
   ];
 
   try {
-    const response = await axios.post(
+    const response = await makeOpenAIRequest(
       apiUrl,
       {
         messages: messages,
@@ -554,10 +699,8 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
         response_format: { type: "text" }
       },
       {
-        headers: {
-          'api-key': OPENAI_API_KEY,
-          'Content-Type': 'application/json'
-        }
+        'api-key': OPENAI_API_KEY,
+        'Content-Type': 'application/json'
       }
     );
 
@@ -612,17 +755,18 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
 }
 
 // Validate consistency of extracted requirements
-function validateRequirementsConsistency(extractedRequirements, originalContent) {
+function validateRequirementsConsistency(extractedRequirements, originalContent, businessElementCount = null) {
   const issues = [];
   let requirementCount = 0;
   let consistencyScore = 100;
+  let deterministicCount = 0; // Define at function scope
   
   try {
     // Count requirements (more flexible pattern matching)
-    const requirementMatches = extractedRequirements.match(/\| BR-\d+\s*\|/g);
+    const requirementMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
     requirementCount = requirementMatches ? requirementMatches.length : 0;
     
-    // If no requirements found with strict pattern, try more flexible matching
+    // If no requirements found with flexible pattern, try even more flexible matching
     if (requirementCount === 0) {
       const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
       requirementCount = flexibleMatches ? flexibleMatches.length : 0;
@@ -635,20 +779,22 @@ function validateRequirementsConsistency(extractedRequirements, originalContent)
     const tableRows = extractedRequirements.split('\n').filter(line => line.includes('|'));
     const validRows = tableRows.filter(row => row.split('|').length >= 4);
     
-    // Allow for some flexibility in table structure
-    const expectedRows = requirementCount + 1; // +1 for header row
+    // Use the deterministic count for validation, not the AI-generated count
+    deterministicCount = businessElementCount && businessElementCount.count ? businessElementCount.count : requirementCount;
+    const expectedRows = deterministicCount + 1; // +1 for header row
     const rowDifference = Math.abs(validRows.length - expectedRows);
     
     if (rowDifference > 2) { // Allow up to 2 rows difference
       issues.push(`Table structure inconsistency: Expected ${expectedRows} rows, found ${validRows.length} (difference: ${rowDifference})`);
       consistencyScore -= 10; // Reduced penalty for table structure issues
     } else if (rowDifference > 0) {
-      console.log(`ℹ️  Table structure has minor differences: Expected ${expectedRows} rows, found ${validRows.length}`);
+      console.log(`ℹ️  Table structure has minor differences: Expected ${expectedRows} rows, found ${validRows.length} (using deterministic count: ${deterministicCount})`);
     }
     
-    // Check for sequential numbering
+    // Check for sequential numbering - use deterministic count if available
+    const checkCount = deterministicCount || requirementCount;
     const requirementIds = [];
-    for (let i = 1; i <= requirementCount; i++) {
+    for (let i = 1; i <= checkCount; i++) {
       const expectedId = `BR-${String(i).padStart(3, '0')}`;
       if (!extractedRequirements.includes(expectedId)) {
         issues.push(`Missing sequential requirement ID: ${expectedId}`);
@@ -659,7 +805,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent)
     
     // Check for duplicate IDs
     const duplicateIds = requirementIds.filter(id => {
-      const regex = new RegExp(`\\| ${id} \\|`, 'g');
+      const regex = new RegExp(`\\|\\s*${id}\\s*\\|`, 'g');
       const matches = extractedRequirements.match(regex);
       return matches && matches.length > 1;
     });
@@ -669,13 +815,56 @@ function validateRequirementsConsistency(extractedRequirements, originalContent)
       consistencyScore -= 15;
     }
     
-    // Check for reasonable requirement extraction based on content
+    // CRITICAL: Check that every requirement has acceptance criteria
+    const requirementRows = validRows.filter(row => row.includes('BR-'));
+    let missingAcceptanceCriteria = 0;
+    
+    requirementRows.forEach(row => {
+      const columns = row.split('|').map(col => col.trim());
+      if (columns.length >= 4) {
+        const acceptanceCriteria = columns[2]; // 3rd column (0-indexed)
+        if (!acceptanceCriteria || acceptanceCriteria.length < 10 || acceptanceCriteria === 'N/A' || acceptanceCriteria === '-') {
+          missingAcceptanceCriteria++;
+        }
+      }
+    });
+    
+    if (missingAcceptanceCriteria > 0) {
+      issues.push(`CRITICAL: ${missingAcceptanceCriteria} requirements are missing proper acceptance criteria`);
+      consistencyScore -= 25; // Heavy penalty for missing acceptance criteria
+    }
+    
+    // CRITICAL: Check that every requirement has complete complexity information
+    let incompleteComplexity = 0;
+    
+    requirementRows.forEach(row => {
+      const columns = row.split('|').map(col => col.trim());
+      if (columns.length >= 4) {
+        const complexity = columns[3]; // 4th column (0-indexed)
+        // Check if complexity has all required elements
+        if (!complexity || 
+            !complexity.includes('CC:') || 
+            !complexity.includes('Decision Points:') || 
+            !complexity.includes('Activities:') || 
+            !complexity.includes('Paths:')) {
+          incompleteComplexity++;
+        }
+      }
+    });
+    
+    if (incompleteComplexity > 0) {
+      issues.push(`CRITICAL: ${incompleteComplexity} requirements have incomplete complexity information`);
+      consistencyScore -= 20; // Heavy penalty for incomplete complexity
+    }
+    
+    // Check for reasonable requirement extraction based on content - use deterministic count if available
     const contentLength = originalContent.length;
-    if (contentLength < 1000 && requirementCount > 8) {
-      issues.push(`Very high requirement count (${requirementCount}) for short content (${contentLength} chars) - may indicate over-extraction`);
+    const validationCount = deterministicCount || requirementCount;
+    if (contentLength < 1000 && validationCount > 8) {
+      issues.push(`Very high requirement count (${validationCount}) for short content (${contentLength} chars) - may indicate over-extraction`);
       consistencyScore -= 15;
-    } else if (contentLength > 10000 && requirementCount < 2) {
-      issues.push(`Very low requirement count (${requirementCount}) for long content (${contentLength} chars) - may indicate under-extraction`);
+    } else if (contentLength > 10000 && validationCount < 2) {
+      issues.push(`Very low requirement count (${validationCount}) for long content (${contentLength} chars) - may indicate under-extraction`);
       consistencyScore -= 15;
     }
     
@@ -689,11 +878,14 @@ function validateRequirementsConsistency(extractedRequirements, originalContent)
   
   return {
     requirementCount,
+    deterministicCount: deterministicCount || requirementCount,
     consistencyScore,
     issues,
     isValid: consistencyScore >= 80
   };
 }
+
+
 
 // Extract business requirements and acceptance criteria from documents
 async function extractBusinessRequirements(content, context = '', enableLogging = true) {
@@ -701,35 +893,14 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     throw new Error('Azure OpenAI is not configured');
   }
 
-      // Generate unique request ID for tracking
-    const requestId = Math.random().toString(36).substring(2, 15);
-    
-    // Create a content hash for consistency tracking
-    const contentHash = require('crypto').createHash('md5').update(content.trim()).digest('hex').substring(0, 8);
-    
-    if (enableLogging) {
-      console.log(`🔍 [${requestId}] Starting requirements extraction...`);
-      console.log(`🔍 [${requestId}] Content hash: ${contentHash} (for consistency tracking)`);
-      console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
-      
-      // Check if this content hash has been processed before (for consistency monitoring)
-      if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
-        const previousCount = global.contentHashHistory[contentHash].requirementCount;
-        console.log(`⚠️  [${requestId}] Content hash ${contentHash} detected before with ${previousCount} requirements - monitoring for consistency`);
-      }
-      
-      // Store content hash history for consistency monitoring
-      if (!global.contentHashHistory) global.contentHashHistory = {};
-      global.contentHashHistory[contentHash] = {
-        timestamp: new Date().toISOString(),
-        requestId: requestId,
-        contentLength: content.length,
-        requirementCount: null // Will be updated after extraction
-      };
-      
-      // console.log(`🔍 [${requestId}] Context: ${context || 'None'}`);
-    }
+  // Generate unique request ID for tracking
+  const requestId = Math.random().toString(36).substring(2, 15);
   
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Starting requirements extraction...`);
+    console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+  }
+
   // Check if content is sufficient
   if (!content || content.trim().length < 50) {
     throw new Error('Insufficient content. Please provide more detailed content for requirement extraction');
@@ -737,9 +908,9 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 
   // Handle large documents with chunking
   let processedContent = content;
+  let isChunked = false;
+  
   if (content.length > 100000) {
-
-    
     // For very large documents, use the first 100K chars (about 25K tokens)
     // This leaves plenty of room for the prompt and response
     processedContent = content.substring(0, 100000);
@@ -754,14 +925,38 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     }
     
     processedContent += '\n\n[Document truncated for processing. Full analysis may require multiple uploads.]';
-    
+    isChunked = true;
   }
 
-  // Analyze workflow content for complexity calculation
+  // Analyze workflow content for complexity calculation with deterministic approach
   const workflowAnalysis = analyzeWorkflowContent(processedContent);
   if (enableLogging) {
-    // console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
-    console.log(`🔍 [${requestId}] Workflow Analysis:`);
+    console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+  }
+
+  // Extract deterministic business element count from content
+  const { countBusinessElementsDeterministically } = require('../utils/fileProcessor');
+  const businessElementCount = countBusinessElementsDeterministically(processedContent);
+  
+  if (enableLogging) {
+    console.log(`🔍 [${requestId}] Deterministic Analysis: Found ${businessElementCount.count} business elements`);
+    console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.breakdown);
+    
+    // CRITICAL: Check if the deterministic count seems reasonable
+    const contentLength = processedContent.length;
+    const requirementsPerChar = businessElementCount.count / contentLength;
+    const requirementsPerK = requirementsPerChar * 1000;
+    
+    console.log(`🔍 [${requestId}] Content Analysis:`);
+    console.log(`🔍 [${requestId}] - Content length: ${contentLength} characters`);
+    console.log(`🔍 [${requestId}] - Requirements per character: ${requirementsPerChar.toFixed(6)}`);
+    console.log(`🔍 [${requestId}] - Requirements per 1000 chars: ${requirementsPerK.toFixed(2)}`);
+    
+    // Warn if the count seems unreasonably high
+    if (requirementsPerK > 10) {
+      console.warn(`⚠️  [${requestId}] WARNING: Very high requirement density (${requirementsPerK.toFixed(2)} per 1000 chars) - deterministic count may be inflated`);
+      console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${businessElementCount.count} requirements`);
+    }
   }
 
   // Clean up the URL to prevent duplication
@@ -780,36 +975,88 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       role: 'system',
       content: `You are a Business Analyst specializing in extracting business requirements from various document types including diagrams, flowcharts, and technical specifications.
 
+⚠️  CRITICAL: Before you start, look for ALL lines that start with "where" - these ARE business requirements and MUST be extracted as separate requirements.
+⚠️  CRITICAL: Look for ALL bullet points (•) - each one with business logic MUST become a separate requirement.
+⚠️  CRITICAL: Do NOT skip any "where" lines or bullet points - they are part of the ${businessElementCount.count} requirements you must extract.
+
 Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
 
-EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
-2. Do NOT create additional requirements that are not directly supported by the content
-3. Do NOT split a single requirement into multiple requirements
-4. Do NOT combine multiple requirements into one
-5. Each requirement should represent a distinct, testable business need
-6. Extract the EXACT requirements present in the content - no more, no less
+CRITICAL EXTRACTION RULES - FOLLOW THESE EXACTLY:
+1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO MORE, NO LESS
+2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
+3. CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
+4. CRITICAL: Every bullet point (•) that contains business logic MUST become a separate requirement
+5. CRITICAL: Lines starting with "if" or "when" MUST be extracted as business requirements
+6. CRITICAL: Lines containing "then" statements MUST be extracted as business requirements
+7. CRITICAL: Conditional business rules (if X then Y) MUST be extracted as separate requirements
+8. CRITICAL: Do NOT combine multiple bullet points into single requirements
+9. CRITICAL: Each bullet point with business content = 1 separate requirement
+10. CRITICAL: Extract ALL business requirements present in the content to reach ${businessElementCount.count}
+11. CRITICAL: Do NOT stop until you have exactly ${businessElementCount.count} requirements
+12. CRITICAL: Do NOT create additional requirements that are not directly supported by the content
+13. CRITICAL: Do NOT split a single requirement into multiple requirements
+14. CRITICAL: Do NOT combine multiple requirements into one
+15. CRITICAL: Each requirement should represent a distinct, testable business need
+16. CRITICAL: Extract the EXACT requirements present in the content - no more, no less
+17. CRITICAL: The number of requirements MUST match the deterministic count provided
+18. CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the content analysis
+19. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
+20. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are not analyzing the content thoroughly enough
+
+CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS:
+• where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
+• where Submission type is "publish" then content appears in PUBLISHED state → BR-002 (generate new acceptance criteria)
+• verify folder exclusion logic works as expected → BR-003 (use existing acceptance criteria if available)
+• verify file exclusion logic works as expected → BR-004 (use existing acceptance criteria if available)
+
+ACCEPTANCE CRITERIA EXAMPLES:
+- For "where" lines: "Given a user submits content with type 'preview', When the submission is processed, Then the content appears in UNPUBLISHED state"
+- For bullet points: "Given a user accesses the system, When folder exclusion logic is triggered, Then the excluded folders are properly filtered out"
+- For existing criteria: Copy the exact "Given...When...Then" format from the document
+
+ACCEPTANCE CRITERIA HANDLING:
+- For requirements with existing acceptance criteria: COPY them exactly as written
+- For "where" lines and bullet points without acceptance criteria: GENERATE new Given-When-Then format
+- EACH "where" line = 1 requirement. EACH bullet point = 1 requirement. NEVER combine them.
+- EVERY requirement MUST have acceptance criteria - NO EXCEPTIONS
 
 REQUIRED OUTPUT FORMAT:
-Create a markdown table with these columns:
+Create a markdown table with these EXACT columns and format:
 
 | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
+|----------------|----------------------|---------------------|------------|
+
+CRITICAL: You MUST use the EXACT format above with pipe symbols (|) and dashes (-) for the table structure.
+CRITICAL: Each requirement MUST be on a separate row starting with | BR-001 |, | BR-002 |, etc.
+CRITICAL: Do NOT use any other table format - only the markdown table format shown above.
 
 REQUIREMENT ID FORMAT:
 - Use sequential numbering: BR-001, BR-002, BR-003, etc.
 - Do NOT skip numbers or use random identifiers
 - Start with BR-001 and increment sequentially
+- You MUST have exactly ${businessElementCount.count} requirements
 
 BUSINESS REQUIREMENT RULES:
 - Extract ONLY what the system should do based on the content
 - Do NOT add features that are not mentioned
 - Do NOT create requirements for edge cases unless explicitly stated
 - Keep requirements focused and specific to the content provided
+- Base requirements on the business elements found in the content
+- CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
+- CRITICAL: Conditional logic (if/when/where) represents business rules that MUST be extracted
+- CRITICAL: Every bullet point with business logic MUST become a separate requirement
+- CRITICAL: Do NOT skip any lines that contain business logic, conditions, or system behavior
 
 ACCEPTANCE CRITERIA RULES:
-- EVERY business requirement MUST have a corresponding acceptance criteria
+- CRITICAL: EVERY business requirement MUST have acceptance criteria - NO EXCEPTIONS
+- CRITICAL: Use EXISTING acceptance criteria from the document when available
+- CRITICAL: If a requirement already has acceptance criteria (like "Given...When...Then"), copy those EXACTLY
+- CRITICAL: For requirements without existing acceptance criteria (like "where" lines), generate new ones
+- CRITICAL: Generate new acceptance criteria for bullet points and "where" lines that don't have them
+- CRITICAL: Use Given-When-Then format for new acceptance criteria
+- CRITICAL: If you cannot create acceptance criteria for a requirement, DO NOT include that requirement
+- CRITICAL: Every row in your table MUST have all 4 columns filled: ID, Requirement, Acceptance Criteria, Complexity
 - Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format where applicable
 - Base acceptance criteria ONLY on the content provided
 - Do NOT add acceptance criteria for features not mentioned
 
@@ -828,19 +1075,29 @@ COMPLEXITY CALCULATION RULES:
 - Events include: start events, end events, intermediate events
 - Edges include: sequence flows, message flows, conditional flows, default flows
 - If a requirement involves workflows or decision logic, provide detailed complexity analysis
-- Format complexity as: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
-- For simple requirements without workflows, use: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
-- EXAMPLES of different complexities:
-  * Simple login: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
-  * Form validation: "CC: 3, Decision Points: 2, Activities: 2, Paths: 3"
-  * Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
-- IMPORTANT: Each requirement MUST have DIFFERENT complexity based on its specific content
+
+COMPLEXITY FORMAT - MANDATORY:
+- CRITICAL: You MUST use the EXACT format: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- CRITICAL: Do NOT abbreviate or shorten the complexity format
+- CRITICAL: Do NOT use formats like "CC: 1, Paths: 1" - this is INVALID
+- CRITICAL: Every complexity entry MUST have all 4 elements: CC, Decision Points, Activities, Paths
+
+COMPLEXITY EXAMPLES - COPY EXACTLY:
+- Simple requirement: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- Medium complexity: "CC: 3, Decision Points: 2, Activities: 2, Paths: 3"
+- Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
+- Conditional logic: "CC: 2, Decision Points: 1, Activities: 1, Paths: 2"
+
+VALIDATION:
+- If you cannot calculate all 4 elements, use "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
+- NEVER output incomplete complexity information
+- NEVER use abbreviated formats
 
 CONSISTENCY REQUIREMENTS:
 - The same content should ALWAYS produce the same requirements
 - Do NOT be creative or add requirements that are not explicitly supported
 - Focus on extracting what is actually present in the content
-- Extract requirements based on the actual content complexity, not arbitrary numbers
+- Extract requirements based on the deterministic count, not arbitrary numbers
 - Be consistent in identifying and extracting the same requirements from the same content
 
 SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
@@ -852,108 +1109,105 @@ SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
 - Look for business rules, decision points, and process steps
 - Count decision points (gateways) and activities for complexity calculation
 
+SPECIAL INSTRUCTIONS FOR BULLET POINTS AND CONDITIONAL LOGIC:
+- REMINDER: Lines starting with "where" ARE business requirements and MUST be extracted
+- REMINDER: Every bullet point (•) that contains business logic MUST become a separate requirement
+- REMINDER: Lines starting with "if" or "when" MUST be extracted as business requirements
+- REMINDER: Lines containing "then" statements MUST be extracted as business requirements
+- REMINDER: Conditional business rules (if X then Y) MUST be extracted as separate requirements
+- REMINDER: Do NOT combine multiple bullet points into single requirements
+- REMINDER: Each bullet point with business content = 1 separate requirement
+- REMINDER: The deterministic count includes ALL bullet points with business logic
+
 FINAL REQUIREMENTS:
 - Requirements are written in clear, concise, and testable language
 - Acceptance criteria follow the Given-When-Then format where applicable
 - Start directly with the table, no explanations
 - EVERY business requirement MUST have acceptance criteria - this is mandatory
 - EVERY requirement MUST include complexity analysis in the Complexity column
-- BE CONSISTENT - same input should produce same output`
+- BE CONSISTENT - same input should produce same output
+
+🚨 FINAL COUNT REQUIREMENT:
+- CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements
+- CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
+- CRITICAL: The deterministic analysis found ${businessElementCount.count} elements - match this count
+- CRITICAL: If you have fewer than ${businessElementCount.count} requirements, you are missing content
+- CRITICAL: Analyze the content more thoroughly to find ALL business requirements
+
+REMINDER: You MUST extract EACH "where" line and EACH bullet point as a separate requirement.
+
+DETERMINISTIC PROCESSING:
+- Process content from top to bottom, left to right
+- Extract requirements in the order they appear in the content
+- Use systematic approach: focus on the business elements already identified
+- Maintain consistent element ordering and processing sequence
+- The deterministic count of ${businessElementCount.count} is your target - do not deviate
+
+CONTENT ANALYSIS CONTEXT:
+The document has been pre-analyzed deterministically and contains:
+- **Total Business Elements**: ${businessElementCount.count}
+- **Business Processes**: ${businessElementCount.breakdown.processes}
+- **System Requirements**: ${businessElementCount.breakdown.requirements}
+- **Decision Points**: ${businessElementCount.breakdown.decisions}
+- **Process Steps**: ${businessElementCount.breakdown.steps}
+- **Business Flows**: ${businessElementCount.breakdown.flows}
+- **User Actions**: ${businessElementCount.breakdown.userActions}
+
+🚨 CONTENT LENGTH ANALYSIS:
+- **Document Length**: ${processedContent.length} characters
+- **Expected Requirements**: ${businessElementCount.count}
+- **Content Density**: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- **Analysis Required**: This document contains substantial business content that MUST be fully analyzed
+
+⚠️  CRITICAL INSTRUCTION:
+- The document contains ${businessElementCount.count} business elements
+- You MUST extract ALL of them as separate requirements
+- Do NOT stop until you have ${businessElementCount.count} requirements
+- If you cannot find ${businessElementCount.count} requirements, you are missing content
+- Analyze EVERY section, paragraph, and line for business requirements
+- Look for hidden requirements, implicit business rules, and process steps
+
+Use this analysis to guide your requirement extraction. Extract exactly ${businessElementCount.count} requirements based on these identified business elements.`
     },
     {
       role: 'user',
-      content: `Please analyze the following document and extract the key business requirements and their corresponding acceptance criteria.
+      content: `Please analyze the following document and extract exactly ${businessElementCount.count} business requirements and their corresponding acceptance criteria.
 
 IMPORTANT: Extract requirements CONSISTENTLY and DETERMINISTICALLY. The same content should ALWAYS produce the same requirements.
 
-REQUIRED OUTPUT FORMAT:
-Structure the output as a table with these columns:
+CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the deterministic content analysis:
+- This count is based on actual content analysis, not estimation
+- Do NOT create more or fewer requirements
+- Focus on the business elements already identified in the content
 
-| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
-
-EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. Extract ONLY the core, essential business requirements that are explicitly stated or clearly implied
-2. Do NOT create additional requirements that are not directly supported by the content
-3. Do NOT split a single requirement into multiple requirements
-4. Do NOT combine multiple requirements into one
-5. Each requirement should represent a distinct, testable business need
-6. Extract the EXACT requirements present in the content - no more, no less
-
-REQUIREMENT ID FORMAT:
-- Use sequential numbering: BR-001, BR-002, BR-003, etc.
-- Do NOT skip numbers or use random identifiers
-- Start with BR-001 and increment sequentially
-
-BUSINESS REQUIREMENT RULES:
-- Extract ONLY what the system should do based on the content
-- Do NOT add features that are not mentioned
-- Do NOT create requirements for edge cases unless explicitly stated
-- Keep requirements focused and specific to the content provided
-
-ACCEPTANCE CRITERIA RULES:
-- EVERY business requirement MUST have a corresponding acceptance criteria
-- Acceptance criteria should be specific, measurable, and testable
-- Use Given-When-Then format where applicable
-- Base acceptance criteria ONLY on the content provided
-- Do NOT add acceptance criteria for features not mentioned
-
-COMPLEXITY CALCULATION RULES:
-- Analyze EACH requirement individually for its specific complexity
-- Do NOT apply the same complexity to all requirements
-- Calculate cyclomatic complexity for each requirement using: CC = Decision Points - Activities + 2
-- For workflow requirements, provide detailed complexity: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
-- For simple requirements: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
-- Each requirement should have DIFFERENT complexity based on its specific content
-
-CONSISTENCY REQUIREMENTS:
-- The same content should ALWAYS produce the same requirements
-- Do NOT be creative or add requirements that are not explicitly supported
-- Focus on extracting what is actually present in the content
-- Extract requirements based on the actual content complexity, not arbitrary numbers
-- Be consistent in identifying and extracting the same requirements from the same content
-
-Document to analyze:
-
+CONTENT TO ANALYZE:
 ${processedContent}
 
-Additional context: ${context}
+CONTEXT: ${context || 'None provided'}
 
-WORKFLOW ANALYSIS CONTEXT:
-The document has been analyzed for workflow elements:
-- Decision Points: ${workflowAnalysis.decisionPoints}
-- Activities: ${workflowAnalysis.activities}
-- Events: ${workflowAnalysis.events}
-- Overall Complexity Level: ${workflowAnalysis.complexityLevel}
-- Workflow Detected: ${workflowAnalysis.workflowDetected ? 'Yes' : 'No'}
-
-IMPORTANT: Do NOT use these global numbers for individual requirements!
-- Each requirement must be analyzed INDIVIDUALLY for its specific complexity
-- A simple login requirement should have CC: 1, Decision Points: 0, Activities: 1, Paths: 1
-- A complex workflow requirement might have CC: 5, Decision Points: 3, Activities: 2, Paths: 5
-- The global document analysis is for context only - analyze each requirement separately
-
-REMEMBER: BE CONSISTENT. The same document should always produce the same requirements.`
+Please extract exactly ${businessElementCount.count} business requirements in a systematic, deterministic manner.`
     }
   ];
 
   try {
 
+    // Making AI request to Azure OpenAI
     
-    const response = await axios.post(
+    const response = await makeOpenAIRequest(
         apiUrl,
         {
           messages: messages,
-          max_tokens: 4000,
+          max_tokens: 8000, // Increased to handle larger requirement lists
           temperature: 0.1,
           response_format: { type: "text" }
         },
         {
-          headers: {
-            'api-key': OPENAI_API_KEY,
-            'Content-Type': 'application/json'
-          }
+          'api-key': OPENAI_API_KEY,
+          'Content-Type': 'application/json'
         }
       );
+      
+    // AI response received successfully
 
 
 
@@ -979,11 +1233,252 @@ REMEMBER: BE CONSISTENT. The same document should always produce the same requir
 
     let extractedRequirements = response.data.choices[0].message.content;
 
+    // AI response received
+
     // Clean up the response
     extractedRequirements = extractedRequirements.trim();
     
     // Remove any markdown code blocks if present
-    extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
+    extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
+    
+    // Response cleaned
+
+    // Check if AI extracted the correct number of requirements
+    // Try multiple patterns to handle different AI output formats
+    let requirementCount = 0;
+    
+    // Primary pattern: Standard markdown table format
+    const standardMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
+    if (standardMatches) {
+      requirementCount = standardMatches.length;
+      console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with standard table format`);
+    }
+    
+    // Fallback pattern: Just BR- numbers anywhere in the text
+    if (requirementCount === 0) {
+      const fallbackMatches = extractedRequirements.match(/BR-\d+/g);
+      if (fallbackMatches) {
+        requirementCount = fallbackMatches.length;
+        console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with fallback pattern`);
+      }
+    }
+    
+    // Alternative pattern: Look for numbered requirements in any format
+    if (requirementCount === 0) {
+      const numberedMatches = extractedRequirements.match(/(?:BR-|Requirement\s+)(\d+)/gi);
+      if (numberedMatches) {
+        requirementCount = numberedMatches.length;
+        console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with numbered pattern`);
+      }
+    }
+    
+    const expectedCount = businessElementCount.count;
+    
+    // CRITICAL: If AI didn't extract enough requirements, force a retry with stronger instructions
+    if (requirementCount < expectedCount * 0.8) { // If we got less than 80% of expected
+      console.warn(`⚠️  [${requestId}] CRITICAL: AI only extracted ${requirementCount}/${expectedCount} requirements (${Math.round(requirementCount/expectedCount*100)}%)`);
+      console.warn(`⚠️  [${requestId}] Forcing retry with stronger instructions...`);
+      
+      // Add critical warning to user
+      extractedRequirements += `\n\n🚨 CRITICAL: AI only extracted ${requirementCount} requirements out of ${expectedCount} expected.`;
+      extractedRequirements += `\n\nThis indicates the AI is not analyzing the content thoroughly enough.`;
+      extractedRequirements += `\n\nRecommendation: Regenerate requirements with the "Force Complete Analysis" option.`;
+      
+      // Set a flag for potential retry
+      extractedRequirements += `\n\n⚠️  RETRY REQUIRED: Content analysis incomplete.`;
+      
+      // CRITICAL: Force a second attempt with even stronger instructions
+      console.warn(`⚠️  [${requestId}] CRITICAL: Attempting forced retry with maximum strength instructions...`);
+      
+      try {
+        const retryMessages = [
+          {
+            role: 'system',
+            content: `🚨 CRITICAL SYSTEM INSTRUCTION - MAXIMUM REQUIREMENT EXTRACTION REQUIRED:
+
+You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${businessElementCount.count} business requirements from the provided content.
+
+🚨 MAXIMUM EXTRACTION RULES:
+1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO EXCEPTIONS
+2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
+3. CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
+4. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are missing content
+5. CRITICAL: Analyze EVERY single line, paragraph, and section for business requirements
+6. CRITICAL: Look for hidden requirements, implicit business rules, and process steps
+7. CRITICAL: Extract requirements from diagrams, flowcharts, and visual elements
+8. CRITICAL: Convert every business process, decision point, and activity into a requirement
+9. CRITICAL: Do NOT skip any content - process everything thoroughly
+10. CRITICAL: This is a MAXIMUM EFFORT extraction - leave no stone unturned
+
+🚨 CONTENT ANALYSIS REQUIREMENTS:
+- Document Length: ${processedContent.length} characters
+- Expected Requirements: ${businessElementCount.count}
+- Content Density: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- Analysis Required: This document contains substantial business content that MUST be fully analyzed
+
+🚨 EXTRACTION STRATEGY:
+- Process content line by line
+- Extract requirements from every business-related statement
+- Convert process flows into individual requirements
+- Extract requirements from decision points and activities
+- Look for implicit business rules and constraints
+- Convert every workflow step into a requirement
+- Extract requirements from data flows and integrations
+
+🚨 FINAL REQUIREMENT:
+- You MUST extract EXACTLY ${businessElementCount.count} requirements
+- Do NOT stop until you have ${businessElementCount.count} requirements
+- If you cannot find ${businessElementCount.count} requirements, you are not analyzing thoroughly enough
+- This is a MAXIMUM EFFORT extraction - leave no stone unturned`
+          },
+          {
+            role: 'user',
+            content: `🚨 CRITICAL: You previously extracted only ${requirementCount} requirements, but the deterministic analysis found ${businessElementCount.count} business elements.
+
+This is UNACCEPTABLE. You MUST extract EXACTLY ${businessElementCount.count} requirements.
+
+CONTENT TO ANALYZE (ANALYZE EVERY SINGLE CHARACTER):
+${processedContent}
+
+🚨 CRITICAL INSTRUCTION: Extract EXACTLY ${businessElementCount.count} requirements. Do NOT stop until you have ${businessElementCount.count} requirements. This is a MAXIMUM EFFORT extraction.`
+          }
+        ];
+
+        console.log(`🔄 [${requestId}] Attempting forced retry with maximum strength instructions...`);
+        
+        const retryResponse = await makeOpenAIRequest(
+          apiUrl,
+          {
+            messages: retryMessages,
+            max_tokens: 12000, // Maximum tokens for retry
+            temperature: 0.0, // Zero temperature for maximum consistency
+            response_format: { type: "text" }
+          },
+          {
+            'api-key': OPENAI_API_KEY,
+            'Content-Type': 'application/json'
+          }
+        );
+
+        if (retryResponse.data && retryResponse.data.choices && retryResponse.data.choices[0] && retryResponse.data.choices[0].message) {
+          const retryRequirements = retryResponse.data.choices[0].message.content.trim();
+          
+          console.log(`🔄 [${requestId}] Retry response received, length: ${retryRequirements.length} characters`);
+          console.log(`🔄 [${requestId}] Retry response preview: ${retryRequirements.substring(0, 500)}...`);
+          
+          // Check retry count
+          const retryCount = (retryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+          console.log(`🔄 [${requestId}] Retry extracted ${retryCount} requirements`);
+          
+          if (retryCount > requirementCount) {
+            console.log(`✅ [${requestId}] Retry successful! Got ${retryCount} requirements instead of ${requirementCount}`);
+            extractedRequirements = retryRequirements;
+            requirementCount = retryCount;
+            
+            // Update the success message
+            extractedRequirements += `\n\n✅ RETRY SUCCESSFUL: Extracted ${retryCount} requirements (previous: ${requirementCount})`;
+          } else if (retryCount === 0) {
+            console.error(`❌ [${requestId}] Retry failed completely - extracted 0 requirements`);
+            console.error(`❌ [${requestId}] Retry response: ${retryRequirements}`);
+            
+            // Try a simpler retry approach
+            console.log(`🔄 [${requestId}] Attempting simplified retry...`);
+            
+            const simpleRetryMessages = [
+              {
+                role: 'system',
+                content: `You are a Business Analyst. Extract EXACTLY ${businessElementCount.count} business requirements from the content. Use simple, clear language.`
+              },
+              {
+                role: 'user',
+                content: `Extract exactly ${businessElementCount.count} business requirements from this content. Start with BR-001 and go to BR-${businessElementCount.count}. Keep requirements simple and clear.
+
+Content: ${processedContent.substring(0, 20000)}`
+              }
+            ];
+            
+            try {
+              const simpleRetryResponse = await makeOpenAIRequest(
+                apiUrl,
+                {
+                  messages: simpleRetryMessages,
+                  max_tokens: 8000,
+                  temperature: 0.1,
+                  response_format: { type: "text" }
+                },
+                {
+                  'api-key': OPENAI_API_KEY,
+                  'Content-Type': 'application/json'
+                }
+              );
+              
+              if (simpleRetryResponse.data && simpleRetryResponse.data.choices && simpleRetryResponse.data.choices[0] && simpleRetryResponse.data.choices[0].message) {
+                const simpleRetryRequirements = simpleRetryResponse.data.choices[0].message.content.trim();
+                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+                
+                console.log(`🔄 [${requestId}] Simple retry extracted ${simpleRetryCount} requirements`);
+                
+                if (simpleRetryCount > requirementCount) {
+                  console.log(`✅ [${requestId}] Simple retry successful! Got ${simpleRetryCount} requirements`);
+                  extractedRequirements = simpleRetryRequirements;
+                  requirementCount = simpleRetryCount;
+                  extractedRequirements += `\n\n✅ SIMPLE RETRY SUCCESSFUL: Extracted ${simpleRetryCount} requirements`;
+                } else {
+                  console.warn(`⚠️  [${requestId}] Simple retry also failed: ${simpleRetryCount} requirements`);
+                  extractedRequirements += `\n\n⚠️  SIMPLE RETRY FAILED: Still only ${simpleRetryCount} requirements extracted.`;
+                }
+              }
+            } catch (simpleRetryError) {
+              console.error(`❌ [${requestId}] Simple retry also failed:`, simpleRetryError);
+              extractedRequirements += `\n\n❌ SIMPLE RETRY FAILED: ${simpleRetryError.message}`;
+            }
+          } else {
+            console.warn(`⚠️  [${requestId}] Retry failed to improve count: ${retryCount} vs ${requirementCount}`);
+            extractedRequirements += `\n\n⚠️  RETRY ATTEMPTED: Still only ${retryCount} requirements extracted.`;
+          }
+        } else {
+          console.error(`❌ [${requestId}] Retry response structure invalid:`, retryResponse.data);
+          extractedRequirements += `\n\n❌ RETRY FAILED: Invalid response structure from AI.`;
+        }
+      } catch (retryError) {
+        console.error(`❌ [${requestId}] Retry failed:`, retryError);
+        extractedRequirements += `\n\n❌ RETRY FAILED: ${retryError.message}`;
+      }
+    }
+    
+    // Debug: Let's see exactly what the AI generated
+    console.log(`🔍 [${requestId}] AI Response Preview (first 1000 chars):`);
+    console.log(extractedRequirements.substring(0, 1000));
+    console.log(`🔍 [${requestId}] Looking for BR- pattern in response...`);
+    console.log(`🔍 [${requestId}] Raw regex match result:`, extractedRequirements.match(/\|\s*BR-\d+\s*\|/g));
+    console.log(`🔍 [${requestId}] Alternative pattern (BR-\\d+):`, extractedRequirements.match(/BR-\d+/g));
+    console.log(`🔍 [${requestId}] Lines containing 'BR-':`, extractedRequirements.split('\n').filter(line => line.includes('BR-')).length);
+    console.log(`🔍 [${requestId}] Table structure analysis:`);
+    console.log(`🔍 [${requestId}] - Total lines:`, extractedRequirements.split('\n').length);
+    console.log(`🔍 [${requestId}] - Lines with |:`, extractedRequirements.split('\n').filter(line => line.includes('|')).length);
+    console.log(`🔍 [${requestId}] - First few table lines:`, extractedRequirements.split('\n').filter(line => line.includes('|')).slice(0, 5));
+    
+    // Requirement count check completed
+    
+    if (requirementCount !== expectedCount) {
+      console.warn(`⚠️  [${requestId}] WARNING: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
+      console.warn(`⚠️  [${requestId}] Content length: ${processedContent.length} characters`);
+      
+      // CRITICAL: Always warn about mismatches and provide guidance
+      if (Math.abs(requirementCount - expectedCount) > 2) {
+        console.warn(`⚠️  [${requestId}] CRITICAL MISMATCH: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
+        console.warn(`⚠️  [${requestId}] This indicates the AI is not following the deterministic count requirement`);
+        
+        // Add a critical warning to the user about the mismatch
+        extractedRequirements += `\n\n🚨 CRITICAL WARNING: AI extracted ${requirementCount} requirements, but the deterministic analysis found ${expectedCount} business elements.`;
+        extractedRequirements += `\n\nThis suggests the AI did not analyze the content thoroughly enough.`;
+        extractedRequirements += `\n\nExpected: ${expectedCount} requirements`;
+        extractedRequirements += `\n\nExtracted: ${requirementCount} requirements`;
+        extractedRequirements += `\n\nRecommendation: Regenerate requirements to get the full count.`;
+      }
+    } else {
+      console.log(`✅ [${requestId}] AI correctly extracted ${requirementCount} requirements as expected`);
+    }
 
     // Post-process to enhance complexity calculations if needed
     if (workflowAnalysis.workflowDetected) {
@@ -991,35 +1486,12 @@ REMEMBER: BE CONSISTENT. The same document should always produce the same requir
     }
 
     // Validate consistency of extracted requirements
-    const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent);
+    const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent, businessElementCount);
     if (validationResult.issues.length > 0) {
       console.warn(`⚠️  [${requestId}] Requirements consistency issues detected:`, validationResult.issues);
     }
 
-    // Update content hash history with requirements count
-    if (global.contentHashHistory && global.contentHashHistory[contentHash]) {
-      global.contentHashHistory[contentHash].requirementCount = validationResult.requirementCount;
-      global.contentHashHistory[contentHash].consistencyScore = validationResult.consistencyScore;
-      
-      // Check for consistency issues with previous extractions
-      const previousExtractions = Object.entries(global.contentHashHistory)
-        .filter(([hash, data]) => hash === contentHash && data.requirementCount !== null)
-        .sort((a, b) => new Date(b[1].timestamp) - new Date(a[1].timestamp));
-      
-      if (previousExtractions.length > 1) {
-        const currentCount = validationResult.requirementCount;
-        const previousCount = previousExtractions[1][1].requirementCount;
-        
-        if (currentCount !== previousCount) {
-          console.warn(`⚠️  [${requestId}] INCONSISTENCY DETECTED: Same content produced ${previousCount} requirements before, now ${currentCount} requirements`);
-          console.warn(`⚠️  [${requestId}] Previous extraction: ${previousExtractions[1][1].timestamp}`);
-          console.warn(`⚠️  [${requestId}] Current extraction: ${new Date().toISOString()}`);
-          console.warn(`⚠️  [${requestId}] This may indicate the AI is not consistently identifying the same requirements`);
-        } else {
-          console.log(`✅ [${requestId}] Consistency confirmed: Same content produced ${currentCount} requirements as before`);
-        }
-      }
-    }
+    // No caching - always process fresh for accuracy
 
     if (enableLogging) {
       console.log(`🔍 [${requestId}] Successfully extracted requirements`);
@@ -1037,7 +1509,6 @@ REMEMBER: BE CONSISTENT. The same document should always produce the same requir
         decisionPoints: workflowAnalysis.decisionPoints,
         activities: workflowAnalysis.activities,
         requestId: requestId,
-        contentHash: contentHash,
         requirementsValidation: validationResult
       }
     };
@@ -1072,5 +1543,6 @@ module.exports = {
   generateTestCases,
   refineTestCases,
   isAzureOpenAIConfigured,
-  extractBusinessRequirements
+  extractBusinessRequirements,
+  makeOpenAIRequest
 }; 

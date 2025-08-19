@@ -1384,8 +1384,10 @@ SCENARIO NAMING GUIDELINES:
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [editableRequirements, setEditableRequirements] = useState([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   
-  // Rotate through test generation images
+  // Rotate through test generation images with improved reliability
   useEffect(() => {
     // Only proceed if we're generating, have images, and images are loaded
     if (!isGenerating || !loadingImages || loadingImages.length === 0 || !imagesLoaded) {
@@ -1394,75 +1396,58 @@ SCENARIO NAMING GUIDELINES:
     
     let isMounted = true;
     let intervalId = null;
+    let currentImage = 0;
     
-    // Wait for next tick to ensure DOM elements are rendered
-    const timeoutId = setTimeout(() => {
+    // Function to safely rotate images
+    const rotateImages = () => {
       try {
         // Check if component is still mounted
         if (!isMounted) return;
         
+        // Get all test-image elements
         const images = document.querySelectorAll('.test-image');
         
         // Only proceed if images exist
         if (!images || images.length === 0) {
-          console.log('⚠️  No test-image elements found, skipping image rotation');
+          console.log('⚠️  No test-image elements found, retrying in 500ms');
+          // Retry after a short delay
+          setTimeout(rotateImages, 500);
           return;
         }
         
-        let currentImage = 0;
+        console.log(`🔄 Rotating to image ${currentImage + 1} of ${images.length}`);
         
-        const rotateImages = () => {
-          try {
-            // Check if component is still mounted
-            if (!isMounted) return;
-            
-            // Safety check - ensure images still exist
-            const currentImages = document.querySelectorAll('.test-image');
-            if (!currentImages || currentImages.length === 0) {
-              console.log('⚠️  Test-image elements no longer exist, stopping rotation');
-              return;
-            }
-            
-            // Remove active class from all images
-            currentImages.forEach(img => {
-              try {
-                if (img && img.classList && typeof img.classList.remove === 'function') {
-                  img.classList.remove('active');
-                }
-              } catch (error) {
-                console.warn('⚠️  Error removing active class from image:', error);
-              }
-            });
-            
-            // Add active class to current image
-            if (currentImages[currentImage] && 
-                currentImages[currentImage].classList && 
-                typeof currentImages[currentImage].classList.add === 'function') {
-              currentImages[currentImage].classList.add('active');
-            }
-            
-            // Move to next image
-            currentImage = (currentImage + 1) % currentImages.length;
-          } catch (error) {
-            console.error('❌ Error in rotateImages function:', error);
+        // Remove active class from all images
+        images.forEach((img, index) => {
+          if (img && img.classList) {
+            img.classList.remove('active');
+            console.log(`📷 Image ${index + 1}: removed active class`);
           }
-        };
+        });
         
-        // Rotate images every 2 seconds (matching progress bar animation)
-        intervalId = setInterval(rotateImages, 2000);
+        // Add active class to current image
+        if (images[currentImage]) {
+          images[currentImage].classList.add('active');
+          console.log(`📷 Image ${currentImage + 1}: added active class`);
+        }
         
-        // Start with first image
-        rotateImages();
+        // Move to next image
+        currentImage = (currentImage + 1) % images.length;
         
       } catch (error) {
-        console.error('❌ Error setting up image rotation:', error);
+        console.error('❌ Error in rotateImages function:', error);
       }
-    }, 100); // Small delay to ensure DOM is ready
+    };
+    
+    // Start rotation immediately
+    rotateImages();
+    
+    // Set up interval for continuous rotation
+    intervalId = setInterval(rotateImages, 2000);
     
     // Cleanup function
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
       if (intervalId) {
         clearInterval(intervalId);
       }
@@ -1472,10 +1457,17 @@ SCENARIO NAMING GUIDELINES:
   useEffect(() => {
     const fetchLoadingImages = async () => {
       try {
+        console.log('🔍 Fetching loading images...');
+        setImagesLoaded(false);
         const response = await axios.get(`${API_BASE_URL}/api/loading-images`);
+        console.log('🔍 Loading images API response:', response.data);
+        
         if (response.data.success) {
+          console.log('🔍 Setting loading images from API:', response.data.images);
           setLoadingImages(response.data.images);
+          setImagesLoaded(true);
         } else {
+          console.log('⚠️  API failed, using fallback images');
           // Fallback to static images if API fails
           const fallbackImages = [
             { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1484,6 +1476,7 @@ SCENARIO NAMING GUIDELINES:
             { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
           ];
           setLoadingImages(fallbackImages);
+          setImagesLoaded(true);
         }
       } catch (error) {
         console.warn('⚠️  Failed to fetch loading images, using fallback:', error);
@@ -1495,12 +1488,24 @@ SCENARIO NAMING GUIDELINES:
           { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
         ];
         setLoadingImages(fallbackImages);
+        setImagesLoaded(true);
       }
     };
     
     fetchLoadingImages();
-  }, [API_BASE_URL]);
-
+    }, [API_BASE_URL]);
+  
+  // Initialize editable requirements when extractedRequirements changes
+  useEffect(() => {
+    if (extractedRequirements) {
+      console.log('🔍 extractedRequirements changed, parsing:', extractedRequirements.substring(0, 200));
+      const requirements = parseRequirementsTable(extractedRequirements);
+      console.log('🔍 Parsed requirements:', requirements);
+      setEditableRequirements(requirements);
+      setHasUnsavedChanges(false);
+    }
+  }, [extractedRequirements]);
+  
   // const handleInsertRequirements = () => {
   //   // Format requirements nicely before inserting (remove markdown syntax)
   //   const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
@@ -1668,21 +1673,34 @@ SCENARIO NAMING GUIDELINES:
               </div>
               <div className="test-generation-images">
                 <div className="image-container">
+                  <div style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '5px', fontSize: '12px', zIndex: 100 }}>
+                    Debug: {loadingImages ? `${loadingImages.length} images loaded` : 'No images'} | ImagesLoaded: {imagesLoaded ? 'Yes' : 'No'}
+                  </div>
                   {loadingImages && loadingImages.length > 0 ? (
-                    loadingImages.map((imageStep, index) => (
-                      <div 
-                        key={index}
-                        className={`test-image ${index === 0 ? 'active' : ''}`} 
-                        data-image={index + 1}
-                      >
-                        <img 
-                          src={`/images/loading/${imageStep.image}`} 
-                          alt={imageStep.title} 
-                          className="loading-image" 
-                        />
-                        <span>{imageStep.title}</span>
-                      </div>
-                    ))
+                    <>
+                      {console.log('🔍 Rendering images:', loadingImages)}
+                      {loadingImages.map((imageStep, index) => (
+                        <div 
+                          key={index}
+                          className={`test-image ${index === 0 ? 'active' : ''}`} 
+                          data-image={index + 1}
+                        >
+                          <img 
+                            src={`/images/loading/${imageStep.image}`} 
+                            alt={imageStep.title} 
+                            className="loading-image" 
+                            onLoad={() => {
+                              console.log(`✅ Image loaded successfully: ${imageStep.image}`);
+                            }}
+                            onError={(e) => {
+                              console.error(`❌ Image failed to load: ${imageStep.image}`, e);
+                              console.error('Error details:', e);
+                            }}
+                          />
+                          <span>{imageStep.title}</span>
+                        </div>
+                      ))}
+                    </>
                   ) : (
                     <div className="test-image active">
                       <div className="loading-placeholder">
@@ -1881,6 +1899,20 @@ SCENARIO NAMING GUIDELINES:
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
               Extracted Business Requirements
+              {hasUnsavedChanges && (
+                <span style={{ 
+                  marginLeft: '10px', 
+                  fontSize: '0.8rem', 
+                  color: '#f59e0b', 
+                  fontWeight: 'normal',
+                  backgroundColor: '#fef3c7',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid #fbbf24'
+                }}>
+                  ⚠️ Unsaved Changes
+                </span>
+              )}
             </h3>
             
             {/* Proper table display - not markdown */}
@@ -1907,102 +1939,102 @@ SCENARIO NAMING GUIDELINES:
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Parse markdown table into proper table rows with generated IDs
-                    const requirements = parseRequirementsTable(extractedRequirements);
-                    
-                    return requirements.map((req, index) => (
-                      <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
-                          <textarea
-                            defaultValue={req.id}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].id = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontWeight: 'bold'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.requirement}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].requirement = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.acceptanceCriteria}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].acceptanceCriteria = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.complexity || 'CC: 1, Paths: 1'}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].complexity = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontSize: '12px'
-                            }}
-                            placeholder="CC: 1, Paths: 1"
-                          />
-                        </td>
-                      </tr>
-                    ));
-                  })()}
+                  {console.log('🔍 Rendering table with editableRequirements:', editableRequirements)}
+                  {editableRequirements && editableRequirements.length > 0 ? (
+                    editableRequirements.map((req, index) => (
+                    <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
+                        <textarea
+                          value={req.id}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].id = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontWeight: 'bold'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.requirement}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].requirement = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.acceptanceCriteria}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].acceptanceCriteria = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.complexity || 'CC: 1, Paths: 1'}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].complexity = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontSize: '12px'
+                          }}
+                          placeholder="CC: 1, Paths: 1"
+                        />
+                      </td>
+                    </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                        {editableRequirements === null ? 'Loading requirements...' : 'No requirements found'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
@@ -2011,14 +2043,30 @@ SCENARIO NAMING GUIDELINES:
             <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
               <button 
                 className="btn btn-primary"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  borderColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#2563eb';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#3b82f6';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
+                }}
                 onClick={() => {
-                  // Get the parsed requirements with generated IDs
-                  console.log('🔍 Insert Requirements clicked - extractedRequirements:', extractedRequirements.substring(0, 200));
-                  const requirements = parseRequirementsTable(extractedRequirements);
-                  console.log('🔍 Parsed requirements count:', requirements.length);
+                  // Use the editable requirements state
+                  console.log('🔍 Insert Requirements clicked - editableRequirements count:', editableRequirements.length);
                   
                   // Validate complexity values and show warnings
-                  const complexityWarnings = validateComplexityValues(requirements);
+                  const complexityWarnings = validateComplexityValues(editableRequirements);
                   if (complexityWarnings.length > 0) {
                     console.warn('⚠️ Complexity Validation Warnings:', complexityWarnings);
                     setStatus({ 
@@ -2030,7 +2078,7 @@ SCENARIO NAMING GUIDELINES:
                   }
                   
                   // Format requirements properly with headers and generated IDs for insertion
-                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);
+                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(editableRequirements);
                   setContent(formattedContent);
                 }}
               >
@@ -2038,12 +2086,160 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#10b981',
+                  borderColor: '#10b981',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#059669';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#10b981';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                }}
+                onClick={() => {
+                  // Sync editable requirements back to extractedRequirements with proper markdown table format
+                  console.log('🔍 Save Changes clicked - editableRequirements:', editableRequirements);
+                  
+                  const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
+                  const tableSeparator = '|---|---|---|---|';
+                  const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
+                  const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
+                  
+                  console.log('🔍 New content being saved:', newContent);
+                  
+                  setExtractedRequirements(newContent);
+                  setHasUnsavedChanges(false);
+                  setStatus({ type: 'success', message: 'Changes saved successfully!' });
+                }}
+              >
+                Save Changes
+              </button>
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#f59e0b',
+                  borderColor: '#f59e0b',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
+                onClick={() => {
+                  // Reset to original requirements
+                  const requirements = parseRequirementsTable(extractedRequirements);
+                  setEditableRequirements(requirements);
+                  setHasUnsavedChanges(false);
+                  setStatus({ type: 'info', message: 'Changes reset to original requirements.' });
+                }}
+              >
+                Reset Changes
+              </button>
+              {/* Debug State button - Hidden during production, uncomment for development/testing
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#8b5cf6',
+                  borderColor: '#8b5cf6',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
+                onClick={() => {
+                  // Debug button to see current state
+                  console.log('🔍 Debug - Current state:');
+                  console.log('🔍 editableRequirements:', editableRequirements);
+                  console.log('🔍 extractedRequirements:', extractedRequirements);
+                  console.log('🔍 hasUnsavedChanges:', hasUnsavedChanges);
+                  setStatus({ type: 'info', message: 'Check console for debug info' });
+                }}
+              >
+                Debug State
+              </button>
+              */}
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#06b6d4',
+                  borderColor: '#06b6d4',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(6, 182, 212, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#0891b2';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(6, 182, 212, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#06b6d4';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(6, 182, 212, 0.2)';
+                }}
+                onClick={async () => {
+                  if (editableRequirements.length === 0) {
+                    setStatus({ type: 'warning', message: 'No requirements to validate. Please extract requirements first.' });
+                    return;
+                  }
+                  
+                  try {
+                    const response = await axios.post(`${API_BASE_URL}/api/validate-requirements`, {
+                      requirements: editableRequirements
+                    });
+                    
+                    if (response.data.success) {
+                      const validation = response.data.validation;
+                      const score = validation.overallScore;
+                      const color = score >= 90 ? '#10b981' : score >= 80 ? '#f59e0b' : '#ef4444';
+                      
+                      setStatus({ 
+                        type: 'success', 
+                        message: `Requirements Quality Score: ${score}% - ${validation.recommendations[0]}` 
+                      });
+                      
+                      // Show detailed validation results
+                      console.log('🔍 Requirements Validation Results:', validation);
+                      console.log('🔍 Quality Metrics:', validation.qualityMetrics);
+                      console.log('🔍 Issues:', validation.issues);
+                      console.log('🔍 Warnings:', validation.warnings);
+                      console.log('🔍 Recommendations:', validation.recommendations);
+                    }
+                  } catch (error) {
+                    console.error('Error validating requirements:', error);
+                    setStatus({ 
+                      type: 'error', 
+                      message: 'Failed to validate requirements. Please try again.' 
+                    });
+                  }
+                }}
+              >
+                Validate Quality
+              </button>
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#6b7280',
+                  borderColor: '#6b7280',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={() => navigator.clipboard.writeText(extractedRequirements)}
               >
                 Copy
               </button>
               <button 
                 className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#059669',
+                  borderColor: '#059669',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={handleDownloadContent}
               >
                 Download

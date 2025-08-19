@@ -25,6 +25,30 @@ const WORKFLOW_KEYWORDS = {
   ]
 };
 
+// Enhanced flowchart detection patterns
+const FLOWCHART_PATTERNS = {
+  // Visual flowchart elements
+  shapes: [
+    'rectangle', 'box', 'diamond', 'oval', 'circle', 'hexagon', 'parallelogram',
+    'process box', 'decision diamond', 'start oval', 'end oval', 'input/output'
+  ],
+  // Flowchart-specific terms
+  flowchartTerms: [
+    'flowchart', 'flow chart', 'process flow', 'business process', 'workflow diagram',
+    'process map', 'activity diagram', 'sequence diagram', 'state diagram'
+  ],
+  // Arrow and connection indicators
+  arrows: [
+    'arrow', '->', '→', 'flow', 'connects to', 'leads to', 'goes to',
+    'next step', 'then', 'after', 'before', 'follows'
+  ],
+  // Decision indicators
+  decisions: [
+    'yes/no', 'true/false', 'approved/rejected', 'pass/fail', 'valid/invalid',
+    'success/error', 'continue/stop', 'proceed/halt'
+  ]
+};
+
 /**
  * Analyze text content for workflow elements
  * @param {string} content - Document content to analyze
@@ -88,21 +112,121 @@ function analyzeWorkflowContent(content) {
   // Calculate total elements
   analysis.totalElements = analysis.nodes + analysis.connectors;
 
-  // Calculate cyclomatic complexity using the better formula: CC = E - N + 2P
-  analysis.cyclomaticComplexity = Math.max(1, analysis.edges - analysis.nodes + (2 * analysis.components));
+  // Calculate cyclomatic complexity using a more appropriate formula for business processes
+  // CC = Decision Points + 1 (each decision point adds complexity)
+  // Alternative: CC = max(1, Decision Points + Activities/10) for more nuanced calculation
+  if (analysis.decisionPoints > 0) {
+    analysis.cyclomaticComplexity = analysis.decisionPoints + 1;
+  } else if (analysis.activities > 0) {
+    analysis.cyclomaticComplexity = Math.max(1, Math.ceil(analysis.activities / 10));
+  } else {
+    analysis.cyclomaticComplexity = 1;
+  }
 
   // Determine if workflow is detected
   analysis.workflowDetected = analysis.decisionPoints > 0 || analysis.activities > 5 || analysis.connectors > 3;
 
   // Determine complexity level based on the new formula
-  if (analysis.cyclomaticComplexity <= 3) {
+  if (analysis.cyclomaticComplexity <= 5) {
     analysis.complexityLevel = 'simple';
-  } else if (analysis.cyclomaticComplexity <= 10) {
-    analysis.complexityLevel = 'moderate';
   } else if (analysis.cyclomaticComplexity <= 20) {
+    analysis.complexityLevel = 'moderate';
+  } else if (analysis.cyclomaticComplexity <= 100) {
     analysis.complexityLevel = 'complex';
   } else {
     analysis.complexityLevel = 'very complex';
+  }
+
+  return analysis;
+}
+
+/**
+ * Enhanced flowchart detection and analysis
+ * @param {string} content - Document content to analyze
+ * @returns {Object} Detailed flowchart analysis
+ */
+function analyzeFlowchartContent(content) {
+  const text = content.toLowerCase();
+  const analysis = {
+    isFlowchart: false,
+    flowchartType: 'none',
+    visualElements: 0,
+    flowConnections: 0,
+    decisionPoints: 0,
+    processSteps: 0,
+    confidence: 0,
+    detectedPatterns: [],
+    recommendations: []
+  };
+
+  // Check for flowchart-specific terms
+  let flowchartScore = 0;
+  FLOWCHART_PATTERNS.flowchartTerms.forEach(term => {
+    if (text.includes(term)) {
+      flowchartScore += 3;
+      analysis.detectedPatterns.push(`Flowchart term: "${term}"`);
+    }
+  });
+
+  // Check for visual shape descriptions
+  FLOWCHART_PATTERNS.shapes.forEach(shape => {
+    if (text.includes(shape)) {
+      flowchartScore += 2;
+      analysis.visualElements++;
+      analysis.detectedPatterns.push(`Shape: "${shape}"`);
+    }
+  });
+
+  // Check for flow connections
+  FLOWCHART_PATTERNS.arrows.forEach(arrow => {
+    if (text.includes(arrow)) {
+      flowchartScore += 2;
+      analysis.flowConnections++;
+      analysis.detectedPatterns.push(`Flow: "${arrow}"`);
+    }
+  });
+
+  // Check for decision patterns
+  FLOWCHART_PATTERNS.decisions.forEach(decision => {
+    if (text.includes(decision)) {
+      flowchartScore += 2;
+      analysis.decisionPoints++;
+      analysis.detectedPatterns.push(`Decision: "${decision}"`);
+    }
+  });
+
+  // Check for process flow indicators
+  const processIndicators = [
+    'step 1', 'step 2', 'step 3', 'first', 'second', 'third', 'next', 'then',
+    'start', 'begin', 'end', 'finish', 'complete', 'process', 'procedure'
+  ];
+  
+  processIndicators.forEach(indicator => {
+    if (text.includes(indicator)) {
+      flowchartScore += 1;
+      analysis.processSteps++;
+    }
+  });
+
+  // Determine if this is a flowchart
+  analysis.isFlowchart = flowchartScore >= 5;
+  analysis.confidence = Math.min(100, (flowchartScore / 20) * 100);
+
+  // Classify flowchart type
+  if (analysis.isFlowchart) {
+    if (analysis.decisionPoints > 3) {
+      analysis.flowchartType = 'decision-heavy';
+      analysis.recommendations.push('High decision complexity detected - consider breaking into smaller flows');
+    } else if (analysis.processSteps > 10) {
+      analysis.flowchartType = 'process-heavy';
+      analysis.recommendations.push('Many process steps detected - consider grouping related steps');
+    } else if (analysis.flowConnections > 5) {
+      analysis.flowchartType = 'flow-heavy';
+      analysis.recommendations.push('Complex flow connections detected - review flow logic');
+    } else {
+      analysis.flowchartType = 'standard';
+      analysis.recommendations.push('Standard flowchart detected - complexity appears manageable');
+    }
   }
 
   return analysis;
@@ -424,6 +548,295 @@ function analyzeRequirementComplexity(requirementText) {
   return Math.min(complexity, 20); // Cap at reasonable maximum
 }
 
+/**
+ * Comprehensive requirements validation and quality checking
+ * @param {Array} requirements - Array of requirement objects
+ * @returns {Object} Validation results with quality scores and recommendations
+ */
+function validateRequirementsQuality(requirements) {
+  const validation = {
+    overallScore: 0,
+    qualityMetrics: {},
+    issues: [],
+    warnings: [],
+    recommendations: [],
+    passedChecks: 0,
+    totalChecks: 0
+  };
+
+  if (!Array.isArray(requirements) || requirements.length === 0) {
+    validation.issues.push('No requirements provided for validation');
+    return validation;
+  }
+
+  // Quality check 1: Completeness
+  validation.totalChecks++;
+  const completenessScore = validateCompleteness(requirements);
+  validation.qualityMetrics.completeness = completenessScore;
+  if (completenessScore.score < 80) {
+    validation.warnings.push(`Completeness: ${completenessScore.message}`);
+  } else {
+    validation.passedChecks++;
+  }
+
+  // Quality check 2: Clarity
+  validation.totalChecks++;
+  const clarityScore = validateClarity(requirements);
+  validation.qualityMetrics.clarity = clarityScore;
+  if (clarityScore.score < 80) {
+    validation.warnings.push(`Clarity: ${clarityScore.message}`);
+  } else {
+    validation.passedChecks++;
+  }
+
+  // Quality check 3: Testability
+  validation.totalChecks++;
+  const testabilityScore = validateTestability(requirements);
+  validation.qualityMetrics.testability = testabilityScore;
+  if (testabilityScore.score < 80) {
+    validation.warnings.push(`Testability: ${testabilityScore.message}`);
+  } else {
+    validation.passedChecks++;
+  }
+
+  // Quality check 4: Consistency
+  validation.totalChecks++;
+  const consistencyScore = validateConsistency(requirements);
+  validation.qualityMetrics.consistency = consistencyScore;
+  if (consistencyScore.score < 80) {
+    validation.warnings.push(`Consistency: ${consistencyScore.message}`);
+  } else {
+    validation.passedChecks++;
+  }
+
+  // Quality check 5: Business Value
+  validation.totalChecks++;
+  const businessValueScore = validateBusinessValue(requirements);
+  validation.qualityMetrics.businessValue = businessValueScore;
+  if (businessValueScore.score < 80) {
+    validation.warnings.push(`Business Value: ${businessValueScore.message}`);
+  } else {
+    validation.passedChecks++;
+  }
+
+  // Calculate overall score
+  const scores = Object.values(validation.qualityMetrics).map(metric => metric.score);
+  validation.overallScore = Math.round(scores.reduce((sum, score) => sum + score, 0) / scores.length);
+
+  // Generate overall recommendations
+  if (validation.overallScore >= 90) {
+    validation.recommendations.push('Excellent requirements quality! Ready for test case generation.');
+  } else if (validation.overallScore >= 80) {
+    validation.recommendations.push('Good requirements quality. Consider addressing warnings before proceeding.');
+  } else if (validation.overallScore >= 70) {
+    validation.recommendations.push('Moderate requirements quality. Address issues before test generation.');
+  } else {
+    validation.recommendations.push('Requirements quality needs improvement. Fix critical issues first.');
+  }
+
+  return validation;
+}
+
+/**
+ * Validate requirement completeness
+ */
+function validateCompleteness(requirements) {
+  let score = 100;
+  const issues = [];
+
+  requirements.forEach((req, index) => {
+    // Check if all required fields are present
+    if (!req.id || req.id.trim() === '') {
+      score -= 10;
+      issues.push(`Requirement ${index + 1}: Missing ID`);
+    }
+    if (!req.requirement || req.requirement.trim() === '') {
+      score -= 15;
+      issues.push(`Requirement ${index + 1}: Missing business requirement`);
+    }
+    if (!req.acceptanceCriteria || req.acceptanceCriteria.trim() === '') {
+      score -= 15;
+      issues.push(`Requirement ${index + 1}: Missing acceptance criteria`);
+    }
+    if (!req.complexity || req.complexity.trim() === '') {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Missing complexity`);
+    }
+  });
+
+  // Check for reasonable number of requirements
+  if (requirements.length < 2) {
+    score -= 10;
+    issues.push('Very few requirements - consider if all business needs are captured');
+  }
+
+  return {
+    score: Math.max(0, score),
+    message: issues.length > 0 ? issues.join('; ') : 'All required fields present',
+    issues: issues
+  };
+}
+
+/**
+ * Validate requirement clarity
+ */
+function validateClarity(requirements) {
+  let score = 100;
+  const issues = [];
+
+  requirements.forEach((req, index) => {
+    const reqText = req.requirement || '';
+    const acText = req.acceptanceCriteria || '';
+
+    // Check for vague language
+    const vagueTerms = ['good', 'better', 'improve', 'enhance', 'optimize', 'user-friendly', 'efficient'];
+    vagueTerms.forEach(term => {
+      if (reqText.toLowerCase().includes(term)) {
+        score -= 5;
+        issues.push(`Requirement ${index + 1}: Vague term "${term}" used`);
+      }
+    });
+
+    // Check for measurable criteria
+    if (acText.length < 20) {
+      score -= 10;
+      issues.push(`Requirement ${index + 1}: Acceptance criteria too brief`);
+    }
+
+    // Check for clear action verbs
+    const actionVerbs = ['shall', 'must', 'will', 'should', 'can', 'may'];
+    const hasActionVerb = actionVerbs.some(verb => reqText.toLowerCase().includes(verb));
+    if (!hasActionVerb) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: No clear action verb`);
+    }
+  });
+
+  return {
+    score: Math.max(0, score),
+    message: issues.length > 0 ? issues.join('; ') : 'Clear and specific requirements',
+    issues: issues
+  };
+}
+
+/**
+ * Validate requirement testability
+ */
+function validateTestability(requirements) {
+  let score = 100;
+  const issues = [];
+
+  requirements.forEach((req, index) => {
+    const reqText = req.requirement || '';
+    const acText = req.acceptanceCriteria || '';
+
+    // Check for testable acceptance criteria
+    if (!acText.includes('Given') && !acText.includes('When') && !acText.includes('Then')) {
+      score -= 10;
+      issues.push(`Requirement ${index + 1}: Acceptance criteria not in Given-When-Then format`);
+    }
+
+    // Check for measurable outcomes
+    const measurableTerms = ['display', 'show', 'validate', 'check', 'verify', 'confirm', 'process', 'store'];
+    const hasMeasurableOutcome = measurableTerms.some(term => acText.toLowerCase().includes(term));
+    if (!hasMeasurableOutcome) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Acceptance criteria lacks measurable outcome`);
+    }
+
+    // Check for specific conditions
+    if (acText.includes('if') || acText.includes('when') || acText.includes('condition')) {
+      score += 5; // Bonus for conditional logic
+    }
+  });
+
+  return {
+    score: Math.min(100, Math.max(0, score)),
+    message: issues.length > 0 ? issues.join('; ') : 'Highly testable requirements',
+    issues: issues
+  };
+}
+
+/**
+ * Validate requirement consistency
+ */
+function validateConsistency(requirements) {
+  let score = 100;
+  const issues = [];
+
+  // Check for duplicate requirements
+  const reqTexts = requirements.map(req => req.requirement?.toLowerCase().trim()).filter(Boolean);
+  const duplicates = reqTexts.filter((text, index) => reqTexts.indexOf(text) !== index);
+  if (duplicates.length > 0) {
+    score -= 15;
+    issues.push(`Duplicate requirements detected: ${duplicates.length} duplicates`);
+  }
+
+  // Check for consistent naming convention
+  const namingPattern = requirements[0]?.id?.match(/^[A-Z]+-\d+$/);
+  requirements.forEach((req, index) => {
+    if (req.id && !req.id.match(/^[A-Z]+-\d+$/)) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Inconsistent naming convention`);
+    }
+  });
+
+  // Check for consistent complexity format
+  const complexityPattern = requirements[0]?.complexity?.match(/CC:\s*\d+/);
+  requirements.forEach((req, index) => {
+    if (req.complexity && !req.complexity.match(/CC:\s*\d+/)) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Inconsistent complexity format`);
+    }
+  });
+
+  return {
+    score: Math.max(0, score),
+    message: issues.length > 0 ? issues.join('; ') : 'Consistent requirements structure',
+    issues: issues
+  };
+}
+
+/**
+ * Validate business value
+ */
+function validateBusinessValue(requirements) {
+  let score = 100;
+  const issues = [];
+
+  requirements.forEach((req, index) => {
+    const reqText = req.requirement || '';
+
+    // Check for business-focused language
+    const businessTerms = ['user', 'customer', 'business', 'process', 'workflow', 'system', 'data'];
+    const hasBusinessFocus = businessTerms.some(term => reqText.toLowerCase().includes(term));
+    if (!hasBusinessFocus) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Lacks clear business focus`);
+    }
+
+    // Check for technical vs business requirements
+    const technicalTerms = ['database', 'api', 'server', 'protocol', 'algorithm', 'framework'];
+    const isTooTechnical = technicalTerms.some(term => reqText.toLowerCase().includes(term));
+    if (isTooTechnical) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Too technical, focus on business value`);
+    }
+
+    // Check for stakeholder perspective
+    if (!reqText.includes('user') && !reqText.includes('customer') && !reqText.includes('business')) {
+      score -= 5;
+      issues.push(`Requirement ${index + 1}: Missing stakeholder perspective`);
+    }
+  });
+
+  return {
+    score: Math.max(0, score),
+    message: issues.length > 0 ? issues.join('; ') : 'Strong business value focus',
+    issues: issues
+  };
+}
+
 module.exports = {
   analyzeWorkflowContent,
   generateComplexityDescription,
@@ -433,5 +846,6 @@ module.exports = {
   generateCoverageRecommendations,
   validateComplexityValues,
   analyzeRequirementComplexity,
+  validateRequirementsQuality,
   WORKFLOW_KEYWORDS
 };
