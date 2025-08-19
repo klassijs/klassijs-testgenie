@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile, getCacheStatus, clearCache, countBusinessElementsDeterministically } = require('../utils/fileProcessor');
+const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile, countBusinessElementsDeterministically } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, extractBusinessRequirements, isAzureOpenAIConfigured } = require('../services/openaiService');
 const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured, discoverTraceabilityEndpoints, addJiraTicketToCoverage } = require('../services/zephyrService');
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
@@ -218,6 +218,10 @@ router.post('/generate-tests', async (req, res) => {
       errorMessage = 'Content flagged by safety filters';
       suggestion = 'The document contains content that was flagged by AI safety filters. Please try uploading a different document or contact your administrator if you believe this is an error.';
       statusCode = 400;
+    } else if (error.message.includes('429') || error.message.includes('Too many requests')) {
+      errorMessage = 'Rate limit exceeded';
+      suggestion = 'Too many requests to the AI service. Please wait a few minutes and try again. The system will automatically retry with delays.';
+      statusCode = 429;
     } else if (error.message.includes('No content received from Azure OpenAI')) {
       errorMessage = 'No response from AI service';
       suggestion = 'The AI service did not return any content. Please try again or contact support if the issue persists.';
@@ -348,6 +352,10 @@ router.post('/extract-requirements', async (req, res) => {
     } else if (error.message.includes('No content received from Azure OpenAI')) {
       errorMessage = 'No response from AI service';
       suggestion = 'The AI service did not return any content. Please try again or contact support if the issue persists.';
+    } else if (error.message.includes('429') || error.message.includes('Too many requests')) {
+      errorMessage = 'Rate limit exceeded';
+      suggestion = 'Too many requests to the AI service. Please wait a few minutes and try again. The system will automatically retry with delays.';
+      statusCode = 429;
     }
     
     res.status(statusCode).json({
@@ -1097,39 +1105,6 @@ router.post('/analyze-business-elements', async (req, res) => {
   }
 });
 
-// Cache management endpoints for consistency monitoring
-router.get('/cache/status', (req, res) => {
-  try {
-    const cacheStatus = getCacheStatus();
-    res.json({
-      success: true,
-      cache: cacheStatus,
-      message: 'Cache status retrieved successfully'
-    });
-  } catch (error) {
-    console.error('Error getting cache status:', error);
-    res.status(500).json({
-      error: 'Failed to get cache status',
-      details: error.message
-    });
-  }
-});
-
-router.post('/cache/clear', (req, res) => {
-  try {
-    const result = clearCache();
-    res.json({
-      success: true,
-      message: result.message,
-      timestamp: new Date().toISOString()
-    });
-  } catch (error) {
-    console.error('Error clearing cache:', error);
-    res.status(500).json({
-      error: 'Failed to clear cache',
-      details: error.message
-    });
-  }
-});
+// No caching - always process fresh for accuracy
 
 module.exports = router; 

@@ -112,18 +112,26 @@ function analyzeWorkflowContent(content) {
   // Calculate total elements
   analysis.totalElements = analysis.nodes + analysis.connectors;
 
-  // Calculate cyclomatic complexity using the better formula: CC = E - N + 2P
-  analysis.cyclomaticComplexity = Math.max(1, analysis.edges - analysis.nodes + (2 * analysis.components));
+  // Calculate cyclomatic complexity using a more appropriate formula for business processes
+  // CC = Decision Points + 1 (each decision point adds complexity)
+  // Alternative: CC = max(1, Decision Points + Activities/10) for more nuanced calculation
+  if (analysis.decisionPoints > 0) {
+    analysis.cyclomaticComplexity = analysis.decisionPoints + 1;
+  } else if (analysis.activities > 0) {
+    analysis.cyclomaticComplexity = Math.max(1, Math.ceil(analysis.activities / 10));
+  } else {
+    analysis.cyclomaticComplexity = 1;
+  }
 
   // Determine if workflow is detected
   analysis.workflowDetected = analysis.decisionPoints > 0 || analysis.activities > 5 || analysis.connectors > 3;
 
   // Determine complexity level based on the new formula
-  if (analysis.cyclomaticComplexity <= 3) {
+  if (analysis.cyclomaticComplexity <= 5) {
     analysis.complexityLevel = 'simple';
-  } else if (analysis.cyclomaticComplexity <= 10) {
-    analysis.complexityLevel = 'moderate';
   } else if (analysis.cyclomaticComplexity <= 20) {
+    analysis.complexityLevel = 'moderate';
+  } else if (analysis.cyclomaticComplexity <= 100) {
     analysis.complexityLevel = 'complex';
   } else {
     analysis.complexityLevel = 'very complex';
