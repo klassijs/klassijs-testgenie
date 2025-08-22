@@ -1889,6 +1889,15 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     🚨 MANDATORY: Focus on business requirements that were missed in the first pass.
     🚨 MANDATORY: This is Chunk ${chunkNumber} of 3 - extract only your assigned portion.
     
+    🚨 MANDATORY COMPLEXITY FORMAT: You MUST use the EXACT format: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+    🚨 MANDATORY: Do NOT use generic terms like "Medium", "Low", "High" - use the specific format above
+    🚨 MANDATORY: For each requirement, calculate the cyclomatic complexity using this ACCURATE formula:
+      CC = E - N + 2P
+      Where:
+      E = number of edges (transitions/flows between elements)
+      N = number of nodes (activities, decisions, events)
+      P = number of connected components (usually 1 for single workflow)
+    
     Use the same format:
     | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
     |----------------|----------------------|---------------------|------------|
