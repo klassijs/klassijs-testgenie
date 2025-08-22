@@ -93,21 +93,14 @@ const TestGenerator = () => {
 
   // Function to parse requirements table and extract individual requirements
   const parseRequirementsTable = (requirementsContent) => {
-    // console.log('🔍 parseRequirementsTable called with:', requirementsContent);
-    // console.log('🔍 Content length:', requirementsContent.length);
-    // console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
-    
     // Validate requirements source consistency
     if (requirementsSource === 'upload' && (jiraTicketPrefix || Object.keys(jiraTicketInfo).length > 0)) {
-      console.log('⚠️  Requirements source is "upload" but Jira ticket info exists. Cleaning up...');
       setJiraTicketPrefix('');
       setJiraTicketInfo({});
     }
     
     const requirements = [];
     const lines = requirementsContent.split('\n');
-    // console.log('🔍 Split lines:', lines);
-    // console.log('🔍 Number of lines:', lines.length);
     
     let inTable = false;
     let tableLines = [];
@@ -122,33 +115,28 @@ const TestGenerator = () => {
           line.toLowerCase().includes('business requirement') && 
           line.toLowerCase().includes('acceptance criteria')) {
         inTable = true;
-        // console.log('🔍 Found table header at line:', i, 'Content:', line);
         continue;
       }
       
       if (inTable) {
         // Skip separator lines (lines with just dashes and pipes)
         if (line.trim().match(/^[\s\-|]+$/)) {
-          // console.log('🔍 Skipping separator line:', line);
           continue;
         }
         
         // If we hit a completely empty line, check if there are more requirements below
         if (line.trim() === '') {
-          // console.log('🔍 Found empty line at line:', i);
           // Look ahead a few lines to see if there are more requirements
           let hasMoreRequirements = false;
           for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
             const nextLine = lines[j];
             if (nextLine.includes('|') && nextLine.split('|').filter(col => col.trim()).length >= 3) {
               hasMoreRequirements = true;
-              // console.log('🔍 Found more requirements ahead at line:', j);
               break;
             }
           }
           
           if (!hasMoreRequirements) {
-            // console.log('🔍 No more requirements found, ending table parsing');
             break; // End of table
           }
         }
@@ -156,13 +144,9 @@ const TestGenerator = () => {
         // Add any line that contains table data
         if (line.includes('|')) {
           tableLines.push(line);
-          // console.log('🔍 Added table line:', line);
         }
       }
     }
-    
-    // console.log('🔍 Total table lines found:', tableLines.length);
-    // console.log('🔍 ALL table lines:', tableLines);
     
     // Parse table rows
     let requirementCounter = 0; // Use a separate counter for requirement IDs
@@ -170,8 +154,6 @@ const TestGenerator = () => {
     for (let i = 0; i < tableLines.length; i++) {
       const line = tableLines[i];
       const columns = line.split('|').map(col => col.trim()).filter(col => col);
-      // console.log(`🔍 [ROW ${i}] Parsing line:`, line);
-      // console.log(`🔍 [ROW ${i}] Columns:`, columns);
       
       if (columns.length >= 3) {
         const [id, requirement, acceptanceCriteria] = columns;
@@ -187,7 +169,6 @@ const TestGenerator = () => {
             id === '' ||
             requirement === '' ||
             acceptanceCriteria === '') {
-          console.log(`🔍 [ROW ${i}] SKIPPING invalid row:`, { id, requirement, acceptanceCriteria });
           continue;
         }
         
@@ -203,28 +184,15 @@ const TestGenerator = () => {
           generatedId = `BR-${String(requirementCounter).padStart(3, '0')}`;
         }
         
-        console.log(`🔍 [ROW ${i}] ADDING requirement:`, { 
-          originalId: id, 
-          generatedId: generatedId, 
-          requirement: requirement.substring(0, 50) + '...', 
-          acceptanceCriteria: acceptanceCriteria.substring(0, 50) + '...',
-          source: requirementsSource,
-          rowIndex: i,
-          requirementCounter: requirementCounter
-        });
-        
         requirements.push({
           id: generatedId,
           requirement: requirement,
           acceptanceCriteria: acceptanceCriteria,
           complexity: columns[3] || 'CC: 1, Paths: 1'
         });
-      } else {
-        console.log(`🔍 [ROW ${i}] SKIPPING - insufficient columns:`, columns);
       }
     }
     
-    console.log('🔍 Final requirements parsed:', requirements.map(r => ({ id: r.id, req: r.requirement.substring(0, 30) + '...' })));
     return requirements;
   };
 
@@ -322,7 +290,6 @@ const TestGenerator = () => {
             if (firstTicket && firstTicket.title && firstTicket.title.includes(':')) {
               const ticketKey = firstTicket.title.split(':')[0].trim();
               setJiraTicketPrefix(ticketKey);
-              console.log('🔍 Set Jira ticket prefix:', ticketKey);
             }
             
             // Parse the requirements table to extract individual requirements
@@ -370,41 +337,27 @@ const TestGenerator = () => {
               });
               setJiraTicketInfo(jiraTicketInfo);
               
-              console.log('🔍 Closing Jira import modal...');
-              console.log('🔍 Current showJiraImport state:', showJiraImport);
-              
               // Force close the modal by resetting all related state
               setShowJiraImport(false);
               setJiraStep('connect'); // Reset Jira import flow
               setJiraConfig(prev => ({ ...prev, selectedIssues: [] })); // Clear selected issues
               
-              console.log('🔍 After setShowJiraImport(false), state should be:', false);
-              
               // Force a complete state reset to ensure modal closes
               setTimeout(() => {
-                console.log('🔍 Forcing complete modal state reset...');
-                console.log('🔍 Number of modal overlays found:', document.querySelectorAll('.modal-overlay').length);
-                
                 setShowJiraImport(false);
                 setJiraStep('connect');
                 
                 // Force close any remaining modal elements via DOM manipulation
                 const modalOverlays = document.querySelectorAll('.modal-overlay');
-                modalOverlays.forEach((overlay, index) => {
-                  console.log(`🔍 Modal overlay ${index}:`, overlay);
+                modalOverlays.forEach((overlay) => {
                   if (overlay.closest('[data-modal="jira-import"]')) {
-                    console.log('🔍 Hiding modal overlay via DOM manipulation');
                     overlay.style.display = 'none';
                   }
                 });
-                
-                // Additional check - force the modal to close
-                console.log('🔍 Final check - showJiraImport should be false');
               }, 50);
               
               // Additional aggressive approach - multiple attempts
               setTimeout(() => {
-                console.log('🔍 Second attempt to close modal...');
                 setShowJiraImport(false);
                 
                 // Force hide all modal overlays
@@ -414,13 +367,11 @@ const TestGenerator = () => {
               }, 200);
               
               setTimeout(() => {
-                console.log('🔍 Third attempt to close modal...');
                 setShowJiraImport(false);
                 
                 // Last resort - remove modal from DOM
                 const jiraModal = document.querySelector('[data-modal="jira-import"]');
                 if (jiraModal) {
-                  console.log('🔍 Removing modal from DOM as last resort');
                   jiraModal.remove();
                 }
               }, 500);
@@ -1457,17 +1408,13 @@ SCENARIO NAMING GUIDELINES:
   useEffect(() => {
     const fetchLoadingImages = async () => {
       try {
-        console.log('🔍 Fetching loading images...');
         setImagesLoaded(false);
         const response = await axios.get(`${API_BASE_URL}/api/loading-images`);
-        console.log('🔍 Loading images API response:', response.data);
         
         if (response.data.success) {
-          console.log('🔍 Setting loading images from API:', response.data.images);
           setLoadingImages(response.data.images);
           setImagesLoaded(true);
         } else {
-          console.log('⚠️  API failed, using fallback images');
           // Fallback to static images if API fails
           const fallbackImages = [
             { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1479,7 +1426,6 @@ SCENARIO NAMING GUIDELINES:
           setImagesLoaded(true);
         }
       } catch (error) {
-        console.warn('⚠️  Failed to fetch loading images, using fallback:', error);
         // Fallback to static images if API fails
         const fallbackImages = [
           { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
@@ -1498,9 +1444,7 @@ SCENARIO NAMING GUIDELINES:
   // Initialize editable requirements when extractedRequirements changes
   useEffect(() => {
     if (extractedRequirements) {
-      console.log('🔍 extractedRequirements changed, parsing:', extractedRequirements.substring(0, 200));
       const requirements = parseRequirementsTable(extractedRequirements);
-      console.log('🔍 Parsed requirements:', requirements);
       setEditableRequirements(requirements);
       setHasUnsavedChanges(false);
     }
@@ -1673,12 +1617,8 @@ SCENARIO NAMING GUIDELINES:
               </div>
               <div className="test-generation-images">
                 <div className="image-container">
-                  <div style={{ position: 'absolute', top: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '5px', fontSize: '12px', zIndex: 100 }}>
-                    Debug: {loadingImages ? `${loadingImages.length} images loaded` : 'No images'} | ImagesLoaded: {imagesLoaded ? 'Yes' : 'No'}
-                  </div>
                   {loadingImages && loadingImages.length > 0 ? (
                     <>
-                      {console.log('🔍 Rendering images:', loadingImages)}
                       {loadingImages.map((imageStep, index) => (
                         <div 
                           key={index}
@@ -1690,11 +1630,10 @@ SCENARIO NAMING GUIDELINES:
                             alt={imageStep.title} 
                             className="loading-image" 
                             onLoad={() => {
-                              console.log(`✅ Image loaded successfully: ${imageStep.image}`);
+                              // Image loaded successfully
                             }}
                             onError={(e) => {
-                              console.error(`❌ Image failed to load: ${imageStep.image}`, e);
-                              console.error('Error details:', e);
+                              // Image failed to load
                             }}
                           />
                           <span>{imageStep.title}</span>
@@ -1939,7 +1878,6 @@ SCENARIO NAMING GUIDELINES:
                   </tr>
                 </thead>
                 <tbody>
-                  {console.log('🔍 Rendering table with editableRequirements:', editableRequirements)}
                   {editableRequirements && editableRequirements.length > 0 ? (
                     editableRequirements.map((req, index) => (
                     <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
@@ -2063,7 +2001,6 @@ SCENARIO NAMING GUIDELINES:
                 }}
                 onClick={() => {
                   // Use the editable requirements state
-                  console.log('🔍 Insert Requirements clicked - editableRequirements count:', editableRequirements.length);
                   
                   // Validate complexity values and show warnings
                   const complexityWarnings = validateComplexityValues(editableRequirements);
@@ -2106,14 +2043,10 @@ SCENARIO NAMING GUIDELINES:
                 }}
                 onClick={() => {
                   // Sync editable requirements back to extractedRequirements with proper markdown table format
-                  console.log('🔍 Save Changes clicked - editableRequirements:', editableRequirements);
-                  
                   const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
                   const tableSeparator = '|---|---|---|---|';
                   const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
                   const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
-                  
-                  console.log('🔍 New content being saved:', newContent);
                   
                   setExtractedRequirements(newContent);
                   setHasUnsavedChanges(false);
@@ -2203,11 +2136,6 @@ SCENARIO NAMING GUIDELINES:
                       });
                       
                       // Show detailed validation results
-                      console.log('🔍 Requirements Validation Results:', validation);
-                      console.log('🔍 Quality Metrics:', validation.qualityMetrics);
-                      console.log('🔍 Issues:', validation.issues);
-                      console.log('🔍 Warnings:', validation.warnings);
-                      console.log('🔍 Recommendations:', validation.recommendations);
                     }
                   } catch (error) {
                     console.error('Error validating requirements:', error);
@@ -2492,15 +2420,6 @@ SCENARIO NAMING GUIDELINES:
             {/* Feature Content */}
             {featureTabs.length > 0 && (
               <div className="feature-content">
-                {/* Debug info for imported features */}
-                {console.log('🔍 Feature Tabs Debug:', {
-                  featureTabsLength: featureTabs.length,
-                  activeTab: activeTab,
-                  currentFeature: featureTabs[activeTab],
-                  editableFeatures: editableFeatures,
-                  currentEditableContent: editableFeatures[activeTab]
-                })}
-                
                 {editingFeatures[activeTab] && !pushedTabs.has(activeTab) ? (
                   <textarea
                     value={editableFeatures[activeTab] || ''}
@@ -2528,13 +2447,7 @@ SCENARIO NAMING GUIDELINES:
                     )}
                     <TestOutput content={editableFeatures[activeTab] || featureTabs[activeTab]?.content || ''} />
                     
-                    {/* Debug info for TestOutput */}
-                    {console.log('🔍 TestOutput Debug:', {
-                      editableContent: editableFeatures[activeTab],
-                      featureContent: featureTabs[activeTab]?.content,
-                      finalContent: editableFeatures[activeTab] || featureTabs[activeTab]?.content || '',
-                      hasContent: !!(editableFeatures[activeTab] || featureTabs[activeTab]?.content)
-                    })}
+
                   </>
                 )}
               </div>
@@ -3256,7 +3169,6 @@ SCENARIO NAMING GUIDELINES:
           className="modal-overlay" 
           data-modal="jira-import" 
           onClick={() => {
-            console.log('🔍 Modal overlay clicked, closing modal...');
             setShowJiraImport(false);
           }}
           style={{ zIndex: 1000 }}

@@ -780,7 +780,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
     const validRows = tableRows.filter(row => row.split('|').length >= 4);
     
     // Use the deterministic count for validation, not the AI-generated count
-    deterministicCount = businessElementCount && businessElementCount.count ? businessElementCount.count : requirementCount;
+    deterministicCount = businessElementCount && businessElementCount.businessElements?.count ? businessElementCount.businessElements.count : requirementCount;
     const expectedRows = deterministicCount + 1; // +1 for header row
     const rowDifference = Math.abs(validRows.length - expectedRows);
     
@@ -906,6 +906,88 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     throw new Error('Insufficient content. Please provide more detailed content for requirement extraction');
   }
 
+  // Check if this content comes from enhanced Visio analysis
+  const isEnhancedVisioAnalysis = content.includes('# Enhanced Visio Flowchart Analysis') && 
+                                  content.includes('Flowchart Metadata') &&
+                                  content.includes('Total Business Elements:');
+  
+  let workflowAnalysis = null;
+  let businessElementCount = null;
+  
+  if (isEnhancedVisioAnalysis) {
+    // COMPLETELY REPLACE old workflow analysis with enhanced Visio analysis
+    console.log(`🔍 [${requestId}] Enhanced Visio analysis detected - COMPLETELY REPLACING old workflow analysis`);
+    
+    // Extract business element count from enhanced analysis
+    const businessElementMatch = content.match(/Total Business Elements: (\d+)/);
+    const enhancedCount = businessElementMatch ? parseInt(businessElementMatch[1]) : 0;
+    
+    if (enhancedCount > 0) {
+      console.log(`🔍 [${requestId}] Enhanced Visio Analysis: Found ${enhancedCount} business elements`);
+      console.log(`🔍 [${requestId}] COMPLETELY REPLACING old workflow analysis with enhanced results`);
+      
+      // Extract comprehensive metadata from enhanced analysis
+      const pagesMatch = content.match(/Total Pages: (\d+)/);
+      const shapesMatch = content.match(/Total Shapes: (\d+)/);
+      const connectorsMatch = content.match(/Total Connectors: (\d+)/);
+      const complexityMatch = content.match(/Complexity Level: ([^\n]+)/);
+      const decisionsMatch = content.match(/Decision Points: (\d+)/);
+      const processesMatch = content.match(/Business Processes: (\d+)/);
+      const stepsMatch = content.match(/Process Steps: (\d+)/);
+      const flowsMatch = content.match(/Business Flows: (\d+)/);
+      const userActionsMatch = content.match(/User Actions: (\d+)/);
+      
+      const enhancedMetadata = {
+        totalPages: pagesMatch ? parseInt(pagesMatch[1]) : 0,
+        totalShapes: shapesMatch ? parseInt(shapesMatch[1]) : 0,
+        totalConnectors: connectorsMatch ? parseInt(connectorsMatch[1]) : 0,
+        complexity: complexityMatch ? complexityMatch[1].trim() : 'Unknown',
+        decisionPoints: decisionsMatch ? parseInt(decisionsMatch[1]) : 0,
+        businessProcesses: processesMatch ? parseInt(processesMatch[1]) : 0,
+        processSteps: stepsMatch ? parseInt(stepsMatch[1]) : 0,
+        businessFlows: flowsMatch ? parseInt(flowsMatch[1]) : 0,
+        userActions: userActionsMatch ? parseInt(userActionsMatch[1]) : 0,
+        enhancedAnalysis: true,
+        businessElementCount: enhancedCount
+      };
+      
+      console.log(`🔍 [${requestId}] Enhanced Metadata:`, enhancedMetadata);
+      
+      // COMPLETELY REPLACE old workflow analysis with enhanced results
+      workflowAnalysis = {
+        workflowDetected: true,
+        complexityLevel: enhancedMetadata.complexity,
+        decisionPoints: enhancedMetadata.decisionPoints,
+        activities: enhancedMetadata.processSteps,
+        events: enhancedMetadata.businessProcesses,
+        connectors: enhancedMetadata.totalConnectors,
+        edges: enhancedMetadata.businessFlows,
+        nodes: enhancedMetadata.totalShapes,
+        components: enhancedMetadata.totalPages,
+        totalElements: enhancedMetadata.totalShapes + enhancedMetadata.totalConnectors,
+        cyclomaticComplexity: enhancedMetadata.decisionPoints + 1,
+        enhancedAnalysis: true
+      };
+      
+      businessElementCount = {
+        count: enhancedCount,
+        breakdown: {
+          processes: enhancedMetadata.businessProcesses,
+          requirements: enhancedCount,
+          decisions: enhancedMetadata.decisionPoints,
+          steps: enhancedMetadata.processSteps,
+          flows: enhancedMetadata.businessFlows,
+          userActions: enhancedMetadata.userActions
+        },
+        enhancedMetadata: enhancedMetadata
+      };
+      
+      console.log(`🔍 [${requestId}] COMPLETELY REPLACED old workflow analysis with enhanced Visio results`);
+      console.log(`🔍 [${requestId}] Enhanced Workflow Analysis:`, workflowAnalysis);
+      console.log(`🔍 [${requestId}] Enhanced Business Element Count: ${elementCount}`);
+    }
+  }
+
   // Handle large documents with chunking
   let processedContent = content;
   let isChunked = false;
@@ -928,23 +1010,39 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     isChunked = true;
   }
 
-  // Analyze workflow content for complexity calculation with deterministic approach
-  const workflowAnalysis = analyzeWorkflowContent(processedContent);
-  if (enableLogging) {
-    console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+  // Only run old workflow analysis if NOT enhanced Visio analysis
+  if (!isEnhancedVisioAnalysis) {
+    // Analyze workflow content for complexity calculation with deterministic approach
+    workflowAnalysis = analyzeWorkflowContent(processedContent);
+    if (enableLogging) {
+      console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+    }
   }
 
   // Extract deterministic business element count from content
-  const { countBusinessElementsDeterministically } = require('../utils/fileProcessor');
-  const businessElementCount = countBusinessElementsDeterministically(processedContent);
+  const { extractBusinessRequirements: universalExtract } = require('../utils/universalBusinessExtractor');
+  
+  // Use balanced settings for all files to provide realistic counts
+  const isVisioFile = processedContent.includes('Visio') || processedContent.includes('workflow') || processedContent.includes('flowchart');
+  const extractionOptions = {
+    minLineLength: isVisioFile ? 25 : 20, // Balanced minimum for Visio
+    maxLineLength: 500,
+    enableStrictMode: false, // Balanced mode for realistic counts
+    includeLowPriority: true // Include low priority for comprehensive coverage
+  };
+  
+  businessElementCount = universalExtract(processedContent, extractionOptions);
+  
+  // Extract the count for consistent use throughout the function
+  let elementCount = businessElementCount.businessElements?.count || 0;
   
   if (enableLogging) {
-    console.log(`🔍 [${requestId}] Deterministic Analysis: Found ${businessElementCount.count} business elements`);
-    console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.breakdown);
+    console.log(`🔍 [${requestId}] Final Business Element Count: ${elementCount}`);
+    console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.businessElements?.breakdown || {});
     
-    // CRITICAL: Check if the deterministic count seems reasonable
+    // CRITICAL: Check if the count seems reasonable
     const contentLength = processedContent.length;
-    const requirementsPerChar = businessElementCount.count / contentLength;
+    const requirementsPerChar = elementCount / contentLength;
     const requirementsPerK = requirementsPerChar * 1000;
     
     console.log(`🔍 [${requestId}] Content Analysis:`);
@@ -952,11 +1050,65 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     console.log(`🔍 [${requestId}] - Requirements per character: ${requirementsPerChar.toFixed(6)}`);
     console.log(`🔍 [${requestId}] - Requirements per 1000 chars: ${requirementsPerK.toFixed(2)}`);
     
-    // Warn if the count seems unreasonably high
+    // Warn if the count seems unreasonably high and adjust if needed
     if (requirementsPerK > 10) {
       console.warn(`⚠️  [${requestId}] WARNING: Very high requirement density (${requirementsPerK.toFixed(2)} per 1000 chars) - deterministic count may be inflated`);
-      console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${businessElementCount.count} requirements`);
+      console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${elementCount} requirements`);
+      
+      // For extremely high densities, cap the count to a realistic number
+      if (requirementsPerK > 20) {
+        const realisticCount = Math.min(elementCount, Math.round(contentLength / 200)); // 1 requirement per 200 chars max
+        console.warn(`⚠️  [${requestId}] CRITICAL: Extremely high density detected. Capping count from ${elementCount} to ${realisticCount} for realistic extraction`);
+        
+        // Update the count to be more realistic
+        businessElementCount.businessElements.count = realisticCount;
+        businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, realisticCount);
+        
+        // Update the elementCount variable to reflect the adjusted count
+        elementCount = businessElementCount.businessElements.count;
+      }
     }
+    
+    // Additional safety: Prevent massive inflation while maintaining improvements
+    const maxReasonableImprovement = Math.round(contentLength / 150); // 1 requirement per 150 chars as absolute max (more conservative)
+    console.log(`🔍 [${requestId}] SAFETY CHECK: elementCount=${elementCount}, maxReasonableImprovement=${maxReasonableImprovement}`);
+    if (elementCount > maxReasonableImprovement) {
+      const cappedCount = maxReasonableImprovement;
+      console.warn(`⚠️  [${requestId}] SAFETY: Count ${elementCount} exceeds reasonable maximum. Capping to ${cappedCount} for realistic extraction`);
+      
+      // Update the count to be more realistic
+      businessElementCount.businessElements.count = cappedCount;
+      businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, cappedCount);
+      elementCount = cappedCount;
+    }
+    
+    // Final safety: Ensure improvements are reasonable (not massive inflation)
+    const oldSystemEstimate = Math.round(contentLength / 200); // Rough estimate of old system
+    const maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.3); // Max 30% improvement (more conservative)
+    console.log(`🔍 [${requestId}] IMPROVEMENT SAFETY: elementCount=${elementCount}, oldSystemEstimate=${oldSystemEstimate}, maxReasonableImprovementLimit=${maxReasonableImprovementLimit}`);
+    if (elementCount > maxReasonableImprovementLimit) {
+      const cappedCount = maxReasonableImprovementLimit;
+      console.warn(`⚠️  [${requestId}] FINAL SAFETY: Count ${elementCount} exceeds reasonable improvement limit. Capping to ${cappedCount} (max 30% improvement)`);
+      
+      // Update the count to be more realistic
+      businessElementCount.businessElements.count = cappedCount;
+      businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, cappedCount);
+      elementCount = cappedCount;
+    }
+    
+    // VSDX-specific safety: Prevent massive inflation on visual documents
+    if (isVisioFile && elementCount > 200) {
+      const vsdxCappedCount = Math.min(200, Math.round(oldSystemEstimate * 1.2)); // Max 20% improvement for VSDX
+      console.warn(`⚠️  [${requestId}] VSDX SAFETY: Count ${elementCount} exceeds VSDX limit. Capping to ${vsdxCappedCount} (max 20% improvement for visual docs)`);
+      
+      // Update the count to be more realistic for VSDX
+      businessElementCount.businessElements.count = vsdxCappedCount;
+      businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, vsdxCappedCount);
+      elementCount = vsdxCappedCount;
+    }
+    
+    // Log final elementCount after all safety mechanisms
+    console.log(`🔍 [${requestId}] FINAL SAFETY RESULT: elementCount=${elementCount} after all safety mechanisms applied`);
   }
 
   // Clean up the URL to prevent duplication
@@ -977,13 +1129,13 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 
 ⚠️  CRITICAL: Before you start, look for ALL lines that start with "where" - these ARE business requirements and MUST be extracted as separate requirements.
 ⚠️  CRITICAL: Look for ALL bullet points (•) - each one with business logic MUST become a separate requirement.
-⚠️  CRITICAL: Do NOT skip any "where" lines or bullet points - they are part of the ${businessElementCount.count} requirements you must extract.
+⚠️  CRITICAL: Do NOT skip any "where" lines or bullet points - they are part of the ${elementCount} requirements you must extract.
 
 Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
 
 CRITICAL EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO MORE, NO LESS
-2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
+1. CRITICAL: You MUST extract EXACTLY ${elementCount} requirements - NO MORE, NO LESS
+2. CRITICAL: The deterministic analysis found ${elementCount} business elements - you MUST match this count
 3. CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
 4. CRITICAL: Every bullet point (•) that contains business logic MUST become a separate requirement
 5. CRITICAL: Lines starting with "if" or "when" MUST be extracted as business requirements
@@ -991,23 +1143,55 @@ CRITICAL EXTRACTION RULES - FOLLOW THESE EXACTLY:
 7. CRITICAL: Conditional business rules (if X then Y) MUST be extracted as separate requirements
 8. CRITICAL: Do NOT combine multiple bullet points into single requirements
 9. CRITICAL: Each bullet point with business content = 1 separate requirement
-10. CRITICAL: Extract ALL business requirements present in the content to reach ${businessElementCount.count}
-11. CRITICAL: Do NOT stop until you have exactly ${businessElementCount.count} requirements
+10. CRITICAL: Extract ALL business requirements present in the content to reach ${elementCount}
+11. CRITICAL: Do NOT stop until you have exactly ${elementCount} requirements
 12. CRITICAL: Do NOT create additional requirements that are not directly supported by the content
 13. CRITICAL: Do NOT split a single requirement into multiple requirements
 14. CRITICAL: Do NOT combine multiple requirements into one
 15. CRITICAL: Each requirement should represent a distinct, testable business need
 16. CRITICAL: Extract the EXACT requirements present in the content - no more, no less
 17. CRITICAL: The number of requirements MUST match the deterministic count provided
-18. CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the content analysis
+18. CRITICAL: You MUST extract exactly ${elementCount} requirements based on the content analysis
 19. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
-20. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are not analyzing the content thoroughly enough
+20. CRITICAL: If you cannot find ${elementCount} requirements, you are not analyzing the content thoroughly enough
+
+HIGH-DENSITY DOCUMENT EXTRACTION STRATEGY (${elementCount > 100 ? 'ENABLED' : 'N/A'}):
+${elementCount > 100 ? `
+21. CRITICAL: This is a HIGH-DENSITY document with ${elementCount} requirements - use SYSTEMATIC extraction
+22. CRITICAL: Process the document SECTION BY SECTION - do NOT try to extract all at once
+23. CRITICAL: For each section, extract ALL requirements before moving to the next section
+24. CRITICAL: Use a CHECKLIST approach: mark each requirement as you extract it
+25. CRITICAL: Count your requirements after each section to ensure you're on track
+26. CRITICAL: If you're falling behind, extract requirements more aggressively from remaining sections
+27. CRITICAL: Look for PATTERNS in requirements - similar requirements often appear in groups
+28. CRITICAL: Extract requirements from EVERY paragraph, list, and bullet point
+29. CRITICAL: Do NOT skip any content - analyze EVERY line for potential requirements
+30. CRITICAL: Use the requirement count as your TARGET - extract until you reach exactly ${elementCount}
+` : ''}
 
 CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS:
 • where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
 • where Submission type is "publish" then content appears in PUBLISHED state → BR-002 (generate new acceptance criteria)
 • verify folder exclusion logic works as expected → BR-003 (use existing acceptance criteria if available)
 • verify file exclusion logic works as expected → BR-004 (use existing acceptance criteria if available)
+
+${elementCount > 100 ? `
+HIGH-DENSITY EXTRACTION EXAMPLES:
+• "The system must validate user input" → BR-005 (extract as separate requirement)
+• "Users can access their profiles" → BR-006 (extract as separate requirement)
+• "Administrators manage permissions" → BR-007 (extract as separate requirement)
+• "Data must be encrypted" → BR-008 (extract as separate requirement)
+• "Reports are generated monthly" → BR-009 (extract as separate requirement)
+• "Audit logs are maintained" → BR-010 (extract as separate requirement)
+
+PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS:
+- Look for repeated phrases: "must", "should", "will", "can", "need"
+- Extract each numbered/bulleted item as a separate requirement
+- Every conditional statement (if/when/where) = 1 requirement
+- Every validation rule = 1 requirement
+- Every user action = 1 requirement
+- Every system behavior = 1 requirement
+` : ''}
 
 ACCEPTANCE CRITERIA EXAMPLES:
 - For "where" lines: "Given a user submits content with type 'preview', When the submission is processed, Then the content appears in UNPUBLISHED state"
@@ -1034,7 +1218,7 @@ REQUIREMENT ID FORMAT:
 - Use sequential numbering: BR-001, BR-002, BR-003, etc.
 - Do NOT skip numbers or use random identifiers
 - Start with BR-001 and increment sequentially
-- You MUST have exactly ${businessElementCount.count} requirements
+- You MUST have exactly ${elementCount} requirements
 
 BUSINESS REQUIREMENT RULES:
 - Extract ONLY what the system should do based on the content
@@ -1128,10 +1312,10 @@ FINAL REQUIREMENTS:
 - BE CONSISTENT - same input should produce same output
 
 🚨 FINAL COUNT REQUIREMENT:
-- CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements
-- CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
-- CRITICAL: The deterministic analysis found ${businessElementCount.count} elements - match this count
-- CRITICAL: If you have fewer than ${businessElementCount.count} requirements, you are missing content
+- CRITICAL: You MUST extract EXACTLY ${elementCount} requirements
+- CRITICAL: Do NOT stop until you have ${elementCount} requirements
+- CRITICAL: The deterministic analysis found ${elementCount} elements - match this count
+- CRITICAL: If you have fewer than ${elementCount} requirements, you are missing content
 - CRITICAL: Analyze the content more thoroughly to find ALL business requirements
 
 REMINDER: You MUST extract EACH "where" line and EACH bullet point as a separate requirement.
@@ -1141,41 +1325,41 @@ DETERMINISTIC PROCESSING:
 - Extract requirements in the order they appear in the content
 - Use systematic approach: focus on the business elements already identified
 - Maintain consistent element ordering and processing sequence
-- The deterministic count of ${businessElementCount.count} is your target - do not deviate
+- The deterministic count of ${elementCount} is your target - do not deviate
 
 CONTENT ANALYSIS CONTEXT:
 The document has been pre-analyzed deterministically and contains:
-- **Total Business Elements**: ${businessElementCount.count}
-- **Business Processes**: ${businessElementCount.breakdown.processes}
-- **System Requirements**: ${businessElementCount.breakdown.requirements}
-- **Decision Points**: ${businessElementCount.breakdown.decisions}
-- **Process Steps**: ${businessElementCount.breakdown.steps}
-- **Business Flows**: ${businessElementCount.breakdown.flows}
-- **User Actions**: ${businessElementCount.breakdown.userActions}
+- **Total Business Elements**: ${elementCount}
+- **Business Processes**: ${businessElementCount.businessElements?.breakdown?.byType?.['Business Process'] || 0}
+- **System Requirements**: ${businessElementCount.businessElements?.breakdown?.byType?.['System Requirement'] || 0}
+- **Decision Points**: ${businessElementCount.businessElements?.breakdown?.byType?.['Decision Point'] || 0}
+- **Process Steps**: ${businessElementCount.businessElements?.breakdown?.byType?.['Process Step'] || 0}
+- **Business Rules**: ${businessElementCount.businessElements?.breakdown?.byType?.['Business Rule'] || 0}
+- **User Actions**: ${businessElementCount.businessElements?.breakdown?.byType?.['User Action'] || 0}
 
 🚨 CONTENT LENGTH ANALYSIS:
 - **Document Length**: ${processedContent.length} characters
-- **Expected Requirements**: ${businessElementCount.count}
-- **Content Density**: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- **Expected Requirements**: ${elementCount}
+- **Content Density**: ${Math.round(elementCount / (processedContent.length / 1000))} requirements per 1000 characters
 - **Analysis Required**: This document contains substantial business content that MUST be fully analyzed
 
 ⚠️  CRITICAL INSTRUCTION:
-- The document contains ${businessElementCount.count} business elements
+- The document contains ${elementCount} business elements
 - You MUST extract ALL of them as separate requirements
-- Do NOT stop until you have ${businessElementCount.count} requirements
-- If you cannot find ${businessElementCount.count} requirements, you are missing content
+- Do NOT stop until you have ${elementCount} requirements
+- If you cannot find ${elementCount} requirements, you are missing content
 - Analyze EVERY section, paragraph, and line for business requirements
 - Look for hidden requirements, implicit business rules, and process steps
 
-Use this analysis to guide your requirement extraction. Extract exactly ${businessElementCount.count} requirements based on these identified business elements.`
+Use this analysis to guide your requirement extraction. Extract exactly ${elementCount} requirements based on these identified business elements.`
     },
     {
       role: 'user',
-      content: `Please analyze the following document and extract exactly ${businessElementCount.count} business requirements and their corresponding acceptance criteria.
+      content: `Please analyze the following document and extract exactly ${elementCount} business requirements and their corresponding acceptance criteria.
 
 IMPORTANT: Extract requirements CONSISTENTLY and DETERMINISTICALLY. The same content should ALWAYS produce the same requirements.
 
-CRITICAL: You MUST extract exactly ${businessElementCount.count} requirements based on the deterministic content analysis:
+CRITICAL: You MUST extract exactly ${elementCount} requirements based on the deterministic content analysis:
 - This count is based on actual content analysis, not estimation
 - Do NOT create more or fewer requirements
 - Focus on the business elements already identified in the content
@@ -1185,7 +1369,7 @@ ${processedContent}
 
 CONTEXT: ${context || 'None provided'}
 
-Please extract exactly ${businessElementCount.count} business requirements in a systematic, deterministic manner.`
+Please extract exactly ${elementCount} business requirements in a systematic, deterministic manner.`
     }
   ];
 
@@ -1272,7 +1456,7 @@ Please extract exactly ${businessElementCount.count} business requirements in a 
       }
     }
     
-    const expectedCount = businessElementCount.count;
+    const expectedCount = elementCount;
     
     // CRITICAL: If AI didn't extract enough requirements, force a retry with stronger instructions
     if (requirementCount < expectedCount * 0.8) { // If we got less than 80% of expected
@@ -1296,13 +1480,13 @@ Please extract exactly ${businessElementCount.count} business requirements in a 
             role: 'system',
             content: `🚨 CRITICAL SYSTEM INSTRUCTION - MAXIMUM REQUIREMENT EXTRACTION REQUIRED:
 
-You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${businessElementCount.count} business requirements from the provided content.
+You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${elementCount} business requirements from the provided content.
 
 🚨 MAXIMUM EXTRACTION RULES:
-1. CRITICAL: You MUST extract EXACTLY ${businessElementCount.count} requirements - NO EXCEPTIONS
-2. CRITICAL: The deterministic analysis found ${businessElementCount.count} business elements - you MUST match this count
-3. CRITICAL: Do NOT stop until you have ${businessElementCount.count} requirements
-4. CRITICAL: If you cannot find ${businessElementCount.count} requirements, you are missing content
+1. CRITICAL: You MUST extract EXACTLY ${elementCount} requirements - NO EXCEPTIONS
+2. CRITICAL: The deterministic analysis found ${elementCount} business elements - you MUST match this count
+3. CRITICAL: Do NOT stop until you have ${elementCount} requirements
+4. CRITICAL: If you cannot find ${elementCount} requirements, you are missing content
 5. CRITICAL: Analyze EVERY single line, paragraph, and section for business requirements
 6. CRITICAL: Look for hidden requirements, implicit business rules, and process steps
 7. CRITICAL: Extract requirements from diagrams, flowcharts, and visual elements
@@ -1312,8 +1496,8 @@ You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${business
 
 🚨 CONTENT ANALYSIS REQUIREMENTS:
 - Document Length: ${processedContent.length} characters
-- Expected Requirements: ${businessElementCount.count}
-- Content Density: ${Math.round(businessElementCount.count / (processedContent.length / 1000))} requirements per 1000 characters
+- Expected Requirements: ${elementCount}
+- Content Density: ${Math.round(elementCount / (processedContent.length / 1000))} requirements per 1000 characters
 - Analysis Required: This document contains substantial business content that MUST be fully analyzed
 
 🚨 EXTRACTION STRATEGY:
@@ -1326,21 +1510,21 @@ You are a Business Analyst with ONE CRITICAL MISSION: Extract EXACTLY ${business
 - Extract requirements from data flows and integrations
 
 🚨 FINAL REQUIREMENT:
-- You MUST extract EXACTLY ${businessElementCount.count} requirements
-- Do NOT stop until you have ${businessElementCount.count} requirements
-- If you cannot find ${businessElementCount.count} requirements, you are not analyzing thoroughly enough
+- You MUST extract EXACTLY ${elementCount} requirements
+- Do NOT stop until you have ${elementCount} requirements
+- If you cannot find ${elementCount} requirements, you are not analyzing thoroughly enough
 - This is a MAXIMUM EFFORT extraction - leave no stone unturned`
           },
           {
             role: 'user',
-            content: `🚨 CRITICAL: You previously extracted only ${requirementCount} requirements, but the deterministic analysis found ${businessElementCount.count} business elements.
+            content: `🚨 CRITICAL: You previously extracted only ${requirementCount} requirements, but the deterministic analysis found ${elementCount} business elements.
 
-This is UNACCEPTABLE. You MUST extract EXACTLY ${businessElementCount.count} requirements.
+This is UNACCEPTABLE. You MUST extract EXACTLY ${elementCount} requirements.
 
 CONTENT TO ANALYZE (ANALYZE EVERY SINGLE CHARACTER):
 ${processedContent}
 
-🚨 CRITICAL INSTRUCTION: Extract EXACTLY ${businessElementCount.count} requirements. Do NOT stop until you have ${businessElementCount.count} requirements. This is a MAXIMUM EFFORT extraction.`
+🚨 CRITICAL INSTRUCTION: Extract EXACTLY ${elementCount} requirements. Do NOT stop until you have ${elementCount} requirements. This is a MAXIMUM EFFORT extraction.`
           }
         ];
 
@@ -1387,11 +1571,11 @@ ${processedContent}
             const simpleRetryMessages = [
               {
                 role: 'system',
-                content: `You are a Business Analyst. Extract EXACTLY ${businessElementCount.count} business requirements from the content. Use simple, clear language.`
+                content: `You are a Business Analyst. Extract EXACTLY ${elementCount} business requirements from the content. Use simple, clear language.`
               },
               {
                 role: 'user',
-                content: `Extract exactly ${businessElementCount.count} business requirements from this content. Start with BR-001 and go to BR-${businessElementCount.count}. Keep requirements simple and clear.
+                content: `Extract exactly ${elementCount} business requirements from this content. Start with BR-001 and go to BR-${elementCount}. Keep requirements simple and clear.
 
 Content: ${processedContent.substring(0, 20000)}`
               }
@@ -1481,7 +1665,7 @@ Content: ${processedContent.substring(0, 20000)}`
     }
 
     // Post-process to enhance complexity calculations if needed
-    if (workflowAnalysis.workflowDetected) {
+    if (workflowAnalysis && workflowAnalysis.workflowDetected) {
       extractedRequirements = enhanceComplexityCalculations(extractedRequirements, workflowAnalysis);
     }
 
@@ -1505,9 +1689,9 @@ Content: ${processedContent.substring(0, 20000)}`
       message: 'Successfully extracted business requirements and acceptance criteria',
       metadata: {
         workflowAnalysis: workflowAnalysis,
-        complexityLevel: workflowAnalysis.complexityLevel,
-        decisionPoints: workflowAnalysis.decisionPoints,
-        activities: workflowAnalysis.activities,
+        complexityLevel: workflowAnalysis ? workflowAnalysis.complexityLevel : 'N/A',
+        decisionPoints: workflowAnalysis ? workflowAnalysis.decisionPoints : 'N/A',
+        activities: workflowAnalysis ? workflowAnalysis.activities : 'N/A',
         requestId: requestId,
         requirementsValidation: validationResult
       }

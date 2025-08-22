@@ -8,59 +8,10 @@ const crypto = require('crypto');
 // Import universal business requirements extractor
 const { extractBusinessRequirements: universalExtract } = require('./universalBusinessExtractor');
 
-// REALISTIC configuration for business element detection - targeting ~200+ requirements
-const BUSINESS_ELEMENT_CONFIG = {
-  // REALISTIC - only catch actual business requirements, not noise
-  minLineLength: 60,          // Lines must have substantial business content
-  minRequirementLength: 60,   // Requirements must have clear business logic
-  minRuleLength: 60,
-  maxLowPriorityItems: 15,    // Strict limit to prevent over-counting
-  
-  // SIMPLE patterns that work the same for ALL document types
-  patterns: {
-    // High priority - exact matches only
-    highPriority: [
-      { regex: /^Business Process:/i, type: 'Business Process', priority: 'high' },
-      { regex: /^Decision Point:/i, type: 'Decision Point', priority: 'high' },
-      { regex: /^Process Step:/i, type: 'Process Step', priority: 'high' }
-    ],
-    
-    // Medium priority - simple, consistent patterns
-    mediumPriority: [
-      { regex: /^[0-9]+\.\s+/, type: 'System Requirement', priority: 'medium' },
-      { regex: /^[0-9]+\)\s+/, type: 'System Requirement', priority: 'medium' },
-      { regex: /^[a-z]\)\s+/, type: 'System Requirement', priority: 'medium' },
-      { regex: /^[•\-*]\s+/, type: 'System Requirement', priority: 'medium' },
-      { regex: /^Scenario\s+[0-9]+/i, type: 'System Requirement', priority: 'medium' },
-      { regex: /^Acceptance\s+Criteria/i, type: 'System Requirement', priority: 'medium' },
-      { regex: /^Acceptance\s+Criteria\s+[0-9]+/i, type: 'System Requirement', priority: 'medium' },
-      { regex: /^AC\s*[0-9]+/i, type: 'System Requirement', priority: 'medium' },
-      { regex: /^Requirement\s+[0-9]+/i, type: 'System Requirement', priority: 'medium' },
-      { regex: /^BR\s*[0-9]+/i, type: 'System Requirement', priority: 'medium' }
-    ],
-    
-    // Medium keywords - simple, consistent
-    mediumKeywords: [
-      { keywords: ['Given', 'When', 'Then', 'And', 'But'], type: 'System Requirement', priority: 'medium' },
-      { keywords: ['should', 'must', 'will', 'shall'], type: 'System Requirement', priority: 'medium' },
-      { keywords: ['scenario', 'scenarios'], type: 'System Requirement', priority: 'medium' },
-      { keywords: ['acceptance', 'criteria', 'requirement'], type: 'System Requirement', priority: 'medium' },
-      { keywords: ['verify', 'check', 'ensure', 'validate'], type: 'System Requirement', priority: 'medium' },
-      { keywords: ['where', 'when', 'then', 'if'], type: 'System Requirement', priority: 'medium' }
-    ],
-    
-    // Low priority - more selective to avoid over-counting
-    lowPriority: [
-      { keywords: ['verify', 'check', 'ensure', 'validate', 'test'], type: 'System Requirement', priority: 'low' }
-    ]
-  }
-};
+// Universal business requirements extractor is now used for all file types
+// This provides consistent, high-quality business element detection across all document types
 
-// SIMPLE, CONSISTENT business element detection function - works the same for ALL documents
-function detectBusinessElements(content, config = BUSINESS_ELEMENT_CONFIG) {
-  const lines = content.split('\n');
-  const businessElements = [];
-  let currentSection = '';
+// OLD BUSINESS ELEMENT DETECTION SYSTEM REMOVED - Now using Universal Business Extractor
 
 
 
@@ -97,12 +48,12 @@ function detectBusinessElements(content, config = BUSINESS_ELEMENT_CONFIG) {
         line.match(/^[0-9]+\)\s+/) ||                    // Numbered with parenthesis
         line.match(/^[a-z]\)\s+/) ||                     // Lettered lists
         line.match(/^[•\-*]\s+/) ||                      // Bullet points
-        line.match(/^Scenario\s+/i) ||                   // Scenarios
+        line.match(/^Scenario\s+[0-9]+/i) ||                   // Scenarios
         line.match(/^Acceptance\s+Criteria/i) ||         // Acceptance criteria headers
         line.match(/^Acceptance\s+Criteria\s+[0-9]+/i) || // Numbered acceptance criteria
-        line.match(/^Requirement\s+/i) ||                // Requirements
-        line.match(/^BR\s*/i) ||                         // BR format
-        line.match(/^AC\s*/i) ||                         // AC format
+        line.match(/^AC\s*[0-9]+/i) ||                         // AC format
+        line.match(/^Requirement\s+[0-9]+/i) ||                // Requirements
+        line.match(/^BR\s*[0-9]+/i) ||                         // BR format
         line.match(/^(Given|When|Then|And|But)\s+/i) ||  // Gherkin
         // Business function patterns
         line.toLowerCase().includes('create') ||
@@ -347,80 +298,11 @@ function detectBusinessElements(content, config = BUSINESS_ELEMENT_CONFIG) {
     }
   }
 
-  // SIMPLE deduplication - just remove exact duplicates
-  const uniqueElements = [];
-  const seenTexts = new Set();
-
-  for (const element of businessElements) {
-    const normalizedText = element.text.toLowerCase().trim();
-    
-    if (!seenTexts.has(normalizedText)) {
-      seenTexts.add(normalizedText);
-      uniqueElements.push(element);
-    }
-  }
+// OLD BUSINESS ELEMENT DETECTION SYSTEM COMPLETELY REMOVED
 
 
 
-  // Return the expected object structure that the rest of the code expects
-  return {
-    count: uniqueElements.length,
-    elements: uniqueElements,
-    breakdown: {
-      processes: uniqueElements.filter(e => e.type === 'Business Process').length,
-      requirements: uniqueElements.filter(e => e.type === 'System Requirement').length,
-      decisions: uniqueElements.filter(e => e.type === 'Decision Point').length,
-      steps: uniqueElements.filter(e => e.type === 'Process Step').length,
-      flows: uniqueElements.filter(e => e.type === 'Business Flow').length,
-      userStories: uniqueElements.filter(e => e.type === 'User Story').length,
-      userActions: uniqueElements.filter(e => e.type === 'User Action').length
-    },
-    priorities: {
-      high: uniqueElements.filter(e => e.priority === 'high').length,
-      medium: uniqueElements.filter(e => e.priority === 'medium').length,
-      low: uniqueElements.filter(e => e.priority === 'low').length
-    }
-  };
-}
-
-// Legacy function for backward compatibility
-function countBusinessElementsDeterministically(content) {
-  return detectBusinessElements(content);
-}
-
-// Configuration adjustment function for easy rule tweaking
-function adjustBusinessElementConfig(adjustments = {}) {
-  const newConfig = { ...BUSINESS_ELEMENT_CONFIG };
-  
-  // Adjust thresholds
-  if (adjustments.minLineLength !== undefined) {
-    newConfig.minLineLength = adjustments.minLineLength;
-  }
-  if (adjustments.minRequirementLength !== undefined) {
-    newConfig.minRequirementLength = adjustments.minRequirementLength;
-  }
-  if (adjustments.maxLowPriorityItems !== undefined) {
-    newConfig.maxLowPriorityItems = adjustments.maxLowPriorityItems;
-  }
-  
-  // Adjust patterns
-  if (adjustments.patterns) {
-    if (adjustments.patterns.highPriority) {
-      newConfig.patterns.highPriority = [...newConfig.patterns.highPriority, ...adjustments.patterns.highPriority];
-    }
-    if (adjustments.patterns.mediumPriority) {
-      newConfig.patterns.mediumPriority = [...newConfig.patterns.mediumPriority, ...adjustments.patterns.mediumPriority];
-    }
-    if (adjustments.patterns.mediumKeywords) {
-      newConfig.patterns.mediumKeywords = [...newConfig.patterns.mediumKeywords, ...adjustments.patterns.mediumKeywords];
-    }
-    if (adjustments.patterns.lowPriority) {
-      newConfig.patterns.lowPriority = [...newConfig.patterns.lowPriority, ...adjustments.patterns.lowPriority];
-    }
-  }
-  
-  return newConfig;
-}
+// OLD BUSINESS ELEMENT DETECTION SYSTEM COMPLETELY REMOVED
 
 
 // const fileCache = new Map();
@@ -455,44 +337,526 @@ const isVisioFile = (mimeType, extension) => {
   return visioMimes.includes(mimeType) || visioExtensions.includes(extension.toLowerCase());
 };
 
-// Helper function to analyze image content using universal extractor
+// Helper function to analyze image content deterministically
 function analyzeImageContent(fileName, extension) {
   // Analyze image based on filename and extension for business context
   const name = fileName.toLowerCase();
+  let businessElements = [];
   let description = '';
   
   // Analyze filename for business context
   if (name.includes('workflow') || name.includes('process') || name.includes('diagram')) {
     description = 'This image appears to contain workflow or process diagrams that likely represent business processes.';
-  } else if (name.includes('ui') || name.includes('interface') || name.includes('screen')) {
-    description = 'This image appears to contain user interface elements that represent system functionality.';
-  } else if (name.includes('data') || name.includes('chart') || name.includes('graph')) {
-    description = 'This image appears to contain data visualizations that may represent business metrics or processes.';
-  } else if (name.includes('architecture') || name.includes('system') || name.includes('design')) {
-    description = 'This image appears to contain system architecture or design diagrams.';
-  } else if (name.includes('user') || name.includes('persona') || name.includes('profile')) {
-    description = 'This image appears to contain user-related information or personas.';
-  } else {
-    description = 'This image file contains visual content that requires manual analysis to identify business requirements.';
+    businessElements.push({
+      type: 'Business Process',
+      text: 'Workflow/Process Diagram',
+      lineNumber: 1,
+      section: 'Image Analysis'
+    });
   }
   
-  // Create a simple content representation for universal analysis
-  const imageContent = `Image Analysis: ${description}\n\nFilename: ${fileName}\nExtension: ${extension}\n\nThis image file contains visual content that may represent business processes, system requirements, or user interface elements. The filename suggests: ${description.toLowerCase()}`;
+  if (name.includes('ui') || name.includes('interface') || name.includes('screen')) {
+    description = 'This image appears to contain user interface elements that represent system functionality.';
+    businessElements.push({
+      type: 'System Requirement',
+      text: 'User Interface Design',
+      lineNumber: 2,
+      section: 'Image Analysis'
+    });
+  }
   
-  // Use universal business requirements extractor for consistent analysis
-  const universalAnalysis = universalExtract(imageContent, {
-    minLineLength: 10,
-    maxLineLength: 500,
-    enableStrictMode: false,
-    includeLowPriority: true
-  });
+  if (name.includes('data') || name.includes('chart') || name.includes('graph')) {
+    description = 'This image appears to contain data visualizations that may represent business metrics or processes.';
+    businessElements.push({
+      type: 'Business Process',
+      text: 'Data Visualization',
+      lineNumber: 3,
+      section: 'Image Analysis'
+    });
+  }
+  
+  if (name.includes('architecture') || name.includes('system') || name.includes('design')) {
+    description = 'This image appears to contain system architecture or design diagrams.';
+    businessElements.push({
+      type: 'System Requirement',
+      text: 'System Architecture',
+      lineNumber: 4,
+      section: 'Image Analysis'
+    });
+  }
+  
+  if (name.includes('user') || name.includes('persona') || name.includes('profile')) {
+    description = 'This image appears to contain user interface elements that represent system functionality.';
+    businessElements.push({
+      type: 'User Action',
+      text: 'User Profile/Persona',
+      lineNumber: 5,
+      section: 'Image Analysis'
+    });
+  }
+  
+  // Default analysis if no specific patterns found
+  if (businessElements.length === 0) {
+    description = 'This image file contains visual content that requires manual analysis to identify business requirements.';
+    businessElements.push({
+      type: 'Business Process',
+      text: 'Visual Content Analysis Required',
+      lineNumber: 1,
+      section: 'Image Analysis'
+    });
+  }
+  
+  // Count business elements
+  const count = businessElements.length;
+  const breakdown = {
+    processes: businessElements.filter(e => e.type === 'Business Process').length,
+    requirements: businessElements.filter(e => e.type === 'System Requirement').length,
+    decisions: businessElements.filter(e => e.type === 'Decision Point').length,
+    steps: businessElements.filter(e => e.type === 'Process Step').length,
+    flows: businessElements.filter(e => e.type === 'Business Flow').length,
+    userActions: businessElements.filter(e => e.type === 'User Action').length
+  };
   
   return {
     description,
-    businessElements: universalAnalysis.businessElements
+    businessElements: {
+      count,
+      elements: businessElements,
+      breakdown
+    }
   };
 }
 
+/**
+ * Enhanced Visio (.vsdx) flowchart analysis function
+ * Parses actual XML content to extract visual elements, shapes, and flow structure
+ * @param {Buffer} buffer - File buffer
+ * @param {string} originalName - Original filename
+ * @returns {Object} Comprehensive flowchart analysis
+ */
+async function analyzeVisioFlowchart(buffer, originalName) {
+  try {
+    const zip = new JSZip();
+    const zipContent = await zip.loadAsync(buffer);
+    
+    let extractedContent = '';
+    let businessElements = [];
+    let elementCount = 0;
+    
+    // Extract Visio drawing pages
+    const drawingFiles = Object.keys(zipContent.files).filter(file => 
+      file.includes('visio/pages/page') && file.endsWith('.xml')
+    );
+    
+    if (drawingFiles.length === 0) {
+      // Fallback to older Visio format
+      const oldDrawingFiles = Object.keys(zipContent.files).filter(file => 
+        file.includes('visio/drawing') && file.endsWith('.xml')
+      );
+      if (oldDrawingFiles.length > 0) {
+        extractedContent += `\n\n## Visio Drawing Analysis:\n`;
+        extractedContent += `Found ${oldDrawingFiles.length} drawing files\n`;
+        
+        for (const drawingFile of oldDrawingFiles) {
+          try {
+            const drawingXml = await zipContent.files[drawingFile].async('string');
+            const analysis = analyzeVisioXmlContent(drawingXml, `Drawing ${drawingFile}`);
+            businessElements.push(...analysis.elements);
+            extractedContent += analysis.content;
+          } catch (error) {
+            console.error(`Error processing drawing file ${drawingFile}:`, error);
+          }
+        }
+      }
+    } else {
+      extractedContent += `\n\n## Visio Page Analysis:\n`;
+      extractedContent += `Found ${drawingFiles.length} pages in flowchart\n`;
+      
+      // Process each page
+      for (let i = 0; i < drawingFiles.length; i++) {
+        const pageFile = drawingFiles[i];
+        try {
+          const pageXml = await zipContent.files[pageFile].async('string');
+          const analysis = analyzeVisioXmlContent(pageXml, `Page ${i + 1}`);
+          businessElements.push(...analysis.elements);
+          extractedContent += analysis.content;
+        } catch (error) {
+          console.error(`Error processing page file ${pageFile}:`, error);
+        }
+      }
+    }
+    
+    // Extract master shapes and stencils for additional context
+    const masterFiles = Object.keys(zipContent.files).filter(file => 
+      file.includes('visio/masters/master') && file.endsWith('.xml')
+    );
+    
+    if (masterFiles.length > 0) {
+      extractedContent += `\n\n## Master Shapes Analysis:\n`;
+      extractedContent += `Found ${masterFiles.length} master shape definitions\n`;
+      
+      for (const masterFile of masterFiles) {
+        try {
+          const masterXml = await zipContent.files[masterFile].async('string');
+          const masterAnalysis = analyzeVisioMasterShapes(masterXml);
+          businessElements.push(...masterAnalysis.elements);
+          extractedContent += masterAnalysis.content;
+        } catch (error) {
+          console.error(`Error processing master file ${masterFile}:`, error);
+        }
+      }
+    }
+    
+    // Extract document properties for context
+    const docPropsFile = zipContent.files['docProps/core.xml'];
+    if (docPropsFile) {
+      try {
+        const docPropsXml = await docPropsFile.async('string');
+        const titleMatch = docPropsXml.match(/<dc:title>(.*?)<\/dc:title>/);
+        const subjectMatch = docPropsXml.match(/<dc:subject>(.*?)<\/dc:subject>/);
+        const descriptionMatch = docPropsXml.match(/<dc:description>(.*?)<\/dc:description>/);
+        
+        if (titleMatch || subjectMatch || descriptionMatch) {
+          extractedContent += `\n\n## Document Properties:\n`;
+          if (titleMatch) extractedContent += `Title: ${titleMatch[1]}\n`;
+          if (subjectMatch) extractedContent += `Subject: ${subjectMatch[1]}\n`;
+          if (descriptionMatch) extractedContent += `Description: ${descriptionMatch[1]}\n`;
+        }
+      } catch (error) {
+        console.error('Error processing document properties:', error);
+      }
+    }
+    
+    // Generate comprehensive business element breakdown
+    const breakdown = {
+      processes: businessElements.filter(e => e.type === 'Business Process').length,
+      requirements: businessElements.filter(e => e.type === 'System Requirement').length,
+      decisions: businessElements.filter(e => e.type === 'Decision Point').length,
+      steps: businessElements.filter(e => e.type === 'Process Step').length,
+      flows: businessElements.filter(e => e.type === 'Business Flow').length,
+      userActions: businessElements.filter(e => e.type === 'User Action').length,
+      shapes: businessElements.filter(e => e.type === 'Flowchart Shape').length,
+      connectors: businessElements.filter(e => e.type === 'Connector').length
+    };
+    
+    // Calculate total business elements (excluding technical shapes)
+    const businessElementCount = businessElements.filter(e => 
+      e.type !== 'Flowchart Shape' && e.type !== 'Connector'
+    ).length;
+    
+    return {
+      description: `Enhanced Visio flowchart analysis completed. Found ${businessElementCount} business elements across ${drawingFiles.length} pages.`,
+      businessElements: {
+        count: businessElementCount,
+        elements: businessElements,
+        breakdown
+      },
+      extractedContent,
+      flowchartMetadata: {
+        totalPages: drawingFiles.length,
+        totalShapes: breakdown.shapes,
+        totalConnectors: breakdown.connectors,
+        hasDecisionPoints: breakdown.decisions > 0,
+        hasProcessFlows: breakdown.flows > 0,
+        complexity: calculateFlowchartComplexity(breakdown)
+      }
+    };
+    
+  } catch (error) {
+    console.error(`Error analyzing Visio flowchart ${originalName}:`, error);
+    return {
+      description: `Error analyzing Visio flowchart: ${error.message}`,
+      businessElements: {
+        count: 0,
+        elements: [],
+        breakdown: {
+          processes: 0,
+          requirements: 0,
+          decisions: 0,
+          steps: 0,
+          flows: 0,
+          userActions: 0,
+          shapes: 0,
+          connectors: 0
+        }
+      },
+      extractedContent: `# Visio Flowchart Analysis\n\n## File: ${originalName}\n\n### Error:\nFailed to analyze flowchart content: ${error.message}`,
+      flowchartMetadata: {
+        totalPages: 0,
+        totalShapes: 0,
+        totalConnectors: 0,
+        hasDecisionPoints: false,
+        hasProcessFlows: false,
+        complexity: 'Unknown'
+      }
+    };
+  }
+}
+
+/**
+ * Analyze Visio XML content to extract shapes, text, and business elements
+ * @param {string} xmlContent - XML content from Visio file
+ * @param {string} context - Context identifier (page/drawing name)
+ * @returns {Object} Analysis results with elements and content
+ */
+function analyzeVisioXmlContent(xmlContent, context) {
+  const elements = [];
+  let content = `\n\n### ${context}:\n`;
+  
+  try {
+    // Extract text content from shapes
+    const textMatches = xmlContent.match(/<Text[^>]*>(.*?)<\/Text>/gs);
+    if (textMatches) {
+      content += `\n#### Text Content:\n`;
+      textMatches.forEach((textMatch, index) => {
+        const textContent = textMatch.replace(/<\/?Text[^>]*>/g, '').trim();
+        if (textContent.length > 0) {
+          content += `- ${textContent}\n`;
+          
+          // Analyze text for business elements
+          const businessElement = analyzeVisioTextForBusinessElements(textContent, index + 1, context);
+          if (businessElement) {
+            elements.push(businessElement);
+          }
+        }
+      });
+    }
+    
+    // Extract shape information
+    const shapeMatches = xmlContent.match(/<Shape[^>]*>.*?<\/Shape>/gs);
+    if (shapeMatches) {
+      content += `\n#### Shapes and Elements:\n`;
+      shapeMatches.forEach((shape, index) => {
+        const shapeAnalysis = analyzeVisioShape(shape, index + 1, context);
+        elements.push(shapeAnalysis.element);
+        content += shapeAnalysis.content;
+      });
+    }
+    
+    // Extract connector information
+    const connectorMatches = xmlContent.match(/<Connect[^>]*>/g);
+    if (connectorMatches) {
+      content += `\n#### Connectors and Flow:\n`;
+      content += `Found ${connectorMatches.length} connections between elements\n`;
+      
+      // Add connector elements
+      connectorMatches.forEach((connector, index) => {
+        elements.push({
+          type: 'Connector',
+          text: `Connection ${index + 1}`,
+          lineNumber: index + 1,
+          section: context,
+          priority: 'medium'
+        });
+      });
+    }
+    
+  } catch (error) {
+    console.error(`Error analyzing XML content for ${context}:`, error);
+    content += `\nError analyzing content: ${error.message}\n`;
+  }
+  
+  return { elements, content };
+}
+
+/**
+ * Analyze Visio master shapes for additional business context
+ * @param {string} masterXml - Master shapes XML content
+ * @returns {Object} Master shapes analysis
+ */
+function analyzeVisioMasterShapes(masterXml) {
+  const elements = [];
+  let content = '';
+  
+  try {
+    // Extract master shape names and properties
+    const masterMatches = masterXml.match(/<Master[^>]*>.*?<\/Master>/gs);
+    if (masterMatches) {
+      content += `\n#### Master Shapes:\n`;
+      masterMatches.forEach((master, index) => {
+        const nameMatch = master.match(/Name="([^"]*)"/);
+        const name = nameMatch ? nameMatch[1] : `Master ${index + 1}`;
+        
+        content += `- ${name}\n`;
+        
+        // Analyze master shape for business context
+        if (name.toLowerCase().includes('decision') || name.toLowerCase().includes('diamond')) {
+          elements.push({
+            type: 'Decision Point',
+            text: `Master Shape: ${name}`,
+            lineNumber: index + 1,
+            section: 'Master Shapes',
+            priority: 'high'
+          });
+        } else if (name.toLowerCase().includes('process') || name.toLowerCase().includes('rectangle')) {
+          elements.push({
+            type: 'Process Step',
+            text: `Master Shape: ${name}`,
+            lineNumber: index + 1,
+            section: 'Master Shapes',
+            priority: 'medium'
+          });
+        } else if (name.toLowerCase().includes('start') || name.toLowerCase().includes('end')) {
+          elements.push({
+            type: 'Business Process',
+            text: `Master Shape: ${name}`,
+            lineNumber: index + 1,
+            section: 'Master Shapes',
+            priority: 'medium'
+          });
+        }
+      });
+    }
+  } catch (error) {
+    console.error('Error analyzing master shapes:', error);
+    content += `\nError analyzing master shapes: ${error.message}\n`;
+  }
+  
+  return { elements, content };
+}
+
+/**
+ * Analyze individual Visio shape for business context
+ * @param {string} shapeXml - Shape XML content
+ * @param {number} index - Shape index
+ * @param {string} context - Context section
+ * @returns {Object} Shape analysis with element and content
+ */
+function analyzeVisioShape(shapeXml, index, context) {
+  let content = `- Shape ${index}: `;
+  
+  // Extract shape type
+  const typeMatch = shapeXml.match(/Type="([^"]*)"/);
+  const type = typeMatch ? typeMatch[1] : 'Unknown';
+  
+  // Extract shape text
+  const textMatch = shapeXml.match(/<Text[^>]*>(.*?)<\/Text>/);
+  const text = textMatch ? textMatch[1].trim() : `Shape ${index}`;
+  
+  content += `${type} - "${text}"\n`;
+  
+  // Create shape element
+  const element = {
+    type: 'Flowchart Shape',
+    text: text,
+    lineNumber: index,
+    section: context,
+    priority: 'low',
+    shapeType: type
+  };
+  
+  return { element, content };
+}
+
+/**
+ * Analyze Visio text content for business elements
+ * @param {string} text - Text content from shape
+ * @param {number} lineNumber - Line number for tracking
+ * @param {string} context - Context section
+ * @returns {Object|null} Business element if found
+ */
+function analyzeVisioTextForBusinessElements(text, lineNumber, context) {
+  const lowerText = text.toLowerCase();
+  
+  // Decision points
+  if (lowerText.includes('decision') || lowerText.includes('choice') || 
+      lowerText.includes('if') || lowerText.includes('else') ||
+      lowerText.includes('yes/no') || lowerText.includes('true/false')) {
+    return {
+      type: 'Decision Point',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'high'
+    };
+  }
+  
+  // Process steps
+  if (lowerText.includes('process') || lowerText.includes('step') || 
+      lowerText.includes('action') || lowerText.includes('task') ||
+      lowerText.includes('activity') || lowerText.includes('operation')) {
+    return {
+      type: 'Process Step',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'medium'
+    };
+  }
+  
+  // Business processes
+  if (lowerText.includes('business') || lowerText.includes('workflow') || 
+      lowerText.includes('procedure') || lowerText.includes('method') ||
+      lowerText.includes('system') || lowerText.includes('function')) {
+    return {
+      type: 'Business Process',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'medium'
+    };
+  }
+  
+  // User actions
+  if (lowerText.includes('user') || lowerText.includes('input') || 
+      lowerText.includes('click') || lowerText.includes('select') ||
+      lowerText.includes('enter') || lowerText.includes('submit')) {
+    return {
+      type: 'User Action',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'medium'
+    };
+  }
+  
+  // System requirements
+  if (lowerText.includes('requirement') || lowerText.includes('feature') || 
+      lowerText.includes('validation') || lowerText.includes('check') ||
+      lowerText.includes('verify') || lowerText.includes('ensure')) {
+    return {
+      type: 'System Requirement',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'medium'
+    };
+  }
+  
+  // Business flows
+  if (lowerText.includes('flow') || lowerText.includes('sequence') || 
+      lowerText.includes('order') || lowerText.includes('path') ||
+      lowerText.includes('route') || lowerText.includes('direction')) {
+    return {
+      type: 'Business Flow',
+      text: text,
+      lineNumber: lineNumber,
+      section: context,
+      priority: 'low'
+    };
+  }
+  
+  return null;
+}
+
+/**
+ * Calculate flowchart complexity based on element counts
+ * @param {Object} breakdown - Element breakdown
+ * @returns {string} Complexity level
+ */
+function calculateFlowchartComplexity(breakdown) {
+  const totalElements = breakdown.shapes + breakdown.connectors;
+  const businessElements = breakdown.processes + breakdown.requirements + 
+                          breakdown.decisions + breakdown.steps + 
+                          breakdown.flows + breakdown.userActions;
+  
+  if (totalElements === 0) return 'Unknown';
+  
+  if (totalElements <= 10 && businessElements <= 5) return 'Simple';
+  if (totalElements <= 25 && businessElements <= 15) return 'Moderate';
+  if (totalElements <= 50 && businessElements <= 30) return 'Complex';
+  return 'Very Complex';
+}
 
 // function cleanCache() {
 //   
@@ -736,7 +1100,7 @@ async function extractFileContent(file) {
       // Enhanced image analysis with deterministic counting
       const imageAnalysis = analyzeImageContent(originalName, extension);
       
-      const result = `# Image File Analysis\n\n## File: ${originalName}\n\n### Image Type: ${extension.toUpperCase()}\n\n### Analysis:\n${imageAnalysis.description}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${imageAnalysis.businessElements.count}\n- **Quality Score**: ${imageAnalysis.businessElements.qualityMetrics?.qualityScore || 'N/A'}%\n- **High Confidence Elements**: ${imageAnalysis.businessElements.qualityMetrics?.highConfidenceElements || 'N/A'}\n- **Testable Elements**: ${imageAnalysis.businessElements.qualityMetrics?.testableElements || 'N/A'}\n\n### Element Breakdown:\n- **Business Processes**: ${imageAnalysis.businessElements.breakdown?.byType?.['Business Process'] || 0}\n- **System Requirements**: ${imageAnalysis.businessElements.breakdown?.byType?.['System Requirement'] || 0}\n- **Decision Points**: ${imageAnalysis.businessElements.breakdown?.byType?.['Decision Point'] || 0}\n- **Process Steps**: ${imageAnalysis.businessElements.breakdown?.byType?.['Process Step'] || 0}\n- **Business Rules**: ${imageAnalysis.businessElements.breakdown?.byType?.['Business Rule'] || 0}\n- **User Actions**: ${imageAnalysis.businessElements.breakdown?.byType?.['User Action'] || 0}\n- **Validation Requirements**: ${imageAnalysis.businessElements.breakdown?.byType?.['Validation Requirement'] || 0}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${imageAnalysis.businessElements.count} business requirements** using consistent patterns across all file types.\n\n### Note:\nThis is an image file that may require manual review or OCR processing for detailed text extraction.`;
+      const result = `# Image File Analysis\n\n## File: ${originalName}\n\n### Image Type: ${extension.toUpperCase()}\n\n### Analysis:\n${imageAnalysis.description}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${imageAnalysis.businessElements.count}\n- **Business Processes**: ${imageAnalysis.businessElements.breakdown.processes}\n- **System Requirements**: ${imageAnalysis.businessElements.breakdown.requirements}\n- **Decision Points**: ${imageAnalysis.businessElements.breakdown.decisions}\n- **Process Steps**: ${imageAnalysis.businessElements.breakdown.steps}\n- **Business Flows**: ${imageAnalysis.businessElements.breakdown.flows}\n- **User Actions**: ${imageAnalysis.businessElements.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${imageAnalysis.businessElements.count} business requirements** based on image content analysis.\n\n### Note:\nThis is an image file that may require manual review or OCR processing for detailed text extraction.`;
       
       
       
@@ -939,15 +1303,18 @@ async function extractFileContent(file) {
         }
         
         if (extractedContent.trim()) {
-          // Use universal business requirements extractor for consistent analysis
-          const universalAnalysis = universalExtract(extractedContent, {
-            minLineLength: 20,
-            maxLineLength: 500,
-            enableStrictMode: false,
-            includeLowPriority: true
-          });
+          // Use deterministic counting for business elements
+          const businessElementCount = detectBusinessElements(extractedContent);
           
-          const result = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${universalAnalysis.businessElements.count}\n- **Quality Score**: ${universalAnalysis.qualityMetrics.qualityScore}%\n- **High Confidence Elements**: ${universalAnalysis.qualityMetrics.highConfidenceElements}\n- **Testable Elements**: ${universalAnalysis.qualityMetrics.testableElements}\n\n### Element Breakdown:\n- **Business Processes**: ${universalAnalysis.businessElements.breakdown.byType['Business Process'] || 0}\n- **System Requirements**: ${universalAnalysis.businessElements.breakdown.byType['System Requirement'] || 0}\n- **Decision Points**: ${universalAnalysis.businessElements.breakdown.byType['Decision Point'] || 0}\n- **Process Steps**: ${universalAnalysis.businessElements.breakdown.byType['Process Step'] || 0}\n- **Business Rules**: ${universalAnalysis.businessElements.breakdown.byType['Business Rule'] || 0}\n- **User Actions**: ${universalAnalysis.businessElements.breakdown.byType['User Action'] || 0}\n- **Validation Requirements**: ${universalAnalysis.businessElements.breakdown.byType['Validation Requirement'] || 0}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${universalAnalysis.businessElements.count} business requirements** using consistent patterns across all file types. Quality Score: ${universalAnalysis.qualityMetrics.qualityScore}%`;
+          const result = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
+          
+          
+          
+          
+          
+          
+          
+          // console.log(`📋 Processed content`);
           
           return result;
         } else {
@@ -1127,15 +1494,17 @@ async function extractFileContent(file) {
         
         if (extractedContent.trim()) {
           // Use deterministic counting for business elements
-          // Use universal business requirements extractor for consistent analysis
-          const universalAnalysis = universalExtract(extractedContent, {
-            minLineLength: 20,
-            maxLineLength: 500,
-            enableStrictMode: false,
-            includeLowPriority: true
-          });
+          const businessElementCount = detectBusinessElements(extractedContent);
           
-          const result = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${universalAnalysis.businessElements.count}\n- **Quality Score**: ${universalAnalysis.qualityMetrics.qualityScore}%\n- **High Confidence Elements**: ${universalAnalysis.qualityMetrics.highConfidenceElements}\n- **Testable Elements**: ${universalAnalysis.qualityMetrics.testableElements}\n\n### Element Breakdown:\n- **Business Processes**: ${universalAnalysis.businessElements.breakdown.byType['Business Process'] || 0}\n- **System Requirements**: ${universalAnalysis.businessElements.breakdown.byType['System Requirement'] || 0}\n- **Decision Points**: ${universalAnalysis.businessElements.breakdown.byType['Decision Point'] || 0}\n- **Process Steps**: ${universalAnalysis.businessElements.breakdown.byType['Process Step'] || 0}\n- **Business Rules**: ${universalAnalysis.businessElements.breakdown.byType['Business Rule'] || 0}\n- **User Actions**: ${universalAnalysis.businessElements.breakdown.byType['User Action'] || 0}\n- **Validation Requirements**: ${universalAnalysis.businessElements.breakdown.byType['Validation Requirement'] || 0}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${universalAnalysis.businessElements.count} business requirements** using consistent patterns across all file types. Quality Score: ${universalAnalysis.qualityMetrics.qualityScore}%`;
+          const result = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Business Element Analysis:\n- **Total Business Elements**: ${businessElementCount.count}\n- **Business Processes**: ${businessElementCount.breakdown.processes}\n- **System Requirements**: ${businessElementCount.breakdown.requirements}\n- **Decision Points**: ${businessElementCount.breakdown.decisions}\n- **Process Steps**: ${businessElementCount.breakdown.steps}\n- **Business Flows**: ${businessElementCount.breakdown.flows}\n- **User Actions**: ${businessElementCount.breakdown.userActions}\n\n### Deterministic Count:\nThis analysis identified **${businessElementCount.count} business requirements** based on actual content analysis.`;
+          
+          
+          
+          
+          
+          
+          
+          // console.log(`📋 Processed content`);
           
           return result;
         } else {
@@ -1157,325 +1526,30 @@ async function extractFileContent(file) {
       }
     } else if (isVisioFile(mimeType, extension)) {
       try {
-        // VSDX files are essentially ZIP files containing XML
-        const zip = new JSZip();
-        const zipContent = await zip.loadAsync(buffer);
+        // Use enhanced Visio flowchart analysis
+        const analysis = await analyzeVisioFlowchart(buffer, originalName);
         
-        let extractedContent = '';
-        
-        // Extract business requirements from diagram structure
-        if (zipContent.files['visio/document.xml']) {
-          const documentXml = await zipContent.files['visio/document.xml'].async('string');
-          
-          // Extract page information for business context with deterministic ordering
-          const pageMatches = documentXml.match(/<Page[^>]*Name="([^"]*)"[^>]*>/g);
-          if (pageMatches) {
-            extractedContent += `\n\n## Business Process Pages:\n`;
-            // Sort page matches for consistency
-            const sortedPageMatches = pageMatches.sort();
-            sortedPageMatches.forEach((match, index) => {
-              const nameMatch = match.match(/Name="([^"]*)"/);
-              if (nameMatch) {
-                const pageName = nameMatch[1];
-                // Filter out technical page names and focus on business process names
-                if (!pageName.match(/^(Page|Sheet|Background|Layer)/i)) {
-                  extractedContent += `Business Process: ${pageName}\n`;
-                }
-              }
-            });
-          }
-        }
-        
-        // Extract business requirements from all pages with deterministic ordering
-        const pageFiles = Object.keys(zipContent.files).filter(file => 
-          file.includes('visio/pages/') && file.endsWith('.xml')
-        ).sort(); // Sort for consistency
-        
-        // Enhanced flowchart analysis
-        let totalShapes = 0;
-        let totalConnections = 0;
-        let decisionPoints = 0;
-        let processSteps = 0;
-        let startPoints = 0;
-        let endPoints = 0;
-        
-        for (const pageFile of pageFiles) {
-          try {
-            const pageXml = await zipContent.files[pageFile].async('string');
-            
-            // Extract business process elements and their relationships
-            const businessElements = [];
-            
-            // Enhanced shape analysis for flowchart elements with deterministic processing
-            const shapeMatches = pageXml.match(/<Shape[^>]*>.*?<\/Shape>/gs);
-            if (shapeMatches) {
-              totalShapes += shapeMatches.length;
-              
-              // Sort shapes by their position in the XML for consistency
-              const sortedShapes = shapeMatches.sort((a, b) => {
-                const aPos = pageXml.indexOf(a);
-                const bPos = pageXml.indexOf(b);
-                return aPos - bPos;
-              });
-              
-              sortedShapes.forEach((shape, index) => {
-                // Extract shape text and properties
-                const textMatches = shape.match(/<Text[^>]*>.*?<\/Text>/gs);
-                const nameMatches = shape.match(/Name="([^"]*)"/);
-                const typeMatches = shape.match(/Type="([^"]*)"/);
-                const masterMatches = shape.match(/Master="([^"]*)"/);
-                
-                if (textMatches || nameMatches) {
-                  const shapeText = textMatches ? 
-                    textMatches.map(text => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()).join(' ') :
-                    (nameMatches ? nameMatches[1] : '');
-                  
-                  const shapeType = typeMatches ? typeMatches[1] : '';
-                  const masterType = masterMatches ? masterMatches[1] : '';
-                  
-                  // Enhanced flowchart element classification
-                  let elementType = 'Business Process Component';
-                  let flowchartRole = 'process';
-                  
-                  // Detect decision points (diamonds, gateways)
-                  if (shapeText.toLowerCase().includes('decision') || 
-                      shapeText.toLowerCase().includes('gateway') ||
-                      shapeText.toLowerCase().includes('if') ||
-                      shapeText.toLowerCase().includes('condition') ||
-                      masterType.toLowerCase().includes('diamond') ||
-                      masterType.toLowerCase().includes('gateway')) {
-                    elementType = 'Decision Point';
-                    flowchartRole = 'decision';
-                    decisionPoints++;
-                  }
-                  // Detect start/end points
-                  else if (shapeText.toLowerCase().includes('start') ||
-                           shapeText.toLowerCase().includes('begin') ||
-                           masterType.toLowerCase().includes('start')) {
-                    elementType = 'Start Point';
-                    flowchartRole = 'start';
-                    startPoints++;
-                  }
-                  else if (shapeText.toLowerCase().includes('end') ||
-                           shapeText.toLowerCase().includes('finish') ||
-                           shapeText.toLowerCase().includes('stop') ||
-                           masterType.toLowerCase().includes('end')) {
-                    elementType = 'End Point';
-                    flowchartRole = 'end';
-                    endPoints++;
-                  }
-                  // Detect process steps
-                  else if (shapeText.toLowerCase().includes('process') ||
-                           shapeText.toLowerCase().includes('step') ||
-                           shapeText.toLowerCase().includes('task') ||
-                           masterType.toLowerCase().includes('rectangle')) {
-                    elementType = 'Process Step';
-                    flowchartRole = 'process';
-                    processSteps++;
-                  }
-                  
-                  // Focus on business-relevant shapes
-                  if (shapeText.length > 3 && 
-                      !shapeText.match(/^(Shape|Text|Group|Container)/i) &&
-                      !shapeText.match(/^[0-9\s]+$/)) {
-                    
-                    businessElements.push({
-                      text: shapeText,
-                      type: shapeType,
-                      master: masterType,
-                      element: elementType,
-                      flowchartRole: flowchartRole,
-                      position: index + 1, // Use consistent index-based positioning
-                      xmlPosition: pageXml.indexOf(shape) // Store XML position for deterministic ordering
-                    });
-                  }
-                }
-              });
-            }
-            
-            // Enhanced connection analysis for business flows
-            const connectionMatches = pageXml.match(/<Connect[^>]*>/g);
-            if (connectionMatches) {
-              totalConnections += connectionMatches.length;
-              
-              connectionMatches.forEach((connection, index) => {
-                const fromMatches = connection.match(/FromSheet="([^"]*)"/);
-                const toMatches = connection.match(/ToSheet="([^"]*)"/);
-                const fromPartMatches = connection.match(/FromPart="([^"]*)"/);
-                const toPartMatches = connection.match(/ToPart="([^"]*)"/);
-                
-                if (fromMatches && toMatches) {
-                  // Find the connected elements to understand the flow
-                  const fromElement = businessElements.find(el => el.position.toString() === fromMatches[1]);
-                  const toElement = businessElements.find(el => el.position.toString() === toMatches[1]);
-                  
-                  let flowType = 'Standard Flow';
-                  let flowDescription = `Flow from ${fromElement ? fromElement.text : fromMatches[1]} to ${toElement ? toElement.text : toMatches[1]}`;
-                  
-                  // Enhanced flow classification
-                  if (fromElement && toElement) {
-                    if (fromElement.flowchartRole === 'decision' && toElement.flowchartRole === 'process') {
-                      flowType = 'Decision Flow';
-                      flowDescription = `Decision "${fromElement.text}" leads to process "${toElement.text}"`;
-                    } else if (fromElement.flowchartRole === 'process' && toElement.flowchartRole === 'decision') {
-                      flowType = 'Process to Decision';
-                      flowDescription = `Process "${fromElement.text}" leads to decision "${toElement.text}"`;
-                    } else if (fromElement.flowchartRole === 'start' && toElement.flowchartRole === 'process') {
-                      flowType = 'Start Flow';
-                      flowDescription = `Start point leads to process "${toElement.text}"`;
-                    } else if (fromElement.flowchartRole === 'process' && toElement.flowchartRole === 'end') {
-                      flowType = 'End Flow';
-                      flowDescription = `Process "${fromElement.text}" leads to end point`;
-                    }
-                  }
-                  
-                  businessElements.push({
-                    text: flowDescription,
-                    type: 'Connection',
-                    element: 'Business Flow',
-                    flowType: flowType,
-                    fromElement: fromElement ? fromElement.text : fromMatches[1],
-                    toElement: toElement ? toElement.text : toMatches[1],
-                    position: businessElements.length + 1
-                  });
-                }
-              });
-            }
-            
-            // Extract business requirements from the diagram elements with deterministic ordering
-            if (businessElements.length > 0) {
-              extractedContent += `\n\n### Business Requirements from Diagram:\n`;
-              
-              // Sort business elements by XML position for consistent ordering
-              businessElements.sort((a, b) => (a.xmlPosition || 0) - (b.xmlPosition || 0));
-              
-              // Group by element type for better organization
-              const processes = businessElements.filter(el => el.element === 'Business Process Component');
-              const flows = businessElements.filter(el => el.element === 'Business Flow');
-              
-              if (processes.length > 0) {
-                extractedContent += `\n#### Business Processes and Systems:\n`;
-                processes.forEach(process => {
-                  extractedContent += `- ${process.text}\n`;
-                });
-              }
-              
-              if (flows.length > 0) {
-                extractedContent += `\n#### Business Flows and Relationships:\n`;
-                flows.forEach(flow => {
-                  extractedContent += `- ${flow.text}\n`;
-                });
-              }
-              
-              // Generate business requirements based on the diagram structure
-              extractedContent += `\n\n#### Derived Business Requirements:\n`;
-              
-              // Create requirements based on process components with consistent ordering
-              processes.forEach((process, index) => {
-                const requirementText = process.text.replace(/[^\w\s]/g, ' ').trim();
-                if (requirementText.length > 5) {
-                  extractedContent += `- The system should support ${requirementText.toLowerCase()}\n`;
-                }
-              });
-              
-              // Create requirements based on business flows with consistent ordering
-              flows.forEach((flow, index) => {
-                const flowText = flow.text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-                if (flowText.length > 10) {
-                  extractedContent += `- The system should handle ${flowText.toLowerCase()}\n`;
-                }
-              });
-              
-              // Enhanced flowchart analysis summary
-              extractedContent += `\n#### Flowchart Analysis Summary:\n`;
-              extractedContent += `- **Total Elements**: ${totalShapes} shapes, ${totalConnections} connections\n`;
-              extractedContent += `- **Process Steps**: ${processSteps} identified\n`;
-              extractedContent += `- **Decision Points**: ${decisionPoints} identified\n`;
-              extractedContent += `- **Start Points**: ${startPoints} identified\n`;
-              extractedContent += `- **End Points**: ${endPoints} identified\n`;
-              
-              // Flow complexity assessment
-              if (decisionPoints > 5) {
-                extractedContent += `- **Complexity**: High - Multiple decision paths detected\n`;
-              } else if (decisionPoints > 2) {
-                extractedContent += `- **Complexity**: Medium - Several decision points\n`;
-              } else {
-                extractedContent += `- **Complexity**: Low - Linear process flow\n`;
-              }
-              
-              // Flow validation
-              if (startPoints === 0) {
-                extractedContent += `- **⚠️ Warning**: No start point detected\n`;
-              }
-              if (endPoints === 0) {
-                extractedContent += `- **⚠️ Warning**: No end point detected\n`;
-              }
-              if (decisionPoints > 0 && processSteps < decisionPoints) {
-                extractedContent += `- **⚠️ Warning**: More decisions than process steps - review flow logic\n`;
-              }
-            }
-            
-          } catch (error) {
-
-          }
-        }
-        
-        // Extract any embedded text or notes that might contain business requirements
-        const embeddedFiles = Object.keys(zipContent.files).filter(file => 
-          file.includes('embeddings/') || file.includes('media/') || file.includes('word/')
-        );
-        
-        if (embeddedFiles.length > 0) {
-          extractedContent += `\n\n### Additional Business Context:\n`;
-          for (const embeddedFile of embeddedFiles) {
-            try {
-              const embeddedContent = await zipContent.files[embeddedFile].async('string');
-              // Extract meaningful text from embedded content
-              const textMatches = embeddedContent.match(/<Text[^>]*>.*?<\/Text>/gs);
-              if (textMatches) {
-                const meaningfulTexts = textMatches
-                  .map(text => text.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim())
-                  .filter(text => text.length > 10 && !text.match(/^[0-9\s]+$/));
-                
-                if (meaningfulTexts.length > 0) {
-                  meaningfulTexts.forEach(text => {
-                    extractedContent += `- ${text}\n`;
-                  });
-                }
-              }
-            } catch (error) {
-              // Skip embedded files that can't be read as text
-            }
-          }
-        }
-        
-        if (extractedContent.trim()) {
+        if (analysis.businessElements.count > 0) {
           // Use universal business requirements extractor for consistent analysis
-          const universalAnalysis = universalExtract(extractedContent, {
+          const universalAnalysis = universalExtract(analysis.extractedContent, {
             minLineLength: 20,
             maxLineLength: 500,
             enableStrictMode: false,
             includeLowPriority: true
           });
           
-          const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Extracted Content:\n${extractedContent.trim()}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${universalAnalysis.businessElements.count}\n- **Quality Score**: ${universalAnalysis.qualityMetrics.qualityScore}%\n- **High Confidence Elements**: ${universalAnalysis.qualityMetrics.highConfidenceElements}\n- **Testable Elements**: ${universalAnalysis.qualityMetrics.testableElements}\n\n### Element Breakdown:\n- **Business Processes**: ${universalAnalysis.businessElements.breakdown.byType['Business Process'] || 0}\n- **System Requirements**: ${universalAnalysis.businessElements.breakdown.byType['System Requirement'] || 0}\n- **Decision Points**: ${universalAnalysis.businessElements.breakdown.byType['Decision Point'] || 0}\n- **Process Steps**: ${universalAnalysis.businessElements.breakdown.byType['Process Step'] || 0}\n- **Business Rules**: ${universalAnalysis.businessElements.breakdown.byType['Business Rule'] || 0}\n- **User Actions**: ${universalAnalysis.businessElements.breakdown.byType['User Action'] || 0}\n- **Validation Requirements**: ${universalAnalysis.businessElements.breakdown.byType['Validation Requirement'] || 0}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${universalAnalysis.businessElements.count} business requirements** using consistent patterns across all file types. Quality Score: ${universalAnalysis.qualityMetrics.qualityScore}%`;
+          const result = `# Enhanced Visio Flowchart Analysis\n\n## File: ${originalName}\n\n### Flowchart Metadata:\n- **Total Pages**: ${analysis.flowchartMetadata.totalPages}\n- **Total Shapes**: ${analysis.flowchartMetadata.totalShapes}\n- **Total Connectors**: ${analysis.flowchartMetadata.totalConnectors}\n- **Has Decision Points**: ${analysis.flowchartMetadata.hasDecisionPoints ? 'Yes' : 'No'}\n- **Has Process Flows**: ${analysis.flowchartMetadata.hasProcessFlows ? 'Yes' : 'No'}\n- **Complexity Level**: ${analysis.flowchartMetadata.complexity}\n\n### Extracted Content:\n${analysis.extractedContent}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${universalAnalysis.businessElements.count}\n- **Quality Score**: ${universalAnalysis.qualityMetrics.qualityScore}%\n- **High Confidence Elements**: ${universalAnalysis.qualityMetrics.highConfidenceElements}\n- **Testable Elements**: ${universalAnalysis.qualityMetrics.testableElements}\n\n### Element Breakdown:\n- **Business Processes**: ${universalAnalysis.businessElements.breakdown.byType['Business Process'] || 0}\n- **System Requirements**: ${universalAnalysis.businessElements.breakdown.byType['System Requirement'] || 0}\n- **Decision Points**: ${universalAnalysis.businessElements.breakdown.byType['Decision Point'] || 0}\n- **Process Steps**: ${universalAnalysis.businessElements.breakdown.byType['Process Step'] || 0}\n- **Business Rules**: ${universalAnalysis.businessElements.breakdown.byType['Business Rule'] || 0}\n- **User Actions**: ${universalAnalysis.businessElements.breakdown.byType['User Action'] || 0}\n- **Validation Requirements**: ${universalAnalysis.businessElements.breakdown.byType['Validation Requirement'] || 0}\n\n### Enhanced Analysis:\n${analysis.description}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${universalAnalysis.businessElements.count} business requirements** using consistent patterns across all file types. Quality Score: ${universalAnalysis.qualityMetrics.qualityScore}%`;
           
           return result;
         } else {
-          const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file contains visual elements that require manual analysis. The diagram structure and relationships should be reviewed manually to create appropriate test cases.`;
-          
-          
-          
+          const result = `# Enhanced Visio Flowchart Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio flowchart file was analyzed but no business elements were detected. The diagram may contain visual elements that require manual review to identify business requirements.`;
           
           return result;
         }
       } catch (zipError) {
         console.error(`Error processing Visio file ${originalName}:`, zipError);
         
-        const errorResult = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file requires manual analysis. Please review the diagram structure and create test cases based on the visual elements and relationships shown.`;
-        
-        
-        
+        const errorResult = `# Enhanced Visio Flowchart Analysis\n\n## File: ${originalName}\n\n### Error:\nFailed to analyze flowchart content: ${zipError.message}\n\n### Note:\nThis Visio flowchart file requires manual analysis. Please review the diagram structure and create test cases based on the visual elements and relationships.`;
         
         return errorResult;
       }
@@ -1537,268 +1611,6 @@ function processDocumentSections(content, fileName) {
   return sections;
 }
 
-// Enhanced Visio (.vsdx) flowchart analysis function
-async function analyzeVisioFlowchart(buffer, originalName) {
-  try {
-    const zip = new JSZip();
-    const zipContent = await zip.loadAsync(buffer);
-    
-    let extractedContent = '';
-    let businessElements = [];
-    let elementCount = 0;
-    
-    // Extract Visio drawing pages
-    const drawingFiles = Object.keys(zipContent.files).filter(file => 
-      file.includes('visio/pages/page') && file.endsWith('.xml')
-    );
-    
-    // Extract master shapes for additional context
-    const masterFiles = Object.keys(zipContent.files).filter(file => 
-      file.includes('visio/masters/master') && file.endsWith('.xml')
-    );
-    
-    // Process each drawing page
-    for (const drawingFile of drawingFiles) {
-      try {
-        const pageXml = await zipContent.files[drawingFile].async('string');
-        const pageAnalysis = analyzeVisioXmlContent(pageXml, drawingFile);
-        
-        extractedContent += `\n\n## Page: ${drawingFile}\n${pageAnalysis.content}`;
-        businessElements.push(...pageAnalysis.elements);
-        elementCount += pageAnalysis.elements.length;
-      } catch (error) {
-        console.error(`Error processing page ${drawingFile}:`, error);
-      }
-    }
-    
-    // Process master shapes for additional business context
-    for (const masterFile of masterFiles) {
-      try {
-        const masterXml = await zipContent.files[masterFile].async('string');
-        const masterAnalysis = analyzeVisioMasterShapes(masterXml);
-        
-        extractedContent += `\n\n## Master Shapes: ${masterFile}\n${masterAnalysis.content}`;
-        businessElements.push(...masterAnalysis.elements);
-        elementCount += masterAnalysis.elements.length;
-      } catch (error) {
-        console.error(`Error processing master ${masterFile}:`, error);
-      }
-    }
-    
-    // Calculate flowchart complexity
-    const complexity = calculateFlowchartComplexity({
-      totalShapes: businessElements.length,
-      decisionPoints: businessElements.filter(e => e.type === 'Decision Point').length,
-      processSteps: businessElements.filter(e => e.type === 'Process Step').length,
-      connectors: businessElements.filter(e => e.type === 'Connector').length
-    });
-    
-    // Generate comprehensive analysis
-    const analysis = {
-      businessElements: {
-        count: businessElements.length,
-        elements: businessElements,
-        breakdown: {
-          processes: businessElements.filter(e => e.type === 'Business Process').length,
-          requirements: businessElements.filter(e => e.type === 'System Requirement').length,
-          decisions: businessElements.filter(e => e.type === 'Decision Point').length,
-          steps: businessElements.filter(e => e.type === 'Process Step').length,
-          flows: businessElements.filter(e => e.type === 'Business Flow').length,
-          userActions: businessElements.filter(e => e.type === 'User Action').length,
-          shapes: businessElements.filter(e => e.type === 'Shape').length,
-          connectors: businessElements.filter(e => e.type === 'Connector').length
-        }
-      },
-      description: `Enhanced Visio analysis identified ${businessElements.length} business elements across ${drawingFiles.length} pages with ${complexity} complexity.`,
-      flowchartMetadata: {
-        totalPages: drawingFiles.length,
-        totalShapes: businessElements.filter(e => e.type === 'Shape').length,
-        totalConnectors: businessElements.filter(e => e.type === 'Connector').length,
-        hasDecisionPoints: businessElements.some(e => e.type === 'Decision Point'),
-        hasProcessFlows: businessElements.some(e => e.type === 'Business Flow'),
-        complexity: complexity
-      }
-    };
-    
-    return analysis;
-    
-  } catch (error) {
-    console.error(`Error analyzing Visio flowchart:`, error);
-    
-    return {
-      businessElements: {
-        count: 0,
-        elements: [],
-        breakdown: {
-          processes: 0,
-          requirements: 0,
-          decisions: 0,
-          steps: 0,
-          flows: 0,
-          userActions: 0,
-          shapes: 0,
-          connectors: 0
-        }
-      },
-      extractedContent: `# Visio Flowchart Analysis\n\n## File: ${originalName}\n\n### Error:\nFailed to analyze flowchart content: ${error.message}`,
-      flowchartMetadata: {
-        totalPages: 0,
-        totalShapes: 0,
-        totalConnectors: 0,
-        hasDecisionPoints: false,
-        hasProcessFlows: false,
-        complexity: 'Unknown'
-      }
-    };
-  }
-}
-
-// Helper function to analyze Visio XML content
-function analyzeVisioXmlContent(xmlContent, context) {
-  const elements = [];
-  let content = '';
-  
-  // Extract shapes and their text content
-  const shapeMatches = xmlContent.match(/<Shape[^>]*>.*?<\/Shape>/gs);
-  if (shapeMatches) {
-    shapeMatches.forEach((shape, index) => {
-      const shapeAnalysis = analyzeVisioShape(shape, index, context);
-      if (shapeAnalysis.element) {
-        elements.push(shapeAnalysis.element);
-      }
-      content += shapeAnalysis.content;
-    });
-  }
-  
-  return { elements, content };
-}
-
-// Helper function to analyze individual Visio shapes
-function analyzeVisioShape(shapeXml, index, context) {
-  let element = null;
-  let content = '';
-  
-  // Extract shape text
-  const textMatches = shapeXml.match(/<Text[^>]*>.*?<\/Text>/gs);
-  if (textMatches) {
-    const shapeText = textMatches.map(text => 
-      text.replace(/<\/?Text[^>]*>/g, '').trim()
-    ).join(' ').trim();
-    
-    if (shapeText.length > 0) {
-      // Analyze text for business elements
-      const businessElements = analyzeVisioTextForBusinessElements(shapeText, index, context);
-      if (businessElements.length > 0) {
-        element = businessElements[0]; // Take the first business element found
-      }
-      
-      content += `\nShape ${index + 1}: ${shapeText}`;
-    }
-  }
-  
-  return { element, content };
-}
-
-// Helper function to analyze Visio master shapes
-function analyzeVisioMasterShapes(masterXml) {
-  const elements = [];
-  let content = '';
-  
-  // Extract master shape definitions
-  const masterMatches = masterXml.match(/<Master[^>]*>.*?<\/Master>/gs);
-  if (masterMatches) {
-    masterMatches.forEach((master, index) => {
-      const nameMatches = master.match(/Name="([^"]*)"/);
-      if (nameMatches) {
-        const masterName = nameMatches[1];
-        content += `\nMaster Shape ${index + 1}: ${masterName}`;
-        
-        // Add business context based on master name
-        if (masterName.toLowerCase().includes('decision')) {
-          elements.push({
-            type: 'Decision Point',
-            text: `Master: ${masterName}`,
-            lineNumber: index + 1,
-            section: 'Master Shapes'
-          });
-        } else if (masterName.toLowerCase().includes('process')) {
-          elements.push({
-            type: 'Process Step',
-            text: `Master: ${masterName}`,
-            lineNumber: index + 1,
-            section: 'Master Shapes'
-          });
-        }
-      }
-    });
-  }
-  
-  return { elements, content };
-}
-
-// Helper function to analyze Visio text for business elements
-function analyzeVisioTextForBusinessElements(text, lineNumber, context) {
-  const elements = [];
-  
-  // Simple business element detection based on text content
-  if (text.toLowerCase().includes('decision') || text.toLowerCase().includes('if') || text.toLowerCase().includes('when')) {
-    elements.push({
-      type: 'Decision Point',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  } else if (text.toLowerCase().includes('process') || text.toLowerCase().includes('step') || text.toLowerCase().includes('action')) {
-    elements.push({
-      type: 'Process Step',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  } else if (text.toLowerCase().includes('start') || text.toLowerCase().includes('begin')) {
-    elements.push({
-      type: 'Business Process',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  } else if (text.toLowerCase().includes('end') || text.toLowerCase().includes('finish')) {
-    elements.push({
-      type: 'Business Process',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  } else if (text.toLowerCase().includes('user') || text.toLowerCase().includes('input')) {
-    elements.push({
-      type: 'User Action',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  } else {
-    // Default to generic shape
-    elements.push({
-      type: 'Shape',
-      text: text,
-      lineNumber: lineNumber,
-      section: context
-    });
-  }
-  
-  return elements;
-}
-
-// Helper function to calculate flowchart complexity
-function calculateFlowchartComplexity(breakdown) {
-  const totalElements = breakdown.totalShapes + breakdown.decisionPoints + breakdown.processSteps + breakdown.connectors;
-  
-  if (totalElements <= 10) return 'simple';
-  if (totalElements <= 25) return 'moderate';
-  if (totalElements <= 50) return 'complex';
-  return 'very complex';
-}
-
 module.exports = {
   extractFileContent,
   processDocumentSections,
@@ -1806,7 +1618,13 @@ module.exports = {
   isExcelFile,
   isPowerPointFile,
   isVisioFile,
+  // Deterministic counting functions
+  countBusinessElementsDeterministically,
+  detectBusinessElements,
   
   // Enhanced Visio analysis
-  analyzeVisioFlowchart
+  analyzeVisioFlowchart,
+  
+  // Configuration adjustment function
+  adjustBusinessElementConfig
 }; 

@@ -2,7 +2,7 @@ const express = require('express');
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile, countBusinessElementsDeterministically } = require('../utils/fileProcessor');
+const { extractFileContent, processDocumentSections, isImageFile, isExcelFile, isPowerPointFile, isVisioFile } = require('../utils/fileProcessor');
 const { generateTestCases, refineTestCases, extractBusinessRequirements, isAzureOpenAIConfigured } = require('../services/openaiService');
 const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMainFolders, getSubfolders, searchFolders, isZephyrConfigured, discoverTraceabilityEndpoints, addJiraTicketToCoverage } = require('../services/zephyrService');
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
@@ -1086,7 +1086,13 @@ router.post('/analyze-business-elements', async (req, res) => {
     }
 
     // Analyze content deterministically
-    const analysis = countBusinessElementsDeterministically(content);
+          const { extractBusinessRequirements: universalExtract } = require('../utils/universalBusinessExtractor');
+      const analysis = universalExtract(content, {
+        minLineLength: 20,
+        maxLineLength: 500,
+        enableStrictMode: false,
+        includeLowPriority: true
+      });
 
     res.json({
       success: true,
