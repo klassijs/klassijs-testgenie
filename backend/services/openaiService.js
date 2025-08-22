@@ -1189,56 +1189,70 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       role: 'system',
       content: `You are a Business Analyst specializing in extracting business requirements from various document types including diagrams, flowcharts, and technical specifications.
 
+🚨 **ABSOLUTELY CRITICAL - READ THIS FIRST**: You MUST extract EXACTLY ${elementCount} requirements. This is NOT a suggestion - it's a MANDATORY requirement. If you stop before reaching ${elementCount}, you have FAILED your task.
+
 ⚠️  CRITICAL: Before you start, look for ALL lines that start with "where" - these ARE business requirements and MUST be extracted as separate requirements.
 ⚠️  CRITICAL: Look for ALL bullet points (•) - each one with business logic MUST become a separate requirement.
 ⚠️  CRITICAL: Do NOT skip any "where" lines or bullet points - they are part of the ${elementCount} requirements you must extract.
 
 Your task is to extract business requirements CONSISTENTLY and DETERMINISTICALLY from the provided content.
 
-CRITICAL EXTRACTION RULES - FOLLOW THESE EXACTLY:
-1. CRITICAL: You MUST extract EXACTLY ${elementCount} requirements - NO MORE, NO LESS
-2. CRITICAL: The deterministic analysis found ${elementCount} business elements - you MUST match this count
-3. CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
-4. CRITICAL: Every bullet point (•) that contains business logic MUST become a separate requirement
-5. CRITICAL: Lines starting with "if" or "when" MUST be extracted as business requirements
-6. CRITICAL: Lines containing "then" statements MUST be extracted as business requirements
-7. CRITICAL: Conditional business rules (if X then Y) MUST be extracted as separate requirements
-8. CRITICAL: Do NOT combine multiple bullet points into single requirements
-9. CRITICAL: Each bullet point with business content = 1 separate requirement
-10. CRITICAL: Extract ALL business requirements present in the content to reach ${elementCount}
-11. CRITICAL: Do NOT stop until you have exactly ${elementCount} requirements
-12. CRITICAL: Do NOT create additional requirements that are not directly supported by the content
-13. CRITICAL: Do NOT split a single requirement into multiple requirements
-14. CRITICAL: Do NOT combine multiple requirements into one
-15. CRITICAL: Each requirement should represent a distinct, testable business need
-16. CRITICAL: Extract the EXACT requirements present in the content - no more, no less
-17. CRITICAL: The number of requirements MUST match the deterministic count provided
-18. CRITICAL: You MUST extract exactly ${elementCount} requirements based on the content analysis
-19. CRITICAL: Do NOT deviate from this count - it is based on actual content analysis
-20. CRITICAL: If you cannot find ${elementCount} requirements, you are not analyzing the content thoroughly enough
+🚨 **MANDATORY EXTRACTION RULES - VIOLATION = FAILURE**:
+1. 🚨 **MANDATORY**: You MUST extract EXACTLY ${elementCount} requirements - NO MORE, NO LESS
+2. 🚨 **MANDATORY**: The deterministic analysis found ${elementCount} business elements - you MUST match this count
+3. 🚨 **MANDATORY**: Lines starting with "where" ARE business requirements and MUST be extracted
+4. 🚨 **MANDATORY**: Every bullet point (•) that contains business logic MUST become a separate requirement
+5. 🚨 **MANDATORY**: Lines starting with "if" or "when" MUST be extracted as business requirements
+6. 🚨 **MANDATORY**: Lines containing "then" statements MUST be extracted as business requirements
+7. 🚨 **MANDATORY**: Conditional business rules (if X then Y) MUST be extracted as separate requirements
+8. 🚨 **MANDATORY**: Do NOT combine multiple bullet points into single requirements
+9. 🚨 **MANDATORY**: Each bullet point with business content = 1 separate requirement
+10. 🚨 **MANDATORY**: Extract ALL business requirements present in the content to reach ${elementCount}
+11. 🚨 **MANDATORY**: Do NOT stop until you have exactly ${elementCount} requirements
+12. 🚨 **MANDATORY**: Do NOT create additional requirements that are not directly supported by the content
+13. 🚨 **MANDATORY**: Do NOT split a single requirement into multiple requirements
+14. 🚨 **MANDATORY**: Do NOT combine multiple requirements into one
+15. 🚨 **MANDATORY**: Each requirement should represent a distinct, testable business need
+16. 🚨 **MANDATORY**: Extract the EXACT requirements present in the content - no more, no less
+17. 🚨 **MANDATORY**: The number of requirements MUST match the deterministic count provided
+18. 🚨 **MANDATORY**: You MUST extract exactly ${elementCount} requirements based on the content analysis
+19. 🚨 **MANDATORY**: Do NOT deviate from this count - it is based on actual content analysis
+20. 🚨 **MANDATORY**: If you cannot find ${elementCount} requirements, you are not analyzing the content thoroughly enough
 
-HIGH-DENSITY DOCUMENT EXTRACTION STRATEGY (${elementCount > 100 ? 'ENABLED' : 'N/A'}):
+🚨 **SYSTEMATIC EXTRACTION STRATEGY - MANDATORY FOR ALL DOCUMENTS**:
+21. 🚨 **MANDATORY**: Use a SYSTEMATIC approach - process the document LINE BY LINE
+22. 🚨 **MANDATORY**: Extract requirements from EVERY paragraph, list, and bullet point
+23. 🚨 **MANDATORY**: Do NOT skip any content - analyze EVERY line for potential requirements
+24. 🚨 **MANDATORY**: Use a CHECKLIST approach: mark each requirement as you extract it
+25. 🚨 **MANDATORY**: Count your requirements after each section to ensure you're on track
+26. 🚨 **MANDATORY**: If you're falling behind, extract requirements more aggressively from remaining sections
+27. 🚨 **MANDATORY**: Look for PATTERNS in requirements - similar requirements often appear in groups
+28. 🚨 **MANDATORY**: Use the requirement count as your TARGET - extract until you reach exactly ${elementCount}
+29. 🚨 **MANDATORY**: Do NOT stop until you have exactly ${elementCount} requirements
+30. 🚨 **MANDATORY**: If you reach the end and don't have ${elementCount}, go back and extract more aggressively
+
+🚨 **HIGH-DENSITY DOCUMENT EXTRACTION STRATEGY (${elementCount > 100 ? 'ENABLED' : 'N/A'})**:
 ${elementCount > 100 ? `
-21. CRITICAL: This is a HIGH-DENSITY document with ${elementCount} requirements - use SYSTEMATIC extraction
-22. CRITICAL: Process the document SECTION BY SECTION - do NOT try to extract all at once
-23. CRITICAL: For each section, extract ALL requirements before moving to the next section
-24. CRITICAL: Use a CHECKLIST approach: mark each requirement as you extract it
-25. CRITICAL: Count your requirements after each section to ensure you're on track
-26. CRITICAL: If you're falling behind, extract requirements more aggressively from remaining sections
-27. CRITICAL: Look for PATTERNS in requirements - similar requirements often appear in groups
-28. CRITICAL: Extract requirements from EVERY paragraph, list, and bullet point
-29. CRITICAL: Do NOT skip any content - analyze EVERY line for potential requirements
-30. CRITICAL: Use the requirement count as your TARGET - extract until you reach exactly ${elementCount}
+31. 🚨 **MANDATORY**: This is a HIGH-DENSITY document with ${elementCount} requirements - use SYSTEMATIC extraction
+32. 🚨 **MANDATORY**: Process the document SECTION BY SECTION - do NOT try to extract all at once
+33. 🚨 **MANDATORY**: For each section, extract ALL requirements before moving to the next section
+34. 🚨 **MANDATORY**: Use a CHECKLIST approach: mark each requirement as you extract it
+35. 🚨 **MANDATORY**: Count your requirements after each section to ensure you're on track
+36. 🚨 **MANDATORY**: If you're falling behind, extract requirements more aggressively from remaining sections
+37. 🚨 **MANDATORY**: Look for PATTERNS in requirements - similar requirements often appear in groups
+38. 🚨 **MANDATORY**: Extract requirements from EVERY paragraph, list, and bullet point
+39. 🚨 **MANDATORY**: Do NOT skip any content - analyze EVERY line for potential requirements
+40. 🚨 **MANDATORY**: Use the requirement count as your TARGET - extract until you reach exactly ${elementCount}
 ` : ''}
 
-CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS:
+🚨 **CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS**:
 • where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
 • where Submission type is "publish" then content appears in PUBLISHED state → BR-002 (generate new acceptance criteria)
 • verify folder exclusion logic works as expected → BR-003 (use existing acceptance criteria if available)
 • verify file exclusion logic works as expected → BR-004 (use existing acceptance criteria if available)
 
 ${elementCount > 100 ? `
-HIGH-DENSITY EXTRACTION EXAMPLES:
+🚨 **HIGH-DENSITY EXTRACTION EXAMPLES - EXTRACT EVERY SINGLE ONE**:
 • "The system must validate user input" → BR-005 (extract as separate requirement)
 • "Users can access their profiles" → BR-006 (extract as separate requirement)
 • "Administrators manage permissions" → BR-007 (extract as separate requirement)
@@ -1246,7 +1260,7 @@ HIGH-DENSITY EXTRACTION EXAMPLES:
 • "Reports are generated monthly" → BR-009 (extract as separate requirement)
 • "Audit logs are maintained" → BR-010 (extract as separate requirement)
 
-PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS:
+🚨 **PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS - EXTRACT ALL**:
 - Look for repeated phrases: "must", "should", "will", "can", "need"
 - Extract each numbered/bulleted item as a separate requirement
 - Every conditional statement (if/when/where) = 1 requirement
@@ -1255,59 +1269,59 @@ PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS:
 - Every system behavior = 1 requirement
 ` : ''}
 
-ACCEPTANCE CRITERIA EXAMPLES:
+🚨 **ACCEPTANCE CRITERIA EXAMPLES**:
 - For "where" lines: "Given a user submits content with type 'preview', When the submission is processed, Then the content appears in UNPUBLISHED state"
 - For bullet points: "Given a user accesses the system, When folder exclusion logic is triggered, Then the excluded folders are properly filtered out"
 - For existing criteria: Copy the exact "Given...When...Then" format from the document
 
-ACCEPTANCE CRITERIA HANDLING:
+🚨 **ACCEPTANCE CRITERIA HANDLING**:
 - For requirements with existing acceptance criteria: COPY them exactly as written
 - For "where" lines and bullet points without acceptance criteria: GENERATE new Given-When-Then format
 - EACH "where" line = 1 requirement. EACH bullet point = 1 requirement. NEVER combine them.
 - EVERY requirement MUST have acceptance criteria - NO EXCEPTIONS
 
-REQUIRED OUTPUT FORMAT:
+🚨 **REQUIRED OUTPUT FORMAT**:
 Create a markdown table with these EXACT columns and format:
 
 | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
 |----------------|----------------------|---------------------|------------|
 
-CRITICAL: You MUST use the EXACT format above with pipe symbols (|) and dashes (-) for the table structure.
-CRITICAL: Each requirement MUST be on a separate row starting with | BR-001 |, | BR-002 |, etc.
-CRITICAL: Do NOT use any other table format - only the markdown table format shown above.
+🚨 **CRITICAL**: You MUST use the EXACT format above with pipe symbols (|) and dashes (-) for the table structure.
+🚨 **CRITICAL**: Each requirement MUST be on a separate row starting with | BR-001 |, | BR-002 |, etc.
+🚨 **CRITICAL**: Do NOT use any other table format - only the markdown table format shown above.
 
-REQUIREMENT ID FORMAT:
+🚨 **REQUIREMENT ID FORMAT**:
 - Use sequential numbering: BR-001, BR-002, BR-003, etc.
 - Do NOT skip numbers or use random identifiers
 - Start with BR-001 and increment sequentially
-- You MUST have exactly ${elementCount} requirements
+- 🚨 **MANDATORY**: You MUST have exactly ${elementCount} requirements
 
-BUSINESS REQUIREMENT RULES:
+🚨 **BUSINESS REQUIREMENT RULES**:
 - Extract ONLY what the system should do based on the content
 - Do NOT add features that are not mentioned
 - Do NOT create requirements for edge cases unless explicitly stated
 - Keep requirements focused and specific to the content provided
 - Base requirements on the business elements found in the content
-- CRITICAL: Lines starting with "where" ARE business requirements and MUST be extracted
-- CRITICAL: Conditional logic (if/when/where) represents business rules that MUST be extracted
-- CRITICAL: Every bullet point with business logic MUST become a separate requirement
-- CRITICAL: Do NOT skip any lines that contain business logic, conditions, or system behavior
+- 🚨 **CRITICAL**: Lines starting with "where" ARE business requirements and MUST be extracted
+- 🚨 **CRITICAL**: Conditional logic (if/when/where) represents business rules that MUST be extracted
+- 🚨 **CRITICAL**: Every bullet point with business logic MUST become a separate requirement
+- 🚨 **CRITICAL**: Do NOT skip any lines that contain business logic, conditions, or system behavior
 
-ACCEPTANCE CRITERIA RULES:
-- CRITICAL: EVERY business requirement MUST have acceptance criteria - NO EXCEPTIONS
-- CRITICAL: Use EXISTING acceptance criteria from the document when available
-- CRITICAL: If a requirement already has acceptance criteria (like "Given...When...Then"), copy those EXACTLY
-- CRITICAL: For requirements without existing acceptance criteria (like "where" lines), generate new ones
-- CRITICAL: Generate new acceptance criteria for bullet points and "where" lines that don't have them
-- CRITICAL: Use Given-When-Then format for new acceptance criteria
-- CRITICAL: If you cannot create acceptance criteria for a requirement, DO NOT include that requirement
-- CRITICAL: Every row in your table MUST have all 4 columns filled: ID, Requirement, Acceptance Criteria, Complexity
+🚨 **ACCEPTANCE CRITERIA RULES**:
+- 🚨 **CRITICAL**: EVERY business requirement MUST have acceptance criteria - NO EXCEPTIONS
+- 🚨 **CRITICAL**: Use EXISTING acceptance criteria from the document when available
+- 🚨 **CRITICAL**: If a requirement already has acceptance criteria (like "Given...When...Then"), copy those EXACTLY
+- 🚨 **CRITICAL**: For requirements without existing acceptance criteria (like "where" lines), generate new ones
+- 🚨 **CRITICAL**: Generate new acceptance criteria for bullet points and "where" lines that don't have them
+- 🚨 **CRITICAL**: Use Given-When-Then format for new acceptance criteria
+- 🚨 **CRITICAL**: If you cannot create acceptance criteria for a requirement, DO NOT include that requirement
+- 🚨 **CRITICAL**: Every row in your table MUST have all 4 columns filled: ID, Requirement, Acceptance Criteria, Complexity
 - Acceptance criteria should be specific, measurable, and testable
 - Base acceptance criteria ONLY on the content provided
 - Do NOT add acceptance criteria for features not mentioned
 
-COMPLEXITY CALCULATION RULES:
-- CRITICAL: Analyze EACH requirement individually for its specific complexity
+🚨 **COMPLEXITY CALCULATION RULES**:
+- 🚨 **CRITICAL**: Analyze EACH requirement individually for its specific complexity
 - NEVER apply the same complexity to all requirements
 - NEVER use global document complexity for individual requirements
 - For each requirement, calculate the cyclomatic complexity using this ACCURATE formula:
@@ -1322,98 +1336,41 @@ COMPLEXITY CALCULATION RULES:
 - Edges include: sequence flows, message flows, conditional flows, default flows
 - If a requirement involves workflows or decision logic, provide detailed complexity analysis
 
-COMPLEXITY FORMAT - MANDATORY:
-- CRITICAL: You MUST use the EXACT format: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
-- CRITICAL: Do NOT abbreviate or shorten the complexity format
-- CRITICAL: Do NOT use formats like "CC: 1, Paths: 1" - this is INVALID
-- CRITICAL: Every complexity entry MUST have all 4 elements: CC, Decision Points, Activities, Paths
+🚨 **COMPLEXITY FORMAT - MANDATORY**:
+- 🚨 **CRITICAL**: You MUST use the EXACT format: "CC: [number], Decision Points: [count], Activities: [count], Paths: [estimated paths]"
+- 🚨 **CRITICAL**: Do NOT abbreviate or shorten the complexity format
+- 🚨 **CRITICAL**: Do NOT use formats like "CC: 1, Paths: 1" - this is INVALID
+- 🚨 **CRITICAL**: Every complexity entry MUST have all 4 elements: CC, Decision Points, Activities, Paths
 
-COMPLEXITY EXAMPLES - COPY EXACTLY:
+🚨 **COMPLEXITY EXAMPLES - COPY EXACTLY**:
 - Simple requirement: "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
 - Medium complexity: "CC: 3, Decision Points: 2, Activities: 2, Paths: 3"
 - Complex workflow: "CC: 8, Decision Points: 6, Activities: 4, Paths: 8"
 - Conditional logic: "CC: 2, Decision Points: 1, Activities: 1, Paths: 2"
 
-VALIDATION:
+🚨 **VALIDATION**:
 - If you cannot calculate all 4 elements, use "CC: 1, Decision Points: 0, Activities: 1, Paths: 1"
 - NEVER output incomplete complexity information
 - NEVER use abbreviated formats
 
-CONSISTENCY REQUIREMENTS:
+🚨 **CONSISTENCY REQUIREMENTS**:
 - The same content should ALWAYS produce the same requirements
 - Do NOT be creative or add requirements that are not explicitly supported
 - Focus on extracting what is actually present in the content
 - Extract requirements based on the deterministic count, not arbitrary numbers
 - Be consistent in identifying and extracting the same requirements from the same content
 
-SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT:
+🚨 **SPECIAL INSTRUCTIONS FOR DIAGRAM CONTENT**:
 - When analyzing diagram content, focus on business processes, systems, actors, and flows
-- If the diagram is a flowchart, extract the requirements from the flowchart
-- Extract requirements from business process components and their relationships
-- Convert visual elements into functional requirements
-- Identify data flows, system integrations, and user interactions
-- Look for business rules, decision points, and process steps
-- Count decision points (gateways) and activities for complexity calculation
 
-SPECIAL INSTRUCTIONS FOR BULLET POINTS AND CONDITIONAL LOGIC:
-- REMINDER: Lines starting with "where" ARE business requirements and MUST be extracted
-- REMINDER: Every bullet point (•) that contains business logic MUST become a separate requirement
-- REMINDER: Lines starting with "if" or "when" MUST be extracted as business requirements
-- REMINDER: Lines containing "then" statements MUST be extracted as business requirements
-- REMINDER: Conditional business rules (if X then Y) MUST be extracted as separate requirements
-- REMINDER: Do NOT combine multiple bullet points into single requirements
-- REMINDER: Each bullet point with business content = 1 separate requirement
-- REMINDER: The deterministic count includes ALL bullet points with business logic
+🚨 **FINAL VALIDATION - MANDATORY**:
+- 🚨 **MANDATORY**: Before submitting, count your requirements
+- 🚨 **MANDATORY**: You MUST have exactly ${elementCount} requirements
+- 🚨 **MANDATORY**: If you don't have ${elementCount}, you have FAILED
+- 🚨 **MANDATORY**: Do NOT submit until you have exactly ${elementCount} requirements
+- 🚨 **MANDATORY**: This is a BINARY requirement - either you have ${elementCount} or you FAIL
 
-FINAL REQUIREMENTS:
-- Requirements are written in clear, concise, and testable language
-- Acceptance criteria follow the Given-When-Then format where applicable
-- Start directly with the table, no explanations
-- EVERY business requirement MUST have acceptance criteria - this is mandatory
-- EVERY requirement MUST include complexity analysis in the Complexity column
-- BE CONSISTENT - same input should produce same output
-
-🚨 FINAL COUNT REQUIREMENT:
-- CRITICAL: You MUST extract EXACTLY ${elementCount} requirements
-- CRITICAL: Do NOT stop until you have ${elementCount} requirements
-- CRITICAL: The deterministic analysis found ${elementCount} elements - match this count
-- CRITICAL: If you have fewer than ${elementCount} requirements, you are missing content
-- CRITICAL: Analyze the content more thoroughly to find ALL business requirements
-
-REMINDER: You MUST extract EACH "where" line and EACH bullet point as a separate requirement.
-
-DETERMINISTIC PROCESSING:
-- Process content from top to bottom, left to right
-- Extract requirements in the order they appear in the content
-- Use systematic approach: focus on the business elements already identified
-- Maintain consistent element ordering and processing sequence
-- The deterministic count of ${elementCount} is your target - do not deviate
-
-CONTENT ANALYSIS CONTEXT:
-The document has been pre-analyzed deterministically and contains:
-- **Total Business Elements**: ${elementCount}
-- **Business Processes**: ${businessElementCount.businessElements?.breakdown?.byType?.['Business Process'] || 0}
-- **System Requirements**: ${businessElementCount.businessElements?.breakdown?.byType?.['System Requirement'] || 0}
-- **Decision Points**: ${businessElementCount.businessElements?.breakdown?.byType?.['Decision Point'] || 0}
-- **Process Steps**: ${businessElementCount.businessElements?.breakdown?.byType?.['Process Step'] || 0}
-- **Business Rules**: ${businessElementCount.businessElements?.breakdown?.byType?.['Business Rule'] || 0}
-- **User Actions**: ${businessElementCount.businessElements?.breakdown?.byType?.['User Action'] || 0}
-
-🚨 CONTENT LENGTH ANALYSIS:
-- **Document Length**: ${processedContent.length} characters
-- **Expected Requirements**: ${elementCount}
-- **Content Density**: ${Math.round(elementCount / (processedContent.length / 1000))} requirements per 1000 characters
-- **Analysis Required**: This document contains substantial business content that MUST be fully analyzed
-
-⚠️  CRITICAL INSTRUCTION:
-- The document contains ${elementCount} business elements
-- You MUST extract ALL of them as separate requirements
-- Do NOT stop until you have ${elementCount} requirements
-- If you cannot find ${elementCount} requirements, you are missing content
-- Analyze EVERY section, paragraph, and line for business requirements
-- Look for hidden requirements, implicit business rules, and process steps
-
-Use this analysis to guide your requirement extraction. Extract exactly ${elementCount} requirements based on these identified business elements.`
+🚨 **REMEMBER**: Your ONLY goal is to extract exactly ${elementCount} requirements. Nothing else matters.`
     },
     {
       role: 'user',
@@ -1715,6 +1672,114 @@ Content: ${processedContent.substring(0, 20000)}`
         console.warn(`⚠️  [${requestId}] CRITICAL MISMATCH: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
         console.warn(`⚠️  [${requestId}] This indicates the AI is not following the deterministic count requirement`);
         
+        // 🚨 IMPLEMENT CHUNKED EXTRACTION SYSTEM
+        const extractionRate = (requirementCount / expectedCount) * 100;
+        console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: AI extracted ${extractionRate.toFixed(1)}% of requirements. Implementing 1/3 chunked extraction...`);
+        
+        // Always do 3 passes of 1/3 each for complete coverage
+        console.log(`🚀 [${requestId}] CHUNKED EXTRACTION: Starting 3-pass extraction (1/3 each) for complete coverage`);
+        
+        try {
+            // Calculate chunk sizes - always 3 equal parts
+            const totalRequirements = expectedCount;
+            const chunkSize = Math.ceil(totalRequirements / 3);
+            
+            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Breaking ${totalRequirements} total requirements into 3 chunks of ~${chunkSize} each`);
+            
+            let allExtractedRequirements = [];
+            
+            // Pass 1: Extract first 1/3 (BR-001 to BR-090 for 270 reqs)
+            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 1 - Extracting first ${chunkSize} requirements (BR-001 to BR-${chunkSize})...`);
+            const pass1Requirements = await extractRemainingRequirements(
+              requestId,
+              processedContent,
+              businessElementCount,
+              chunkSize,
+              '', // No previous requirements for first pass
+              enableLogging,
+              apiUrl,
+              OPENAI_API_KEY,
+              1, // pass number
+              'first third'
+            );
+            
+            if (pass1Requirements && pass1Requirements.length > 0) {
+              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 1 successful - extracted ${pass1Requirements.length} requirements`);
+              allExtractedRequirements = allExtractedRequirements.concat(pass1Requirements);
+            } else {
+              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 1 failed - continuing with other passes`);
+            }
+            
+            // Pass 2: Extract second 1/3 (BR-091 to BR-180 for 270 reqs)
+            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 2 - Extracting second ${chunkSize} requirements (BR-${chunkSize + 1} to BR-${chunkSize * 2})...`);
+            const pass2Requirements = await extractRemainingRequirements(
+              requestId,
+              processedContent,
+              businessElementCount,
+              chunkSize,
+              allExtractedRequirements.map(req => `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`).join('\n'),
+              enableLogging,
+              apiUrl,
+              OPENAI_API_KEY,
+              2, // pass number
+              'second third'
+            );
+            
+            if (pass2Requirements && pass2Requirements.length > 0) {
+              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 2 successful - extracted ${pass2Requirements.length} requirements`);
+              allExtractedRequirements = allExtractedRequirements.concat(pass2Requirements);
+            } else {
+              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 2 failed - continuing with final pass`);
+            }
+            
+            // Pass 3: Extract final 1/3 (BR-181 to BR-270 for 270 reqs)
+            const remainingForPass3 = totalRequirements - allExtractedRequirements.length;
+            if (remainingForPass3 > 0) {
+              console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 3 - Extracting final ${remainingForPass3} requirements (BR-${chunkSize * 2 + 1} to BR-${totalRequirements})...`);
+              const pass3Requirements = await extractRemainingRequirements(
+                requestId,
+                processedContent,
+                businessElementCount,
+                remainingForPass3,
+                allExtractedRequirements.map(req => `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`).join('\n'),
+                enableLogging,
+                apiUrl,
+                OPENAI_API_KEY,
+                3, // pass number
+                'final third'
+              );
+              
+              if (pass3Requirements && pass3Requirements.length > 0) {
+                console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 3 successful - extracted ${pass3Requirements.length} requirements`);
+                allExtractedRequirements = allExtractedRequirements.concat(pass3Requirements);
+              } else {
+                console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 3 failed`);
+              }
+            }
+            
+            // Combine all passes
+            if (allExtractedRequirements.length > 0) {
+              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: All 3 passes completed - extracted ${allExtractedRequirements.length}/${totalRequirements} total requirements`);
+              
+              // Create comprehensive final output
+              const finalRequirements = createFinalRequirementsTable(allExtractedRequirements, totalRequirements);
+              const finalCount = countRequirements(finalRequirements);
+              
+              console.log(`🎯 [${requestId}] CHUNKED EXTRACTION: Final result: ${finalCount}/${totalRequirements} requirements (${((finalCount/totalRequirements)*100).toFixed(1)}%)`);
+              
+              // Update extractedRequirements with comprehensive result
+              extractedRequirements = finalRequirements;
+              
+              // Update requirementCount for validation
+              requirementCount = finalCount;
+            } else {
+              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: All 3 passes failed - continuing with original ${requirementCount} requirements`);
+            }
+          } catch (chunkError) {
+            console.error(`❌ [${requestId}] CHUNKED EXTRACTION: Error during chunked extraction:`, chunkError);
+            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Continuing with original ${requirementCount} requirements`);
+          }
+        
         // Add a critical warning to the user about the mismatch
         extractedRequirements += `\n\n🚨 CRITICAL WARNING: AI extracted ${requirementCount} requirements, but the deterministic analysis found ${expectedCount} business elements.`;
         extractedRequirements += `\n\nThis suggests the AI did not analyze the content thoroughly enough.`;
@@ -1782,6 +1847,213 @@ Content: ${processedContent.substring(0, 20000)}`
     }
     
     throw new Error(`${errorMessage}. ${suggestion}`);
+  }
+}
+
+/**
+ * 🚀 CHUNKED EXTRACTION SYSTEM: Extract remaining requirements when AI stops early
+ * @param {string} requestId - Request identifier
+ * @param {string} content - Original content to analyze
+ * @param {Object} businessElementCount - Business element analysis
+ * @param {number} remainingCount - Number of requirements still needed
+ * @param {string} alreadyExtracted - Requirements already extracted
+ * @param {boolean} enableLogging - Whether to enable logging
+ * @param {string} apiUrl - OpenAI API URL
+ * @param {string} apiKey - OpenAI API key
+ * @param {number} chunkNumber - Which chunk this is (1, 2, or 3)
+ * @param {string} chunkPosition - Position description ('first', 'second', 'final')
+ * @returns {Array} Array of remaining requirements
+ */
+async function extractRemainingRequirements(requestId, content, businessElementCount, remainingCount, alreadyExtracted, enableLogging, apiUrl, apiKey, chunkNumber, chunkPosition) {
+  try {
+    console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Extracting Chunk ${chunkNumber} (${chunkPosition}) - ${remainingCount} requirements...`);
+    
+    // Calculate starting BR number for this chunk
+    const startBRNumber = businessElementCount.businessElements.count - remainingCount + 1;
+    const endBRNumber = businessElementCount.businessElements.count;
+    
+    // Create a focused prompt for this specific chunk
+    const remainingPrompt = `🚨 CRITICAL: You are extracting Chunk ${chunkNumber} (${chunkPosition}) of missing requirements. 
+    
+    You MUST extract exactly ${remainingCount} business requirements from this content.
+    
+    CONTENT TO ANALYZE:
+    ${content}
+    
+    REQUIREMENTS ALREADY EXTRACTED (DO NOT DUPLICATE):
+    ${alreadyExtracted}
+    
+    🚨 MANDATORY: Extract exactly ${remainingCount} ADDITIONAL requirements that are NOT in the already extracted list.
+    🚨 MANDATORY: Start numbering from BR-${startBRNumber} and continue to BR-${endBRNumber}.
+    🚨 MANDATORY: Do NOT duplicate any requirements from the already extracted list.
+    🚨 MANDATORY: Focus on business requirements that were missed in the first pass.
+    🚨 MANDATORY: This is Chunk ${chunkNumber} of 3 - extract only your assigned portion.
+    
+    Use the same format:
+    | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
+    |----------------|----------------------|---------------------|------------|
+    
+    Extract exactly ${remainingCount} requirements starting from BR-${startBRNumber}.`;
+    
+    // Create the proper request structure for makeOpenAIRequest
+    const messages = [
+      {
+        role: 'system',
+        content: `You are a Business Analyst specializing in extracting business requirements. You MUST extract exactly ${remainingCount} requirements in the specified format for Chunk ${chunkNumber} (${chunkPosition}).`
+      },
+      {
+        role: 'user',
+        content: remainingPrompt
+      }
+    ];
+    
+    // Validate configuration parameters
+    if (!apiKey || !apiUrl) {
+      throw new Error('OpenAI configuration parameters not provided to chunked extraction function.');
+    }
+    
+    // Make the request for remaining requirements using the same structure as main extraction
+    const remainingResponse = await makeOpenAIRequest(
+      apiUrl,
+      {
+        messages: messages,
+        max_tokens: 8000,
+        temperature: 0.1,
+        response_format: { type: "text" }
+      },
+      {
+        'api-key': apiKey,
+        'Content-Type': 'application/json'
+      }
+    );
+    
+    if (remainingResponse && remainingResponse.data && remainingResponse.data.choices && remainingResponse.data.choices[0] && remainingResponse.data.choices[0].message) {
+      // Parse the remaining requirements
+      const remainingRequirements = parseRequirementsFromResponse(remainingResponse.data.choices[0].message.content);
+      console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Chunk ${chunkNumber} parsed ${remainingRequirements.length} requirements`);
+      return remainingRequirements;
+    }
+    
+    return [];
+  } catch (error) {
+    console.error(`❌ [${requestId}] CHUNKED EXTRACTION: Error extracting Chunk ${chunkNumber}:`, error);
+    return [];
+  }
+}
+
+/**
+ * 🔗 Combine original and remaining requirements into a single comprehensive list
+ * @param {string} originalRequirements - Original requirements table
+ * @param {Array} remainingRequirements - Additional requirements to add
+ * @param {number} expectedTotal - Expected total count
+ * @returns {string} Combined requirements table
+ */
+function combineRequirements(originalRequirements, remainingRequirements, expectedTotal) {
+  try {
+    // Remove the header row from remaining requirements if it exists
+    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('BR-'));
+    
+    // Create the combined table
+    let combinedTable = originalRequirements;
+    
+    // Add remaining requirements
+    cleanRemaining.forEach(req => {
+      const newRow = `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`;
+      combinedTable += '\n' + newRow;
+    });
+    
+    // Add summary footer
+    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('BR-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
+    
+    return combinedTable;
+  } catch (error) {
+    console.error('Error combining requirements:', error);
+    return originalRequirements;
+  }
+}
+
+/**
+ * 🎯 Create comprehensive final requirements table from all chunks
+ * @param {Array} allRequirements - All extracted requirements from all passes
+ * @param {number} totalExpected - Total expected requirements
+ * @returns {string} Complete requirements table
+ */
+function createFinalRequirementsTable(allRequirements, totalExpected) {
+  try {
+    // Sort requirements by BR number
+    const sortedRequirements = allRequirements.sort((a, b) => {
+      const aNum = parseInt(a.id.replace('BR-', ''));
+      const bNum = parseInt(b.id.replace('BR-', ''));
+      return aNum - bNum;
+    });
+    
+    // Create the comprehensive table
+    let finalTable = `| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n`;
+    finalTable += `|----------------|----------------------|---------------------|------------|\n`;
+    
+    // Add all requirements in order
+    sortedRequirements.forEach(req => {
+      const newRow = `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`;
+      finalTable += newRow + '\n';
+    });
+    
+    // Add summary footer
+    finalTable += `\n\n🎯 3-PASS CHUNKED EXTRACTION COMPLETE: ${sortedRequirements.length}/${totalExpected} requirements extracted`;
+    finalTable += `\n\n✅ Pass 1: First 1/3 of requirements`;
+    finalTable += `\n✅ Pass 2: Second 1/3 of requirements`;
+    finalTable += `\n✅ Pass 3: Final 1/3 of requirements`;
+    
+    return finalTable;
+  } catch (error) {
+    console.error('Error creating final requirements table:', error);
+    return 'Error creating final requirements table';
+  }
+}
+
+/**
+ * 📊 Count requirements in a requirements table
+ * @param {string} requirementsTable - Requirements table string
+ * @returns {number} Count of requirements
+ */
+function countRequirements(requirementsTable) {
+  try {
+    const brMatches = requirementsTable.match(/BR-\d+/g);
+    return brMatches ? brMatches.length : 0;
+  } catch (error) {
+    console.error('Error counting requirements:', error);
+    return 0;
+  }
+}
+
+/**
+ * 🔍 Parse requirements from AI response
+ * @param {string} response - AI response content
+ * @returns {Array} Array of parsed requirements
+ */
+function parseRequirementsFromResponse(response) {
+  try {
+    const requirements = [];
+    const lines = response.split('\n');
+    
+    for (const line of lines) {
+      if (line.includes('|') && line.includes('BR-')) {
+        const parts = line.split('|').map(part => part.trim()).filter(part => part);
+        
+        if (parts.length >= 4) {
+          requirements.push({
+            id: parts[0],
+            requirement: parts[1],
+            acceptanceCriteria: parts[2],
+            complexity: parts[3]
+          });
+        }
+      }
+    }
+    
+    return requirements;
+  } catch (error) {
+    console.error('Error parsing requirements from response:', error);
+    return [];
   }
 }
 
