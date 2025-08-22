@@ -860,8 +860,6 @@ router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
     if (!projectKey) {
       return res.status(400).json({ error: 'Project key is required' });
     }
-
-    // console.log('🔍 Testing available endpoints for project:', projectKey);
     
     // Test common endpoint patterns
     const testEndpoints = [
