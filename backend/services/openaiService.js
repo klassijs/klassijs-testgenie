@@ -1020,7 +1020,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   }
 
   // Extract deterministic business element count from content
-  const { extractBusinessRequirements: universalExtract } = require('../utils/universalBusinessExtractor');
+  const { extractBusinessRequirements: universalExtract, calculateQualityScore } = require('../utils/universalBusinessExtractor');
   
   // Use balanced settings for all files to provide realistic counts
   const isVisioFile = processedContent.includes('Visio') || processedContent.includes('workflow') || processedContent.includes('flowchart');
@@ -1050,15 +1050,65 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     console.log(`🔍 [${requestId}] - Requirements per character: ${requirementsPerChar.toFixed(6)}`);
     console.log(`🔍 [${requestId}] - Requirements per 1000 chars: ${requirementsPerK.toFixed(2)}`);
     
+    // VSDX-specific safety: Apply quality selection FIRST (before capping)
+    if (isVisioFile && elementCount > 100) { // Apply to any VSDX with significant count
+      console.log(`🔍 [${requestId}] VSDX QUALITY SELECTION: Applying quality-based selection to ${elementCount} requirements BEFORE capping`);
+      
+      // Calculate quality scores for all elements
+      const elementsWithScores = businessElementCount.businessElements.elements.map(element => ({
+        ...element,
+        qualityScore: calculateQualityScore(element)
+      }));
+      
+      // ENHANCED QUALITY SELECTION: Use higher threshold for VSDX files
+      const qualityThreshold = 50; // Only requirements with score >= 50
+      const highQualityElements = elementsWithScores.filter(element => element.qualityScore >= qualityThreshold);
+      
+      if (highQualityElements.length > 0) {
+        // Sort by quality score (highest first) and take top requirements
+        const topQualityElements = highQualityElements
+          .sort((a, b) => b.qualityScore - a.qualityScore)
+          .slice(0, elementCount); // Keep same count, just improve quality
+        
+        // Log quality distribution
+        const avgQuality = topQualityElements.reduce((sum, e) => sum + e.qualityScore, 0) / topQualityElements.length;
+        console.log(`🔍 [${requestId}] VSDX QUALITY RESULTS: ${topQualityElements.length} requirements now have average quality score of ${avgQuality.toFixed(1)}/100 (threshold: ${qualityThreshold})`);
+        
+        // Update the elements with top quality requirements (keep same count)
+        businessElementCount.businessElements.elements = topQualityElements;
+        
+        // Update count if we have fewer high-quality requirements
+        if (topQualityElements.length < elementCount) {
+          console.warn(`⚠️  [${requestId}] VSDX QUALITY: Reduced from ${elementCount} to ${topQualityElements.length} requirements due to quality threshold`);
+          businessElementCount.businessElements.count = topQualityElements.length;
+          elementCount = topQualityElements.length;
+        }
+      } else {
+        // If no requirements meet quality threshold, use original but warn
+        console.warn(`⚠️  [${requestId}] VSDX QUALITY: No requirements meet quality threshold ${qualityThreshold}, using original ${elementCount} requirements`);
+      }
+    }
+    
     // Warn if the count seems unreasonably high and adjust if needed
     if (requirementsPerK > 10) {
       console.warn(`⚠️  [${requestId}] WARNING: Very high requirement density (${requirementsPerK.toFixed(2)} per 1000 chars) - deterministic count may be inflated`);
       console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${elementCount} requirements`);
       
       // For extremely high densities, cap the count to a realistic number
+      // BUT: If we have high-quality requirements, be more lenient
       if (requirementsPerK > 20) {
-        const realisticCount = Math.min(elementCount, Math.round(contentLength / 200)); // 1 requirement per 200 chars max
-        console.warn(`⚠️  [${requestId}] CRITICAL: Extremely high density detected. Capping count from ${elementCount} to ${realisticCount} for realistic extraction`);
+        let realisticCount;
+        
+        // If this is a VSDX file and we've already filtered for quality, be more lenient
+        if (isVisioFile && elementCount < 1000) {
+          // For VSDX with quality-filtered requirements, allow higher density
+          realisticCount = Math.min(elementCount, Math.round(contentLength / 150)); // 1 requirement per 150 chars (more lenient)
+          console.warn(`⚠️  [${requestId}] VSDX QUALITY-AWARE: High density but quality-filtered. Capping from ${elementCount} to ${realisticCount} (quality-aware extraction)`);
+        } else {
+          // For other files or unfiltered requirements, use stricter cap
+          realisticCount = Math.min(elementCount, Math.round(contentLength / 200)); // 1 requirement per 200 chars max
+          console.warn(`⚠️  [${requestId}] CRITICAL: Extremely high density detected. Capping count from ${elementCount} to ${realisticCount} for realistic extraction`);
+        }
         
         // Update the count to be more realistic
         businessElementCount.businessElements.count = realisticCount;
@@ -1084,11 +1134,19 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     
     // Final safety: Ensure improvements are reasonable (not massive inflation)
     const oldSystemEstimate = Math.round(contentLength / 200); // Rough estimate of old system
-    const maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.3); // Max 30% improvement (more conservative)
-    console.log(`🔍 [${requestId}] IMPROVEMENT SAFETY: elementCount=${elementCount}, oldSystemEstimate=${oldSystemEstimate}, maxReasonableImprovementLimit=${maxReasonableImprovementLimit}`);
+    let maxReasonableImprovementLimit;
+    
+    // If this is a VSDX file with quality-filtered requirements, be more lenient
+    if (isVisioFile && elementCount < 1000) {
+      maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.5); // Max 50% improvement for quality VSDX (more lenient)
+    } else {
+      maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.3); // Max 30% improvement (more conservative)
+    }
+    
+    console.log(`🔍 [${requestId}] IMPROVEMENT SAFETY: elementCount=${elementCount}, oldSystemEstimate=${oldSystemEstimate}, maxReasonableImprovementLimit=${maxReasonableImprovementLimit} (${isVisioFile && elementCount < 1000 ? 'VSDX quality-aware' : 'standard'})`);
     if (elementCount > maxReasonableImprovementLimit) {
       const cappedCount = maxReasonableImprovementLimit;
-      console.warn(`⚠️  [${requestId}] FINAL SAFETY: Count ${elementCount} exceeds reasonable improvement limit. Capping to ${cappedCount} (max 30% improvement)`);
+      console.warn(`⚠️  [${requestId}] FINAL SAFETY: Count ${elementCount} exceeds reasonable improvement limit. Capping to ${cappedCount} (max ${isVisioFile && elementCount < 1000 ? '50%' : '30%'} improvement)`);
       
       // Update the count to be more realistic
       businessElementCount.businessElements.count = cappedCount;
@@ -1096,19 +1154,23 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       elementCount = cappedCount;
     }
     
-    // VSDX-specific safety: Prevent massive inflation on visual documents
-    if (isVisioFile && elementCount > 200) {
-      const vsdxCappedCount = Math.min(200, Math.round(oldSystemEstimate * 1.2)); // Max 20% improvement for VSDX
-      console.warn(`⚠️  [${requestId}] VSDX SAFETY: Count ${elementCount} exceeds VSDX limit. Capping to ${vsdxCappedCount} (max 20% improvement for visual docs)`);
-      
-      // Update the count to be more realistic for VSDX
-      businessElementCount.businessElements.count = vsdxCappedCount;
-      businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, vsdxCappedCount);
-      elementCount = vsdxCappedCount;
-    }
-    
     // Log final elementCount after all safety mechanisms
     console.log(`🔍 [${requestId}] FINAL SAFETY RESULT: elementCount=${elementCount} after all safety mechanisms applied`);
+    
+    // Final quality validation: Ensure we're not sending poor requirements to the AI
+    if (isVisioFile && elementCount > 0) {
+      const finalElements = businessElementCount.businessElements.elements;
+      const finalQualityScores = finalElements.map(element => calculateQualityScore(element));
+      const avgFinalQuality = finalQualityScores.reduce((sum, score) => sum + score, 0) / finalQualityScores.length;
+      const lowQualityCount = finalQualityScores.filter(score => score < 50).length;
+      
+      console.log(`🔍 [${requestId}] FINAL QUALITY CHECK: ${elementCount} requirements with average score ${avgFinalQuality.toFixed(1)}/100`);
+      if (lowQualityCount > 0) {
+        console.warn(`⚠️  [${requestId}] FINAL QUALITY WARNING: ${lowQualityCount} requirements still have quality score < 50`);
+      } else {
+        console.log(`✅ [${requestId}] FINAL QUALITY: All ${elementCount} requirements meet quality threshold (≥50)`);
+      }
+    }
   }
 
   // Clean up the URL to prevent duplication

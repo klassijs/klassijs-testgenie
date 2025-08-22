@@ -324,9 +324,29 @@ function isExtractableRequirement(line) {
     return false; // Reject numbered sequences that aren't requirements
   }
   
-  // Quality check: Reject incomplete or unclear requirements
-  if (lowerLine.includes('support') && lowerLine.length < 40) {
-    return false; // "support X" without context is too vague
+  // ENHANCED QUALITY CHECK: Reject vague "support X" statements
+  if (lowerLine.includes('support') && lowerLine.length < 60) {
+    return false; // "support X" without sufficient context is too vague
+  }
+  
+  // ENHANCED QUALITY CHECK: Reject page references without business context
+  if (lowerLine.includes('page') && !lowerLine.includes('user') && 
+      !lowerLine.includes('customer') && !lowerLine.includes('access') &&
+      !lowerLine.includes('navigate') && !lowerLine.includes('display')) {
+    return false; // Just "page X" without business purpose
+  }
+  
+  // ENHANCED QUALITY CHECK: Reject vague team/person references
+  if ((lowerLine.includes('team') || lowerLine.includes('person') || lowerLine.includes('sales')) && 
+      lowerLine.length < 50 && !lowerLine.includes('can') && !lowerLine.includes('must') &&
+      !lowerLine.includes('should') && !lowerLine.includes('will')) {
+    return false; // Just mentioning teams without action
+  }
+  
+  // ENHANCED QUALITY CHECK: Reject incomplete sentences
+  if (!lowerLine.includes('.') && !lowerLine.includes('!') && !lowerLine.includes('?') && 
+      !lowerLine.includes(':') && line.trim().length < 30) {
+    return false; // Too short and incomplete
   }
   
   // Quality check: Reject requirements with just numbers
@@ -334,7 +354,7 @@ function isExtractableRequirement(line) {
     return false; // Just numbers, not a requirement
   }
   
-  // Much more inclusive - catch more potential requirements
+  // ENHANCED QUALITY CHECK: Must have clear business action
   const hasAction = lowerLine.includes('must') || lowerLine.includes('should') || 
                    lowerLine.includes('will') || lowerLine.includes('shall') ||
                    lowerLine.includes('can') || lowerLine.includes('need') ||
@@ -343,7 +363,7 @@ function isExtractableRequirement(line) {
                    lowerLine.includes('an ') || lowerLine.includes('if') ||
                    lowerLine.includes('when') || lowerLine.includes('where');
   
-  // More inclusive outcome detection
+  // ENHANCED QUALITY CHECK: Must have clear business outcome
   const hasOutcome = lowerLine.includes('verify') || lowerLine.includes('check') ||
                     lowerLine.includes('ensure') || lowerLine.includes('validate') ||
                     lowerLine.includes('result') || lowerLine.includes('output') ||
@@ -354,19 +374,23 @@ function isExtractableRequirement(line) {
                     lowerLine.includes('user') || lowerLine.includes('data') ||
                     lowerLine.includes('information') || lowerLine.includes('access');
   
-  // Much more lenient completion check
+  // ENHANCED QUALITY CHECK: Must be reasonably complete
   const isComplete = line.trim().endsWith('.') || line.trim().endsWith('!') || 
                     line.trim().endsWith('?') || line.trim().endsWith(':') ||
-                    line.trim().length > 15; // Allow much shorter lines
+                    line.trim().length > 25; // Increased minimum length for quality
   
-  // Very permissive - only block obvious non-requirements
+  // ENHANCED QUALITY CHECK: Must not be just descriptive text
   const isNotJustDescription = !lowerLine.startsWith('this document contains') && 
                               !lowerLine.startsWith('the system needs to') && 
                               !lowerLine.startsWith('users will interact with') &&
                               !lowerLine.startsWith('page') && 
-                              !lowerLine.startsWith('section');
+                              !lowerLine.startsWith('section') &&
+                              !lowerLine.startsWith('the system should support') && // Reject vague support statements
+                              !lowerLine.includes('support page') && // Reject page support without context
+                              !lowerLine.includes('support team') && // Reject team support without context
+                              !lowerLine.includes('support customer'); // Reject customer support without context
   
-  // AGGRESSIVE IMPROVEMENT APPROACH: Much more inclusive but with quality filtering
+  // STRICT QUALITY APPROACH: Must meet multiple quality criteria
   return (hasAction || hasOutcome) && isComplete && isNotJustDescription;
 }
 
@@ -415,6 +439,69 @@ function calculateElementComplexity(text) {
   if (complexity <= 2) return 'simple';
   if (complexity <= 4) return 'moderate';
   return 'complex';
+}
+
+/**
+ * Calculate quality score for a single business element
+ * @param {Object} element - Business element object
+ * @returns {number} Quality score 0-100
+ */
+function calculateQualityScore(element) {
+  const text = element.text;
+  const lowerText = text.toLowerCase();
+  let score = 0;
+  
+  // Action Words (30% weight) - Must have clear action
+  if (lowerText.includes('must')) score += 30;
+  else if (lowerText.includes('should')) score += 25;
+  else if (lowerText.includes('will')) score += 20;
+  else if (lowerText.includes('shall')) score += 20;
+  else if (lowerText.includes('can')) score += 15;
+  else if (lowerText.includes('need')) score += 10;
+  
+  // Specificity (25% weight) - Must be specific and actionable
+  if (lowerText.includes('verify') || lowerText.includes('check') || 
+      lowerText.includes('ensure') || lowerText.includes('validate')) score += 25;
+  else if (lowerText.includes('create') || lowerText.includes('update') || 
+           lowerText.includes('delete') || lowerText.includes('modify')) score += 20;
+  else if (lowerText.includes('display') || lowerText.includes('show') || 
+           lowerText.includes('present') || lowerText.includes('render')) score += 15;
+  else if (lowerText.includes('support') && lowerText.length > 60) score += 10; // Only if detailed
+  else if (lowerText.includes('support')) score += 5; // Basic support gets low score
+  
+  // Completeness (20% weight) - Must be complete and clear
+  if (text.trim().endsWith('.') || text.trim().endsWith('!') || text.trim().endsWith('?')) score += 20;
+  else if (text.trim().endsWith(':')) score += 15;
+  else if (text.trim().length > 40) score += 15;
+  else if (text.trim().length > 30) score += 10;
+  else if (text.trim().length > 25) score += 5;
+  
+  // Business Context (15% weight) - Must have clear business purpose
+  if (lowerText.includes('customer') && lowerText.includes('can')) score += 15;
+  else if (lowerText.includes('user') && lowerText.includes('must')) score += 15;
+  else if (lowerText.includes('business') && lowerText.includes('process')) score += 15;
+  else if (lowerText.includes('workflow') && lowerText.includes('step')) score += 15;
+  else if (lowerText.includes('system') && lowerText.includes('should')) score += 10;
+  else if (lowerText.includes('data') && lowerText.includes('validation')) score += 10;
+  
+  // Testability (10% weight) - Must be testable
+  if (isElementTestable(text)) score += 10;
+  
+  // ENHANCED PENALTIES for poor quality
+  if (lowerText.includes('page') && lowerText.length < 40) score -= 25; // Vague page references
+  if (lowerText.includes('support') && lowerText.length < 60) score -= 20; // Vague support statements
+  if (lowerText.includes('team') && lowerText.length < 50) score -= 15; // Vague team references
+  if (lowerText.includes('customer') && lowerText.length < 50) score -= 15; // Vague customer references
+  if (/^\d+\s+\d+\s+\d+/.test(text.trim())) score -= 35; // Just numbers
+  if (lowerText.includes('the system should support') && lowerText.length < 60) score -= 30; // Vague support
+  if (lowerText.includes('support page') && !lowerText.includes('user') && !lowerText.includes('customer')) score -= 25; // Page without context
+  
+  // BONUS POINTS for high quality
+  if (lowerText.includes('given') && lowerText.includes('when') && lowerText.includes('then')) score += 10; // Acceptance criteria
+  if (lowerText.includes('verify') && lowerText.includes('check')) score += 5; // Multiple validation words
+  if (lowerText.includes('customer') && lowerText.includes('can') && lowerText.includes('access')) score += 5; // Clear user action
+  
+  return Math.max(0, Math.min(100, score)); // Ensure score is 0-100
 }
 
 /**
@@ -517,6 +604,12 @@ module.exports = {
   extractElementsFromLine,
   isTechnicalContent,
   hasBusinessContent,
+  isExtractableRequirement,
+  postProcessElements,
   calculateElementComplexity,
-  isElementTestable
+  isElementTestable,
+  generateBreakdown,
+  calculateQualityMetrics,
+  calculateOverallQualityScore,
+  calculateQualityScore
 };
