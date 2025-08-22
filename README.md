@@ -1,4 +1,4 @@
-# 🚀 KlassiJS AI - AI-Powered Test Case Generator
+# 🚀 QA CHOMP!!! - AI-Powered Test Case Generator
 
 An AI-powered test automation platform designed for enterprise-scale quality assurance. It transforms business requirements into accurate, executable Cucumber test cases, reducing manual effort and errors. With advanced content analysis and support for a wide range of document formats, it ensures consistent, reliable results across diverse inputs—streamlining QA workflows and accelerating delivery at scale.
 
