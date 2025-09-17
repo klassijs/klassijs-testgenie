@@ -101,7 +101,7 @@ async function getJiraIssues(projectKey, issueTypes) {
     // Build JQL query
     const jql = `project = "${projectKey}" AND issuetype IN (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY created DESC`;
     
-    const response = await axios.get(`${JIRA_BASE_URL}/rest/api/3/search`, {
+    const response = await axios.get(`${JIRA_BASE_URL}/rest/api/3/search/jql`, {
       auth: {
         username: JIRA_EMAIL,
         password: JIRA_API_TOKEN
