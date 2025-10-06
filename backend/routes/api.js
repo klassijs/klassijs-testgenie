@@ -979,6 +979,7 @@ router.post('/jira/fetch-issues', async (req, res) => {
       res.json({
         success: true,
         issues: result.issues,
+        total: result.total,
         message: `Found ${result.issues.length} issues in project ${projectKey}`
       });
     } else {
@@ -1037,6 +1038,7 @@ router.post('/jira/import-issues', async (req, res) => {
     });
   }
 });
+
 
 // Requirements validation endpoint
 router.post('/validate-requirements', async (req, res) => {

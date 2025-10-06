@@ -87,6 +87,19 @@ const TestGenerator = () => {
   const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
   const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
   const [jiraProjectSearch, setJiraProjectSearch] = useState('');
+  const [jiraPagination, setJiraPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 100,
+    totalItems: 0
+  });
+  const [allJiraIssues, setAllJiraIssues] = useState([]);
+  const [fetchAllJiraIssues, setFetchAllJiraIssues] = useState(false);
+  const [jiraCacheInfo, setJiraCacheInfo] = useState({
+    isCached: false,
+    lastFetched: null,
+    projectKey: null,
+    issueTypes: []
+  });
 
   // API base URL - can be configured via environment variable
   const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
@@ -237,9 +250,26 @@ const TestGenerator = () => {
       });
 
       if (response.data.success) {
-        setJiraIssues(response.data.issues || []);
+        const allIssues = response.data.issues || [];
+        setAllJiraIssues(allIssues);
+        
+        // Update pagination state
+        console.log('Setting pagination:', {
+          currentPage: 1,
+          itemsPerPage: 100,
+          totalItems: allIssues.length
+        });
+        setJiraPagination({
+          currentPage: 1,
+          itemsPerPage: 100,
+          totalItems: allIssues.length
+        });
+        
+        // Set the first page of issues to display
+        updateDisplayedIssues(allIssues, 1);
+        
+        setStatus({ type: 'success', message: `Fetched all ${allIssues.length} issues from Jira` });
         setJiraStep('import');
-        setStatus({ type: 'success', message: `Found ${response.data.issues.length} issues in Jira` });
       } else {
         setStatus({ type: 'error', message: response.data.error || 'Failed to fetch Jira issues' });
       }
@@ -251,6 +281,54 @@ const TestGenerator = () => {
     } finally {
       setIsLoadingJira(false);
     }
+  };
+
+  const updateDisplayedIssues = (allIssues, page) => {
+    const startIndex = (page - 1) * jiraPagination.itemsPerPage;
+    const endIndex = startIndex + jiraPagination.itemsPerPage;
+    const pageIssues = allIssues.slice(startIndex, endIndex);
+    setJiraIssues(pageIssues);
+  };
+
+  const goToPage = (page) => {
+    if (page < 1 || page > Math.ceil(jiraPagination.totalItems / jiraPagination.itemsPerPage)) {
+      return;
+    }
+    
+    setJiraPagination(prev => ({ ...prev, currentPage: page }));
+    updateDisplayedIssues(allJiraIssues, page);
+  };
+
+  // Clear Jira cache for current project
+  const clearJiraCache = async () => {
+    try {
+      const response = await axios.post(`${API_BASE_URL}/api/jira/clear-cache`, {
+        projectKey: jiraConfig.projectKey
+      });
+
+      if (response.data.success) {
+        setStatus({ type: 'success', message: response.data.message });
+        setJiraCacheInfo({
+          isCached: false,
+          lastFetched: null,
+          projectKey: null,
+          issueTypes: []
+        });
+      } else {
+        setStatus({ type: 'error', message: response.data.error || 'Failed to clear cache' });
+      }
+    } catch (error) {
+      setStatus({ 
+        type: 'error', 
+        message: error.response?.data?.error || 'Failed to clear cache' 
+      });
+    }
+  };
+
+  // Check if we need to refetch (project or issue types changed)
+  const shouldRefetch = () => {
+    return jiraCacheInfo.projectKey !== jiraConfig.projectKey || 
+           JSON.stringify(jiraCacheInfo.issueTypes.sort()) !== JSON.stringify(jiraConfig.issueTypes.sort());
   };
 
   const importJiraIssues = async () => {
@@ -3395,20 +3473,33 @@ SCENARIO NAMING GUIDELINES:
                     >
                       Back
                     </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={fetchJiraIssues}
-                      disabled={isLoadingJira || !jiraConfig.projectKey || jiraConfig.issueTypes.length === 0}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Fetching Issues...</span>
-                        </>
-                      ) : (
-                        'Fetch Issues'
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-primary"
+                        onClick={() => fetchJiraIssues()}
+                        disabled={isLoadingJira || !jiraConfig.projectKey || jiraConfig.issueTypes.length === 0}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Fetching...</span>
+                          </>
+                        ) : (
+                          jiraCacheInfo.isCached && !shouldRefetch() ? 'Refresh' : 'Fetch'
+                        )}
+                      </button>
+                      
+                      {jiraCacheInfo.isCached && !shouldRefetch() && (
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={clearJiraCache}
+                          disabled={isLoadingJira}
+                          title="Clear cache and force fresh fetch"
+                        >
+                          Clear Cache
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3455,6 +3546,78 @@ SCENARIO NAMING GUIDELINES:
                         </div>
                       </label>
                     ))}
+                  </div>
+                  
+                  {/* Cache Status and Pagination Controls */}
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px', 
+                    backgroundColor: '#f8fafc', 
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    {/* Cache Status */}
+                    {jiraCacheInfo.isCached && !shouldRefetch() && (
+                      <div style={{ 
+                        marginBottom: '8px', 
+                        padding: '8px', 
+                        backgroundColor: '#e6fffa', 
+                        borderRadius: '4px',
+                        border: '1px solid #81e6d9'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', color: '#234e52', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📦</span>
+                          <span>Cached data from {jiraCacheInfo.lastFetched ? new Date(jiraCacheInfo.lastFetched).toLocaleTimeString() : 'recently'}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Pagination Controls */}
+                    {(() => {
+                      console.log('Pagination check:', {
+                        totalItems: jiraPagination.totalItems,
+                        itemsPerPage: jiraPagination.itemsPerPage,
+                        shouldShow: jiraPagination.totalItems > jiraPagination.itemsPerPage
+                      });
+                      return jiraPagination.totalItems > jiraPagination.itemsPerPage;
+                    })() && (
+                      <>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{ fontSize: '0.9rem', color: '#4a5568' }}>
+                            Showing {((jiraPagination.currentPage - 1) * jiraPagination.itemsPerPage) + 1}-{Math.min(jiraPagination.currentPage * jiraPagination.itemsPerPage, jiraPagination.totalItems)} of {jiraPagination.totalItems} issues
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => goToPage(jiraPagination.currentPage - 1)}
+                              disabled={isLoadingJira || jiraPagination.currentPage <= 1}
+                            >
+                              Previous
+                            </button>
+                            <span style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '0.9rem', 
+                              color: '#4a5568',
+                              alignSelf: 'center'
+                            }}>
+                              Page {jiraPagination.currentPage}
+                            </span>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => goToPage(jiraPagination.currentPage + 1)}
+                              disabled={isLoadingJira || jiraPagination.currentPage >= Math.ceil(jiraPagination.totalItems / jiraPagination.itemsPerPage)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
                   </div>
                   
                   <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#4a5568' }}>

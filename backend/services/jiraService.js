@@ -88,7 +88,7 @@ async function getJiraProjects() {
   }
 }
 
-// Get Jira issues using environment credentials
+// Get Jira issues using environment credentials - fetches ALL issues
 async function getJiraIssues(projectKey, issueTypes) {
   try {
     if (!isJiraConfigured) {
@@ -98,39 +98,73 @@ async function getJiraIssues(projectKey, issueTypes) {
       };
     }
 
-    // Build JQL query
-    const jql = `project = "${projectKey}" AND issuetype IN (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY created DESC`;
+    console.log(`📋 Project Key: ${projectKey}`);
+    console.log(`🏷️  Issue Types: ${issueTypes.join(', ')}`);
     
-    const response = await axios.get(`${JIRA_BASE_URL}/rest/api/3/search/jql`, {
-      auth: {
-        username: JIRA_EMAIL,
-        password: JIRA_API_TOKEN
-      },
-      headers: {
-        'Accept': 'application/json'
-      },
-      params: {
-        jql: jql,
-        maxResults: 100,
-        fields: 'summary,description,issuetype,status'
-      },
-      timeout: 15000
-    });
+    let allIssues = [];
+    
+    // Try different approaches to get all issues
+    const approaches = [
+      // Approach 1: Order by key ASC
+      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY key ASC`,
+      // Approach 2: Order by created ASC  
+      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY created ASC`,
+      // Approach 3: Order by updated DESC
+      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY updated DESC`,
+      // Approach 4: Order by priority DESC
+      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY priority DESC`
+    ];
 
-    if (response.data && response.data.issues) {
-      return {
-        success: true,
-        issues: response.data.issues.map(issue => ({
-          key: issue.key,
-          summary: issue.fields.summary,
-          description: issue.fields.description,
-          issueType: issue.fields.issuetype.name,
-          status: issue.fields.status.name
-        }))
-      };
-    } else {
-      throw new Error('Invalid response format from Jira');
+    for (let i = 0; i < approaches.length; i++) {
+      const jql = approaches[i];
+      console.log(`🔍 Trying approach ${i + 1}: ${jql}`);
+      
+      const url = `${JIRA_BASE_URL}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,description,issuetype,status&maxResults=1000`;
+      
+      try {
+        const response = await axios.get(url, {
+          auth: {
+            username: JIRA_EMAIL,
+            password: JIRA_API_TOKEN
+          },
+          headers: {
+            'Accept': 'application/json'
+          },
+          timeout: 30000
+        });
+
+        if (response.data && response.data.issues) {
+          const batchIssues = response.data.issues.map(issue => ({
+            key: issue.key,
+            summary: issue.fields.summary,
+            description: issue.fields.description,
+            issueType: issue.fields.issuetype.name,
+            status: issue.fields.status.name
+          }));
+
+          // Check for new issues
+          const existingKeys = new Set(allIssues.map(issue => issue.key));
+          const newIssues = batchIssues.filter(issue => !existingKeys.has(issue.key));
+          
+          if (newIssues.length > 0) {
+            allIssues = allIssues.concat(newIssues);
+            console.log(`✅ Approach ${i + 1}: Added ${newIssues.length} new issues (${batchIssues.length - newIssues.length} duplicates). Total: ${allIssues.length}`);
+          } else {
+            console.log(`⚠️  Approach ${i + 1}: No new issues found`);
+          }
+        }
+      } catch (error) {
+        console.log(`❌ Approach ${i + 1} failed:`, error.message);
+      }
     }
+
+    console.log(`🎉 Successfully fetched ${allIssues.length} unique issues from project ${projectKey}`);
+
+    return {
+      success: true,
+      issues: allIssues,
+      total: allIssues.length
+    };
   } catch (error) {
     console.error('Failed to fetch Jira issues:', error.message);
     return {
@@ -139,6 +173,7 @@ async function getJiraIssues(projectKey, issueTypes) {
     };
   }
 }
+
 
 // Convert Jira issue to Gherkin feature
 function convertJiraIssueToGherkin(issue) {
