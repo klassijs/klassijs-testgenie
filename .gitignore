@@ -9,4 +9,4 @@ node_modules
 .npmrc
 
 /frontend/.DS_Store
-
+/backend/.DS_Store
