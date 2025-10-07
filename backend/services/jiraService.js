@@ -103,62 +103,77 @@ async function getJiraIssues(projectKey, issueTypes) {
     
     let allIssues = [];
     
-    // Try different approaches to get all issues
-    const approaches = [
-      // Approach 1: Order by key ASC
-      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY key ASC`,
-      // Approach 2: Order by created ASC  
-      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY created ASC`,
-      // Approach 3: Order by updated DESC
-      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY updated DESC`,
-      // Approach 4: Order by priority DESC
-      `project = ${projectKey} AND issuetype in (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY priority DESC`
-    ];
-
-    for (let i = 0; i < approaches.length; i++) {
-      const jql = approaches[i];
-      console.log(`🔍 Trying approach ${i + 1}: ${jql}`);
+    // Fetch each issue type individually using multi-approach strategy
+    // This ensures we get the same results as individual queries
+    console.log(`🔄 Fetching each issue type individually to ensure accuracy...`);
+    
+    for (const issueType of issueTypes) {
+      console.log(`🔍 Fetching ${issueType} issues...`);
       
-      const url = `${JIRA_BASE_URL}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,description,issuetype,status&maxResults=1000`;
+      let issueTypeIssues = [];
       
-      try {
-        const response = await axios.get(url, {
-          auth: {
-            username: JIRA_EMAIL,
-            password: JIRA_API_TOKEN
-          },
-          headers: {
-            'Accept': 'application/json'
-          },
-          timeout: 30000
-        });
+      // Use multi-approach strategy for each issue type
+      const approaches = [
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY key ASC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY created ASC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY updated DESC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY priority DESC`
+      ];
+      
+      for (let i = 0; i < approaches.length; i++) {
+        const jql = approaches[i];
+        const url = `${JIRA_BASE_URL}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,description,issuetype,status&maxResults=1000`;
+        
+        try {
+          const response = await axios.get(url, {
+            auth: {
+              username: JIRA_EMAIL,
+              password: JIRA_API_TOKEN
+            },
+            headers: {
+              'Accept': 'application/json'
+            },
+            timeout: 30000
+          });
 
-        if (response.data && response.data.issues) {
-          const batchIssues = response.data.issues.map(issue => ({
-            key: issue.key,
-            summary: issue.fields.summary,
-            description: issue.fields.description,
-            issueType: issue.fields.issuetype.name,
-            status: issue.fields.status.name
-          }));
+          if (response.data && response.data.issues) {
+            const batchIssues = response.data.issues.map(issue => ({
+              key: issue.key,
+              summary: issue.fields.summary,
+              description: issue.fields.description,
+              issueType: issue.fields.issuetype.name,
+              status: issue.fields.status.name
+            }));
 
-          // Check for new issues
-          const existingKeys = new Set(allIssues.map(issue => issue.key));
-          const newIssues = batchIssues.filter(issue => !existingKeys.has(issue.key));
-          
-          if (newIssues.length > 0) {
-            allIssues = allIssues.concat(newIssues);
-            console.log(`✅ Approach ${i + 1}: Added ${newIssues.length} new issues (${batchIssues.length - newIssues.length} duplicates). Total: ${allIssues.length}`);
-          } else {
-            console.log(`⚠️  Approach ${i + 1}: No new issues found`);
+            // Check for new issues
+            const existingKeys = new Set(issueTypeIssues.map(issue => issue.key));
+            const newIssues = batchIssues.filter(issue => !existingKeys.has(issue.key));
+            const duplicates = batchIssues.filter(issue => existingKeys.has(issue.key));
+            
+            if (newIssues.length > 0) {
+              issueTypeIssues = issueTypeIssues.concat(newIssues);
+              console.log(`  ✅ Approach ${i + 1}: Added ${newIssues.length} new ${issueType} issues (${duplicates.length} duplicates). Total: ${issueTypeIssues.length}`);
+            } else {
+              console.log(`  ⚠️  Approach ${i + 1}: No new ${issueType} issues found (${duplicates.length} duplicates)`);
+            }
           }
+        } catch (error) {
+          console.log(`  ❌ Approach ${i + 1} failed for ${issueType}:`, error.message);
         }
-      } catch (error) {
-        console.log(`❌ Approach ${i + 1} failed:`, error.message);
       }
+      
+      allIssues = allIssues.concat(issueTypeIssues);
+      console.log(`✅ ${issueType}: Total ${issueTypeIssues.length} issues. Combined total: ${allIssues.length}`);
     }
 
+    // Log breakdown by issue type
+    const issueTypeCounts = {};
+    allIssues.forEach(issue => {
+      issueTypeCounts[issue.issueType] = (issueTypeCounts[issue.issueType] || 0) + 1;
+    });
+    
     console.log(`🎉 Successfully fetched ${allIssues.length} unique issues from project ${projectKey}`);
+    console.log(`📊 Issue type breakdown:`, issueTypeCounts);
 
     return {
       success: true,
