@@ -1051,6 +1051,11 @@ SCENARIO NAMING GUIDELINES:
     setEditingFeatures({});
     setStatus(null);
     
+    // Clear selection state
+    setSelectedRequirements(new Set());
+    setIsSelectAllChecked(false);
+    setShowDeleteConfirmation(false);
+    
     // Clear Jira-related state completely
     setRequirementsSource('');
     setJiraTicketPrefix('');
@@ -1429,6 +1434,58 @@ SCENARIO NAMING GUIDELINES:
   const [imagesLoaded, setImagesLoaded] = useState(false);
   const [editableRequirements, setEditableRequirements] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [selectedRequirements, setSelectedRequirements] = useState(new Set());
+  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  
+  // Selection management functions
+  const handleSelectRequirement = (requirementId) => {
+    setSelectedRequirements(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(requirementId)) {
+        newSet.delete(requirementId);
+      } else {
+        newSet.add(requirementId);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAll = () => {
+    if (isSelectAllChecked) {
+      setSelectedRequirements(new Set());
+      setIsSelectAllChecked(false);
+    } else {
+      const allIds = new Set(editableRequirements.map(r => r.id));
+      setSelectedRequirements(allIds);
+      setIsSelectAllChecked(true);
+    }
+  };
+
+  const handleDeleteSelected = () => {
+    setShowDeleteConfirmation(true);
+  };
+
+  const confirmDeleteSelected = async () => {
+    try {
+      const updatedRequirements = editableRequirements.filter(r => !selectedRequirements.has(r.id));
+      setEditableRequirements(updatedRequirements);
+      setSelectedRequirements(new Set());
+      setIsSelectAllChecked(false);
+      setShowDeleteConfirmation(false);
+      setHasUnsavedChanges(true);
+      
+      setStatus({ type: 'success', message: `Deleted ${selectedRequirements.size} requirement(s)!` });
+    } catch (error) {
+      console.error('Error deleting requirements:', error);
+      setStatus({ type: 'error', message: 'Failed to delete requirements!' });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedRequirements(new Set());
+    setIsSelectAllChecked(false);
+  };
   
   // Rotate through test generation images with improved reliability
   useEffect(() => {
@@ -1963,6 +2020,15 @@ SCENARIO NAMING GUIDELINES:
               }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8f9fa' }}>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', width: '50px' }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelectAllChecked}
+                        onChange={handleSelectAll}
+                        style={{ transform: 'scale(1.2)' }}
+                        title="Select All"
+                      />
+                    </th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Requirement ID</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Business Requirement</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Acceptance Criteria</th>
@@ -1972,7 +2038,21 @@ SCENARIO NAMING GUIDELINES:
                 <tbody>
                   {editableRequirements && editableRequirements.length > 0 ? (
                     editableRequirements.map((req, index) => (
-                    <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
+                    <tr key={index} style={{ 
+                      backgroundColor: selectedRequirements.has(req.id) 
+                        ? '#e3f2fd' 
+                        : index % 2 === 0 ? '#ffffff' : '#f8f9fa',
+                      border: selectedRequirements.has(req.id) ? '2px solid #2196f3' : 'none'
+                    }}>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRequirements.has(req.id)}
+                          onChange={() => handleSelectRequirement(req.id)}
+                          style={{ transform: 'scale(1.2)' }}
+                          title="Select this requirement"
+                        />
+                      </td>
                       <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
                         <textarea
                           value={req.id}
@@ -2060,7 +2140,7 @@ SCENARIO NAMING GUIDELINES:
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="4" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                      <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
                         {editableRequirements === null ? 'Loading requirements...' : 'No requirements found'}
                       </td>
                     </tr>
@@ -2068,6 +2148,64 @@ SCENARIO NAMING GUIDELINES:
                 </tbody>
               </table>
             </div>
+            
+            {/* Selection controls */}
+            {editableRequirements && editableRequirements.length > 0 && (
+              <div style={{ 
+                marginTop: '1rem', 
+                padding: '12px', 
+                backgroundColor: '#f8f9fa', 
+                border: '1px solid #dee2e6', 
+                borderRadius: '6px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#495057' }}>
+                    {selectedRequirements.size} of {editableRequirements.length} selected
+                  </span>
+                  {selectedRequirements.size > 0 && (
+                    <button
+                      onClick={clearSelection}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Clear Selection
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={handleDeleteSelected}
+                    disabled={selectedRequirements.size === 0}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: selectedRequirements.size === 0 ? '#6c757d' : '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: selectedRequirements.size === 0 ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                    title={selectedRequirements.size === 0 ? 'Select requirements to delete' : `Delete ${selectedRequirements.size} selected requirement(s)`}
+                  >
+                    🗑️ Delete Selected
+                  </button>
+                </div>
+              </div>
+            )}
             
             {/* Simple action buttons */}
             <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
@@ -3706,6 +3844,84 @@ SCENARIO NAMING GUIDELINES:
 
       {/* Requirements Editor Modal */}
 
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '500px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🗑️ Delete Requirements
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to delete <strong>{selectedRequirements.size}</strong> selected requirement(s)?
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <strong>Requirements to be deleted:</strong>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                {Array.from(selectedRequirements).map(reqId => {
+                  const req = editableRequirements.find(r => r.id === reqId);
+                  return (
+                    <li key={reqId} style={{ marginBottom: '4px', fontSize: '14px' }}>
+                      <strong>{reqId}:</strong> {req?.requirement?.substring(0, 50)}{req?.requirement?.length > 50 ? '...' : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              This action cannot be undone. The requirements will be permanently removed.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDeleteConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSelected}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete {selectedRequirements.size} Requirement(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
     </div>
   );
