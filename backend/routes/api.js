@@ -502,8 +502,10 @@ router.post('/extract-requirements', async (req, res) => {
     }
 
     console.log(`🔄 Requirements cache miss. Extracting requirements...`);
+    console.log(`🔍 Backend: Content length: ${content.length}, Context: ${context}, Document: ${documentName}`);
     const { enableLogging = true } = req.body;
     const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
+    console.log(`🔍 Backend: Extracted requirements length: ${extractedRequirements.content?.length || 0}`);
 
     // Prepare requirements results for caching
     const requirementsResults = {

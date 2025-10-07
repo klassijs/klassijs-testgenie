@@ -110,6 +110,8 @@ const TestGenerator = () => {
 
   // Function to parse requirements table and extract individual requirements
   const parseRequirementsTable = (requirementsContent) => {
+    console.log('🔍 Frontend: parseRequirementsTable called with content length:', requirementsContent?.length || 0);
+    
     // Validate requirements source consistency
     if (requirementsSource === 'upload' && (jiraTicketPrefix || Object.keys(jiraTicketInfo).length > 0)) {
       setJiraTicketPrefix('');
@@ -118,6 +120,7 @@ const TestGenerator = () => {
     
     const requirements = [];
     const lines = requirementsContent.split('\n');
+    console.log('🔍 Frontend: Split into', lines.length, 'lines');
     
     let inTable = false;
     let tableLines = [];
@@ -167,6 +170,7 @@ const TestGenerator = () => {
     
     // Parse table rows
     let requirementCounter = 0; // Use a separate counter for requirement IDs
+    console.log('🔍 Frontend: Found', tableLines.length, 'table lines to parse');
     
     for (let i = 0; i < tableLines.length; i++) {
       const line = tableLines[i];
@@ -207,9 +211,11 @@ const TestGenerator = () => {
           acceptanceCriteria: acceptanceCriteria,
           complexity: columns[3] || 'CC: 1, Paths: 1'
         });
+        console.log('🔍 Frontend: Added requirement', generatedId, ':', requirement.substring(0, 50) + '...');
       }
     }
     
+    console.log('🔍 Frontend: parseRequirementsTable returning', requirements.length, 'requirements');
     return requirements;
   };
 
@@ -544,12 +550,20 @@ const TestGenerator = () => {
         // Automatically extract requirements from the document content
         let requirementsResponse = null;
         try {
+          console.log('🔍 Frontend: Starting requirements extraction for', fileObj.name);
           requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
             content: response.data.content, 
             context: context,
             documentName: fileObj.name
           }, {
             timeout: 300000 // 5 minutes timeout
+          });
+          
+          console.log('🔍 Frontend: Requirements API response:', {
+            success: requirementsResponse.data.success,
+            hasContent: !!requirementsResponse.data.content,
+            contentLength: requirementsResponse.data.content?.length || 0,
+            contentPreview: requirementsResponse.data.content?.substring(0, 200) || 'No content'
           });
           
           if (requirementsResponse.data.success) {
@@ -564,7 +578,9 @@ const TestGenerator = () => {
             const requirementsContent = requirementsResponse.data.content;
             
             // Parse the requirements table to extract individual requirements
+            console.log('🔍 Frontend: Parsing requirements table, content length:', requirementsContent.length);
             const requirements = parseRequirementsTable(requirementsContent);
+            console.log('🔍 Frontend: Parsed requirements count:', requirements.length);
             
             if (requirements.length > 0) {
               const newFeatures = requirements.map((req, index) => ({
@@ -594,10 +610,12 @@ const TestGenerator = () => {
               setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
             }
           } else {
-            setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
+            console.error('🔍 Frontend: Requirements extraction failed - success=false');
+            setStatus({ type: 'error', message: `Failed to extract requirements from ${fileObj.name}. The document was processed but no requirements could be extracted.` });
           }
         } catch (requirementsError) {
-          setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
+          console.error('🔍 Frontend: Requirements extraction error:', requirementsError);
+          setStatus({ type: 'error', message: `Failed to extract requirements from ${fileObj.name}: ${requirementsError.message}` });
         }
       } else {
         setUploadedFiles(prev => 
