@@ -8,5 +8,7 @@
 node_modules
 .npmrc
 
+.DS_Store
+
 /frontend/.DS_Store
 /backend/.DS_Store
