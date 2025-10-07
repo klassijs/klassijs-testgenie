@@ -10,6 +10,6 @@ node_modules
 
 .DS_Store
 
-/cache/
+/cache
 /cache/metadata.json
 /cache/**/*

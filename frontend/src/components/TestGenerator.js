@@ -1074,6 +1074,12 @@ SCENARIO NAMING GUIDELINES:
     setIsSelectAllChecked(false);
     setShowDeleteConfirmation(false);
     
+    // Clear cache management state
+    setSelectedCaches(new Set());
+    setIsSelectAllCachesChecked(false);
+    setShowCacheModal(false);
+    setShowCacheDeleteConfirmation(false);
+    
     // Clear Jira-related state completely
     setRequirementsSource('');
     setJiraTicketPrefix('');
@@ -1455,6 +1461,12 @@ SCENARIO NAMING GUIDELINES:
   const [selectedRequirements, setSelectedRequirements] = useState(new Set());
   const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [showCacheModal, setShowCacheModal] = useState(false);
+  const [cacheList, setCacheList] = useState([]);
+  const [selectedCaches, setSelectedCaches] = useState(new Set());
+  const [isLoadingCache, setIsLoadingCache] = useState(false);
+  const [isSelectAllCachesChecked, setIsSelectAllCachesChecked] = useState(false);
+  const [showCacheDeleteConfirmation, setShowCacheDeleteConfirmation] = useState(false);
   
   // Selection management functions
   const handleSelectRequirement = (requirementId) => {
@@ -1503,6 +1515,98 @@ SCENARIO NAMING GUIDELINES:
   const clearSelection = () => {
     setSelectedRequirements(new Set());
     setIsSelectAllChecked(false);
+  };
+
+  // Cache management functions
+  const fetchCacheList = async () => {
+    setIsLoadingCache(true);
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/cache/list`);
+      if (response.data.success) {
+        setCacheList(response.data.documents);
+        console.log('🔍 Frontend: Fetched cache list:', response.data.documents.length, 'documents');
+      } else {
+        setStatus({ type: 'error', message: 'Failed to fetch cache list' });
+      }
+    } catch (error) {
+      console.error('Error fetching cache list:', error);
+      setStatus({ type: 'error', message: 'Failed to fetch cache list' });
+    } finally {
+      setIsLoadingCache(false);
+    }
+  };
+
+  const handleSelectCache = (cacheName) => {
+    setSelectedCaches(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(cacheName)) {
+        newSet.delete(cacheName);
+      } else {
+        newSet.add(cacheName);
+      }
+      return newSet;
+    });
+  };
+
+  const handleSelectAllCaches = () => {
+    if (isSelectAllCachesChecked) {
+      setSelectedCaches(new Set());
+      setIsSelectAllCachesChecked(false);
+    } else {
+      const allNames = new Set(cacheList.map(doc => doc.name));
+      setSelectedCaches(allNames);
+      setIsSelectAllCachesChecked(true);
+    }
+  };
+
+  const handleDeleteSelectedCaches = () => {
+    if (selectedCaches.size === 0) return;
+    setShowCacheDeleteConfirmation(true);
+  };
+
+  const confirmDeleteSelectedCaches = async () => {
+    try {
+      const response = await axios.delete(`${API_BASE_URL}/api/cache/delete-multiple`, {
+        data: { documentNames: Array.from(selectedCaches) }
+      });
+
+      if (response.data.success) {
+        // Check if current document was deleted
+        const currentDocDeleted = selectedCaches.has(currentDocumentName);
+        
+        if (currentDocDeleted) {
+          // Clear UI and show message
+          setStatus({ 
+            type: 'info', 
+            message: `Current document "${currentDocumentName}" was deleted from cache. UI has been cleared.` 
+          });
+          clearAll();
+        } else {
+          setStatus({ 
+            type: 'success', 
+            message: `Successfully deleted ${response.data.results.deletedCount} document(s) from cache` 
+          });
+        }
+
+        // Refresh cache list
+        await fetchCacheList();
+        setSelectedCaches(new Set());
+        setIsSelectAllCachesChecked(false);
+        setShowCacheDeleteConfirmation(false);
+      } else {
+        setStatus({ type: 'error', message: 'Failed to delete selected documents' });
+        setShowCacheDeleteConfirmation(false);
+      }
+    } catch (error) {
+      console.error('Error deleting cache documents:', error);
+      setStatus({ type: 'error', message: 'Failed to delete selected documents' });
+      setShowCacheDeleteConfirmation(false);
+    }
+  };
+
+  const openCacheModal = async () => {
+    setShowCacheModal(true);
+    await fetchCacheList();
   };
   
   // Rotate through test generation images with improved reliability
@@ -2478,48 +2582,61 @@ SCENARIO NAMING GUIDELINES:
           />
         </div>
 
-        <div className="flex gap-4">
-          <button
-            className="btn btn-primary"
-            onClick={generateTests}
-            disabled={isLoading || !content.trim()}
-          >
-            {isLoading ? (
-              <>
-                <div className="loading"></div>
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles size={20} />
-                Generate Tests
-              </>
-            )}
-          </button>
+        <div className="flex gap-4" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={generateTests}
+              disabled={isLoading || !content.trim()}
+            >
+              {isLoading ? (
+                <>
+                  <div className="loading"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={20} />
+                  Generate Tests
+                </>
+              )}
+            </button>
+            
+            <button
+              className="btn btn-danger"
+              onClick={clearAll}
+              disabled={isLoading}
+            >
+              Clear All
+            </button>
+            
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (generatedTests && generatedTests.trim()) {
+                  setShowModal(true);
+                } else {
+                  setStatus({ type: 'error', message: 'No test cases available to display. Please generate tests first.' });
+                }
+              }}
+              disabled={isLoading || !generatedTests || !generatedTests.trim()}
+            >
+              View Generated Test
+            </button>
+          </div>
           
-
-          
           <button
-            className="btn btn-danger"
-            onClick={clearAll}
-            disabled={isLoading}
-          >
-            Clear All
-          </button>
-          
-          {/* Temporary test button */}
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              if (generatedTests && generatedTests.trim()) {
-                setShowModal(true);
-              } else {
-                setStatus({ type: 'error', message: 'No test cases available to display. Please generate tests first.' });
-              }
+            className="btn btn-secondary"
+            style={{
+              backgroundColor: '#dc3545',
+              borderColor: '#dc3545',
+              color: 'white',
+              fontWeight: '600'
             }}
-            disabled={isLoading || !generatedTests || !generatedTests.trim()}
+            onClick={openCacheModal}
+            title="Manage cached documents"
           >
-            View Generated Test
+            🗑️ Delete Cache
           </button>
         </div>
       </div>
@@ -3935,6 +4052,261 @@ SCENARIO NAMING GUIDELINES:
                 }}
               >
                 Delete {selectedRequirements.size} Requirement(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cache Delete Confirmation Dialog */}
+      {showCacheDeleteConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '600px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🗑️ Delete Cached Documents
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to delete <strong>{selectedCaches.size}</strong> selected document(s) from cache?
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <strong>Documents to be deleted:</strong>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                {Array.from(selectedCaches).map(docName => {
+                  const doc = cacheList.find(d => d.name === docName);
+                  return (
+                    <li key={docName} style={{ marginBottom: '4px', fontSize: '14px' }}>
+                      <strong>{docName}</strong>
+                      {doc && (
+                        <span style={{ color: '#666', marginLeft: '8px' }}>
+                          ({doc.requirementsCount} requirements, {doc.dateCached && doc.dateCached !== 'Unknown' ? new Date(doc.dateCached).toLocaleDateString() : 'Unknown date'})
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              This action cannot be undone. The documents and all their cached data will be permanently removed.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCacheDeleteConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDeleteSelectedCaches}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete {selectedCaches.size} Document(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cache Management Modal */}
+      {showCacheModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: '#dc3545' }}>
+                🗑️ Cache Management
+              </h3>
+              <button
+                onClick={() => setShowCacheModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#666'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Cache List */}
+            <div style={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '6px',
+              marginBottom: '20px'
+            }}>
+              {isLoadingCache ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                  Loading cache list...
+                </div>
+              ) : cacheList.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                  No cached documents found
+                </div>
+              ) : (
+                <div>
+                  {/* Header with Select All */}
+                  <div style={{
+                    padding: '12px',
+                    backgroundColor: '#f8f9fa',
+                    borderBottom: '1px solid #dee2e6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelectAllCachesChecked}
+                      onChange={handleSelectAllCaches}
+                      style={{ transform: 'scale(1.2)' }}
+                    />
+                    <span style={{ fontWeight: 'bold' }}>Select All</span>
+                    <span style={{ marginLeft: 'auto', color: '#666' }}>
+                      {selectedCaches.size} of {cacheList.length} selected
+                    </span>
+                  </div>
+
+                  {/* Document List */}
+                  {cacheList.map((doc, index) => (
+                    <div
+                      key={doc.name}
+                      style={{
+                        padding: '12px',
+                        borderBottom: '1px solid #dee2e6',
+                        backgroundColor: selectedCaches.has(doc.name) ? '#e3f2fd' : 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCaches.has(doc.name)}
+                        onChange={() => handleSelectCache(doc.name)}
+                        style={{ transform: 'scale(1.2)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                          {doc.name}
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#666', display: 'flex', gap: '16px' }}>
+                          <span>📅 {doc.dateCached && doc.dateCached !== 'Unknown' ? new Date(doc.dateCached).toLocaleDateString() : 'Unknown date'}</span>
+                          <span>📋 {doc.requirementsCount} requirements</span>
+                          <span>
+                            {doc.hasAnalysis && '📄'} 
+                            {doc.hasRequirements && '📋'} 
+                            {doc.hasTests && '🧪'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowCacheModal(false)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={fetchCacheList}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#17a2b8',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+              <button
+                onClick={handleDeleteSelectedCaches}
+                disabled={selectedCaches.size === 0}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: selectedCaches.size === 0 ? '#6c757d' : '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: selectedCaches.size === 0 ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                🗑️ Delete Selected ({selectedCaches.size})
               </button>
             </div>
           </div>

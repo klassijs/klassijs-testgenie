@@ -4,6 +4,7 @@
   "description": "AI-powered test automation platform for generating Cucumber test cases",
   "creator": {
     "name": "Larry Goddard",
+    "github": "https://github.com/klassijs",
     "linkedin": "https://linkedin.com/in/larryg",
     "youtube": "https://youtube.com/@LarryG_01"
   },

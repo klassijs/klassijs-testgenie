@@ -1368,6 +1368,49 @@ router.delete('/cache/remove/:hash', async (req, res) => {
   }
 });
 
+// List all cached documents endpoint
+router.get('/cache/list', async (req, res) => {
+  try {
+    const documents = await cacheManager.listCachedDocuments();
+    res.json({
+      success: true,
+      documents: documents
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to list cached documents',
+      details: error.message
+    });
+  }
+});
+
+// Delete multiple cached documents endpoint
+router.delete('/cache/delete-multiple', async (req, res) => {
+  try {
+    const { documentNames } = req.body;
+    
+    if (!documentNames || !Array.isArray(documentNames) || documentNames.length === 0) {
+      return res.status(400).json({
+        error: 'Missing or invalid document names',
+        details: 'Document names array is required'
+      });
+    }
+
+    const results = await cacheManager.deleteMultipleDocuments(documentNames);
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${results.deletedCount} document(s)`,
+      results: results
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to delete documents',
+      details: error.message
+    });
+  }
+});
+
 // Save edited requirements endpoint
 router.post('/save-edited-requirements', async (req, res) => {
   try {

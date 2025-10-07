@@ -613,6 +613,201 @@ class CacheManager {
       console.error(`❌ Failed to cache ${type} results:`, error.message);
     }
   }
+
+  /**
+   * List all cached documents with metadata
+   * @returns {Array} - Array of document objects with metadata
+   */
+  async listCachedDocuments() {
+    try {
+      const documents = [];
+      const entries = await fs.readdir(this.cacheDir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name !== 'node_modules') {
+          const docName = entry.name;
+          const docDir = path.join(this.cacheDir, docName);
+          const metadataPath = path.join(docDir, 'metadata.json');
+          
+          try {
+            // Read document metadata
+            const metadataContent = await fs.readFile(metadataPath, 'utf8');
+            const metadata = JSON.parse(metadataContent);
+            
+            // Count requirements if requirements.json exists
+            let requirementsCount = 0;
+            try {
+              const requirementsPath = path.join(docDir, 'requirements.json');
+              const requirementsContent = await fs.readFile(requirementsPath, 'utf8');
+              const requirements = JSON.parse(requirementsContent);
+              
+              // Parse requirements table to count them
+              if (requirements.content) {
+                const lines = requirements.content.split('\n');
+                const tableLines = lines.filter(line => 
+                  line.includes('|') && 
+                  !line.toLowerCase().includes('requirement id') &&
+                  !line.toLowerCase().includes('business requirement') &&
+                  !line.trim().match(/^[\s\-|]+$/)
+                );
+                requirementsCount = tableLines.length;
+              }
+            } catch (reqError) {
+              // Requirements file doesn't exist or can't be parsed
+              requirementsCount = 0;
+            }
+            
+            // Get the cachedAt date from root metadata.json
+            let dateCached = 'Unknown';
+            try {
+              // Read root metadata to get the original cachedAt date
+              const rootMetadataContent = await fs.readFile(this.metadataFile, 'utf8');
+              const rootMetadata = JSON.parse(rootMetadataContent);
+              
+              // Find the entry for this document by matching documentDir
+              const sanitizedDocName = this.sanitizeFileName(docName);
+              for (const [hashKey, entry] of Object.entries(rootMetadata)) {
+                if (entry.documentDir === sanitizedDocName && entry.cachedAt) {
+                  const date = new Date(entry.cachedAt);
+                  if (!isNaN(date.getTime())) {
+                    dateCached = date.toISOString();
+                    break;
+                  }
+                }
+              }
+            } catch (error) {
+              console.warn(`⚠️ Could not read root metadata for ${docName}: ${error.message}`);
+            }
+
+            documents.push({
+              name: docName,
+              dateCached: dateCached,
+              requirementsCount: requirementsCount,
+              hasAnalysis: await this.fileExists(path.join(docDir, 'analysis.json')),
+              hasRequirements: await this.fileExists(path.join(docDir, 'requirements.json')),
+              hasTests: await this.fileExists(path.join(docDir, 'tests.json'))
+            });
+          } catch (metaError) {
+            // Skip directories without proper metadata
+            console.warn(`⚠️ Skipping directory ${docName}: ${metaError.message}`);
+          }
+        }
+      }
+      
+      // Sort by date (newest first)
+      documents.sort((a, b) => new Date(b.dateCached) - new Date(a.dateCached));
+      
+      return documents;
+    } catch (error) {
+      console.error('❌ Failed to list cached documents:', error.message);
+      return [];
+    }
+  }
+
+  /**
+   * Delete multiple documents from cache
+   * @param {Array} documentNames - Array of document names to delete
+   * @returns {Object} - Results of deletion operation
+   */
+  async deleteMultipleDocuments(documentNames) {
+    const results = {
+      deletedCount: 0,
+      failedCount: 0,
+      deletedDocuments: [],
+      failedDocuments: []
+    };
+    
+    for (const docName of documentNames) {
+      try {
+        const docDir = path.join(this.cacheDir, this.sanitizeFileName(docName));
+        
+        // Check if directory exists
+        try {
+          await fs.access(docDir);
+        } catch (error) {
+          results.failedCount++;
+          results.failedDocuments.push({ name: docName, error: 'Directory not found' });
+          continue;
+        }
+        
+        // Remove the entire document directory
+        await fs.rm(docDir, { recursive: true, force: true });
+        
+        results.deletedCount++;
+        results.deletedDocuments.push(docName);
+        console.log(`🗑️ Deleted cached document: ${docName}`);
+        
+      } catch (error) {
+        results.failedCount++;
+        results.failedDocuments.push({ name: docName, error: error.message });
+        console.error(`❌ Failed to delete ${docName}:`, error.message);
+      }
+    }
+    
+    // Remove entries from root metadata.json for successfully deleted documents
+    if (results.deletedCount > 0) {
+      await this.removeFromRootMetadata(results.deletedDocuments);
+    }
+    
+    return results;
+  }
+
+  /**
+   * Remove entries from root metadata.json
+   * @param {Array} documentNames - Array of document names to remove from metadata
+   */
+  async removeFromRootMetadata(documentNames) {
+    try {
+      // Read current metadata
+      let metadata = {};
+      try {
+        const metadataContent = await fs.readFile(this.metadataFile, 'utf8');
+        metadata = JSON.parse(metadataContent);
+      } catch (error) {
+        // Metadata file doesn't exist or is invalid, start fresh
+        metadata = {};
+      }
+
+      // Remove entries for deleted documents
+      let removedCount = 0;
+      const keysToRemove = [];
+      
+      // Find entries to remove by matching filename field
+      for (const [hashKey, entry] of Object.entries(metadata)) {
+        if (entry.filename && documentNames.includes(entry.filename)) {
+          keysToRemove.push(hashKey);
+          removedCount++;
+          console.log(`📝 Found metadata entry to remove: ${entry.filename} (${hashKey.substring(0, 8)}...)`);
+        }
+      }
+      
+      // Remove the found entries
+      for (const key of keysToRemove) {
+        delete metadata[key];
+      }
+
+      // Write updated metadata back to file
+      await fs.writeFile(this.metadataFile, JSON.stringify(metadata, null, 2));
+      console.log(`📝 Removed ${removedCount} entries from root metadata.json`);
+      
+    } catch (error) {
+      console.error('❌ Failed to update root metadata:', error.message);
+    }
+  }
+
+  /**
+   * Check if a file exists
+   * @param {string} filePath - Path to check
+   * @returns {boolean} - True if file exists
+   */
+  async fileExists(filePath) {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
 }
 
 module.exports = CacheManager;
