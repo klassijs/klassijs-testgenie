@@ -8,9 +8,13 @@ const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMai
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
 const { generateWordDocument } = require('../utils/docxGenerator');
 const { validateRequirementsQuality } = require('../utils/workflowAnalyzer');
+const CacheManager = require('../utils/cacheManager');
 const axios = require('axios'); // Added axios for the debug endpoint
 
 const router = express.Router();
+
+// Initialize cache manager
+const cacheManager = new CacheManager();
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -129,9 +133,53 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
-    const content = await extractFileContent(req.file);
+    // First check for document-based cache (edited versions)
+    const hasDocumentCache = await cacheManager.hasDocumentCachedResults(req.file.originalname, 'analysis');
+    console.log(`🔍 Has document-based cache: ${hasDocumentCache}`);
     
+    if (hasDocumentCache) {
+      const startTime = Date.now();
+      const documentCachedResults = await cacheManager.getDocumentCachedResults(req.file.originalname, 'analysis');
+      if (documentCachedResults) {
+        const cacheHitTime = Date.now() - startTime;
+        console.log(`⚡ Document cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
+        return res.json({
+          success: true,
+          content: documentCachedResults.content,
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          message: 'Document analyzed successfully (from edited cache)',
+          cacheInfo: documentCachedResults._cacheInfo
+        });
+      }
+    }
 
+    // Fallback to hash-based cache
+    const fileHash = cacheManager.generateFileHash(req.file.buffer);
+    console.log(`🔍 File hash: ${fileHash.substring(0, 8)}...`);
+    console.log(`📁 Cache directory: ${cacheManager.cacheDir}`);
+
+    // Check if we have cached results
+    const hasCached = await cacheManager.hasCachedResults(fileHash, req.file.originalname);
+    console.log(`🔍 Has hash-based cached results: ${hasCached}`);
+    
+    const startTime = Date.now();
+    const cachedResults = await cacheManager.getCachedResults(fileHash, req.file.originalname);
+    if (cachedResults) {
+      const cacheHitTime = Date.now() - startTime;
+      console.log(`⚡ Hash cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
+      return res.json({
+        success: true,
+        content: cachedResults.content,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        message: 'Document analyzed successfully (from cache)',
+        cacheInfo: cachedResults._cacheInfo
+      });
+    }
+
+    console.log(`🔄 Cache miss. Processing document: ${req.file.originalname}`);
+    const content = await extractFileContent(req.file);
     
     if (!content || content.trim().length < 10) {
       return res.status(400).json({
@@ -141,12 +189,31 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
+    // Prepare results for caching
+    const analysisResults = {
+      content: content,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store results in cache (both hash-based and document-based)
+    console.log(`💾 Storing results in cache...`);
+    await cacheManager.storeCachedResults(fileHash, analysisResults, req.file.originalname);
+    await cacheManager.storeDocumentCachedResults(req.file.originalname, 'analysis', analysisResults);
+    console.log(`✅ Results stored in cache (both hash-based and document-based)`);
+
     res.json({
       success: true,
       content: content,
       fileName: req.file.originalname,
       fileSize: req.file.size,
-      message: 'Document analyzed successfully'
+      message: 'Document analyzed successfully',
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: fileHash.substring(0, 8) + '...'
+      }
     });
 
   } catch (error) {
@@ -174,7 +241,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 // Test generation endpoint
 router.post('/generate-tests', async (req, res) => {
   try {
-    const { content, context = '' } = req.body;
+    const { content, context = '', documentName = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -192,7 +259,69 @@ router.post('/generate-tests', async (req, res) => {
       });
     }
 
+    // First check for document-based cache (edited versions)
+    if (documentName) {
+      const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
+      console.log(`🔍 Has document-based test cache: ${hasDocumentCache}`);
+      
+      if (hasDocumentCache) {
+        const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'tests');
+        if (documentCachedResults) {
+          console.log(`⚡ Document test cache hit! Returning cached test results`);
+          return res.json({
+            success: true,
+            content: documentCachedResults.content,
+            metadata: {
+              originalContentLength: content.length,
+              generatedContentLength: documentCachedResults.content.length,
+              timestamp: new Date().toISOString(),
+              fromCache: true,
+              cacheType: 'document-based'
+            },
+            cacheInfo: documentCachedResults._cacheInfo
+          });
+        }
+      }
+    }
+
+    // Fallback to hash-based cache
+    const contentHash = cacheManager.generateContentHash(content, context);
+    console.log(`🔍 Test generation hash: ${contentHash.substring(0, 8)}...`);
+
+    // Check if we have cached test results
+    const cachedTestResults = await cacheManager.getCachedTestResults(contentHash, documentName);
+    if (cachedTestResults) {
+      console.log(`⚡ Hash test cache hit! Returning cached test results`);
+      return res.json({
+        success: true,
+        content: cachedTestResults.content,
+        metadata: {
+          originalContentLength: content.length,
+          generatedContentLength: cachedTestResults.content.length,
+          timestamp: new Date().toISOString(),
+          fromCache: true
+        },
+        cacheInfo: cachedTestResults._cacheInfo
+      });
+    }
+
+    console.log(`🔄 Test cache miss. Generating test cases...`);
     const generatedTests = await generateTestCases(content, context);
+
+    // Prepare test results for caching
+    const testResults = {
+      content: generatedTests,
+      originalContentLength: content.length,
+      generatedContentLength: generatedTests.length,
+      context: context,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store test results in cache (both hash-based and document-based)
+    await cacheManager.storeCachedTestResults(contentHash, testResults, content, documentName);
+    if (documentName) {
+      await cacheManager.storeDocumentCachedResults(documentName, 'tests', testResults);
+    }
 
     res.json({
       success: true,
@@ -200,7 +329,13 @@ router.post('/generate-tests', async (req, res) => {
       metadata: {
         originalContentLength: content.length,
         generatedContentLength: generatedTests.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        fromCache: false
+      },
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: contentHash.substring(0, 8) + '...'
       }
     });
 
@@ -299,7 +434,7 @@ router.post('/refine-tests', async (req, res) => {
 // Requirements extraction endpoint
 router.post('/extract-requirements', async (req, res) => {
   try {
-    const { content, context = '' } = req.body;
+    const { content, context = '', documentName = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -317,8 +452,75 @@ router.post('/extract-requirements', async (req, res) => {
       });
     }
 
+    // First check for document-based cache (edited versions)
+    if (documentName) {
+      const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'requirements');
+      console.log(`🔍 Has document-based requirements cache: ${hasDocumentCache}`);
+      
+      if (hasDocumentCache) {
+        const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'requirements');
+        if (documentCachedResults) {
+          console.log(`⚡ Document requirements cache hit! Returning cached requirements`);
+          return res.json({
+            success: true,
+            content: documentCachedResults.content,
+            message: 'Requirements extracted successfully (from edited cache)',
+            metadata: {
+              originalContentLength: content.length,
+              extractedContentLength: documentCachedResults.content.length,
+              timestamp: new Date().toISOString(),
+              fromCache: true,
+              cacheType: 'document-based'
+            },
+            cacheInfo: documentCachedResults._cacheInfo
+          });
+        }
+      }
+    }
+
+    // Fallback to hash-based cache
+    const contentHash = cacheManager.generateContentHash(content, context);
+    console.log(`🔍 Requirements extraction hash: ${contentHash.substring(0, 8)}...`);
+
+    // Check if we have cached requirements results
+    const cachedRequirements = await cacheManager.getCachedTestResults(contentHash, documentName);
+    if (cachedRequirements) {
+      console.log(`⚡ Hash requirements cache hit! Returning cached requirements (${Date.now() - Date.now()}ms)`);
+      return res.json({
+        success: true,
+        content: cachedRequirements.content,
+        message: cachedRequirements.message || 'Requirements extracted successfully (from cache)',
+        metadata: {
+          originalContentLength: content.length,
+          extractedContentLength: cachedRequirements.content.length,
+          timestamp: new Date().toISOString(),
+          fromCache: true,
+          cacheType: 'hash-based'
+        },
+        cacheInfo: cachedRequirements._cacheInfo
+      });
+    }
+
+    console.log(`🔄 Requirements cache miss. Extracting requirements...`);
     const { enableLogging = true } = req.body;
     const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
+
+    // Prepare requirements results for caching
+    const requirementsResults = {
+      content: extractedRequirements.content,
+      message: extractedRequirements.message,
+      originalContentLength: content.length,
+      extractedContentLength: extractedRequirements.content.length,
+      context: context,
+      enableLogging: enableLogging,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store requirements results in cache (both hash-based and document-based)
+    await cacheManager.storeCachedTestResults(contentHash, requirementsResults, content, documentName);
+    if (documentName) {
+      await cacheManager.storeDocumentCachedResults(documentName, 'requirements', requirementsResults);
+    }
 
     res.json({
       success: true,
@@ -327,7 +529,13 @@ router.post('/extract-requirements', async (req, res) => {
       metadata: {
         originalContentLength: content.length,
         extractedContentLength: extractedRequirements.content.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        fromCache: false
+      },
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: contentHash.substring(0, 8) + '...'
       }
     });
 
@@ -1111,6 +1319,129 @@ router.post('/analyze-business-elements', async (req, res) => {
   }
 });
 
-// No caching - always process fresh for accuracy
+// Cache management endpoints
+router.get('/cache/stats', async (req, res) => {
+  try {
+    const stats = await cacheManager.getCacheStats();
+    res.json({
+      success: true,
+      stats: stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get cache statistics',
+      details: error.message
+    });
+  }
+});
+
+router.delete('/cache/clear', async (req, res) => {
+  try {
+    await cacheManager.clearCache();
+    res.json({
+      success: true,
+      message: 'Cache cleared successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to clear cache',
+      details: error.message
+    });
+  }
+});
+
+router.delete('/cache/remove/:hash', async (req, res) => {
+  try {
+    const { hash } = req.params;
+    await cacheManager.removeCachedFile(hash);
+    res.json({
+      success: true,
+      message: `Cached file ${hash.substring(0, 8)}... removed successfully`
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to remove cached file',
+      details: error.message
+    });
+  }
+});
+
+// Save edited requirements endpoint
+router.post('/save-edited-requirements', async (req, res) => {
+  try {
+    const { documentName, requirements } = req.body;
+
+    if (!documentName || !requirements) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Document name and requirements content are required'
+      });
+    }
+
+    // Store edited requirements in document-based cache
+    await cacheManager.storeDocumentCachedResults(documentName, 'requirements', {
+      content: requirements,
+      originalContentLength: requirements.length,
+      extractedContentLength: requirements.length,
+      context: 'edited_by_user',
+      processedAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Edited requirements saved successfully',
+      metadata: {
+        documentName,
+        contentLength: requirements.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error saving edited requirements:', error);
+    res.status(500).json({
+      error: 'Failed to save edited requirements',
+      details: error.message
+    });
+  }
+});
+
+// Save edited tests endpoint
+router.post('/save-edited-tests', async (req, res) => {
+  try {
+    const { documentName, tests } = req.body;
+
+    if (!documentName || !tests) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Document name and tests content are required'
+      });
+    }
+
+    // Store edited tests in document-based cache
+    await cacheManager.storeDocumentCachedResults(documentName, 'tests', {
+      content: tests,
+      originalContentLength: tests.length,
+      generatedContentLength: tests.length,
+      context: 'edited_by_user',
+      processedAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Edited tests saved successfully',
+      metadata: {
+        documentName,
+        contentLength: tests.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error saving edited tests:', error);
+    res.status(500).json({
+      error: 'Failed to save edited tests',
+      details: error.message
+    });
+  }
+});
 
 module.exports = router; 

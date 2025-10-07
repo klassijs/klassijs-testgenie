@@ -3,11 +3,18 @@ const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequire
 
 // Retry helper function with exponential backoff for rate limiting
 async function makeOpenAIRequest(apiUrl, requestData, headers, maxRetries = 3) {
+  console.log(`🔄 Starting OpenAI request (max retries: ${maxRetries})`);
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
+      console.log(`🚀 Attempt ${attempt}/${maxRetries} - Making request to Azure OpenAI...`);
       const response = await axios.post(apiUrl, requestData, { headers });
+      console.log(`✅ Request successful on attempt ${attempt}`);
       return response;
     } catch (error) {
+      console.log(`❌ Attempt ${attempt} failed: ${error.message}`);
+      console.log(`📊 Error status: ${error.response?.status}, Code: ${error.code}`);
+      
       // If it's a 429 (rate limit) and we have retries left, wait and retry
       if (error.response?.status === 429 && attempt < maxRetries) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
@@ -17,6 +24,7 @@ async function makeOpenAIRequest(apiUrl, requestData, headers, maxRetries = 3) {
       }
       
       // If it's not a 429 or we're out of retries, throw the error
+      console.log(`💥 Final attempt failed, throwing error`);
       throw error;
     }
   }
@@ -108,15 +116,26 @@ const isAzureOpenAIConfigured = OPENAI_URL && OPENAI_DEVELOPMENT_ID && OPENAI_AP
 
 // Generate test cases using Azure OpenAI
 async function generateTestCases(content, context = '') {
+  console.log('🧪 Starting test generation...');
+  console.log(`📝 Content length: ${content?.length || 0} characters`);
+  console.log(`📋 Context: ${context || 'None'}`);
+  
+  // Log memory usage at start
+  const used = process.memoryUsage();
+  console.log(`💾 Memory at start: RSS ${Math.round(used.rss / 1024 / 1024)}MB, Heap ${Math.round(used.heapUsed / 1024 / 1024)}MB`);
   
   if (!isAzureOpenAIConfigured) {
+    console.log('❌ Azure OpenAI not configured');
     throw new Error('Azure OpenAI is not configured');
   }
   
   // Check if content is sufficient
   if (!content || content.trim().length < 100) {
+    console.log('❌ Insufficient content for test generation');
     throw new Error('Insufficient content. Please provide more detailed content for test generation');
   }
+  
+  console.log('✅ Content validation passed');
 
   // Clean up the URL to prevent duplication
   let baseUrl = OPENAI_URL;
@@ -128,6 +147,8 @@ async function generateTestCases(content, context = '') {
   baseUrl = baseUrl.replace(/\/openai\/deployments\/?$/, '');
   
   const apiUrl = `${baseUrl}/openai/deployments/${OPENAI_DEVELOPMENT_ID}/chat/completions?api-version=${OPENAI_API_VERSION}`;
+  console.log(`🔗 API URL: ${apiUrl}`);
+  console.log(`🤖 Model: ${OPENAI_DEVELOPMENT_ID}`);
   
 
 
@@ -260,6 +281,11 @@ CRITICAL REQUIREMENTS:
   ];
 
   try {
+    console.log('🚀 Making request to Azure OpenAI...');
+    console.log(`📊 Request payload size: ${JSON.stringify(messages).length} characters`);
+    console.log(`🎯 Max tokens: 2000, Temperature: 0.7`);
+    
+    const startTime = Date.now();
     const response = await makeOpenAIRequest(
       apiUrl,
       {
@@ -273,15 +299,23 @@ CRITICAL REQUIREMENTS:
         'Content-Type': 'application/json'
       }
     );
+    
+    const requestTime = Date.now() - startTime;
+    console.log(`⏱️  Azure OpenAI request completed in ${requestTime}ms`);
 
-
+    console.log('🔍 Processing response...');
+    console.log(`📦 Response status: ${response.status}`);
+    console.log(`📊 Response data keys: ${Object.keys(response.data || {}).join(', ')}`);
 
     if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
+      console.log('❌ Invalid response structure from Azure OpenAI');
+      console.log(`📄 Response data: ${JSON.stringify(response.data)}`);
       throw new Error(`Invalid response structure from Azure OpenAI: ${JSON.stringify(response.data)}`);
     }
 
     // Check if content was filtered
     if (response.data.choices[0].finish_reason === 'content_filter') {
+      console.log('❌ Content was filtered by Azure OpenAI safety filters');
       const filterResults = response.data.choices[0].content_filter_results;
       const filteredCategories = Object.entries(filterResults)
         .filter(([_, result]) => result.filtered)
@@ -293,12 +327,17 @@ CRITICAL REQUIREMENTS:
 
     // Check if message has content
     if (!response.data.choices[0].message.content) {
+      console.log('❌ No content received from Azure OpenAI');
+      console.log(`📄 Response choice: ${JSON.stringify(response.data.choices[0])}`);
       throw new Error(`No content received from Azure OpenAI. Response: ${JSON.stringify(response.data.choices[0])}`);
     }
 
+    console.log('✅ Response validation passed');
     let generatedTests = response.data.choices[0].message.content;
+    console.log(`📝 Generated content length: ${generatedTests.length} characters`);
 
     // Clean up any explanations that might have slipped through
+    console.log('🧹 Cleaning up generated content...');
     const cleanGeneratedTests = generatedTests
       .replace(/### Explanation:[\s\S]*?(?=Feature:|$)/gi, '') // Remove explanation sections
       .replace(/This Gherkin syntax covers[\s\S]*?(?=Feature:|$)/gi, '') // Remove introductory explanations
@@ -309,12 +348,28 @@ CRITICAL REQUIREMENTS:
       .replace(/```\\n/gi, '') // Remove trailing ```
       .trim(); // Trim any leading/trailing whitespace
 
+    console.log(`🧹 Cleaned content length: ${cleanGeneratedTests.length} characters`);
+
     // Remove duplicate scenarios
+    console.log('🔄 Removing duplicate scenarios...');
     const deduplicatedTests = removeDuplicateScenarios(cleanGeneratedTests);
+    console.log(`✅ Final content length: ${deduplicatedTests.length} characters`);
+    
+    // Log memory usage at end
+    const usedEnd = process.memoryUsage();
+    console.log(`💾 Memory at end: RSS ${Math.round(usedEnd.rss / 1024 / 1024)}MB, Heap ${Math.round(usedEnd.heapUsed / 1024 / 1024)}MB`);
+    console.log('🎉 Test generation completed successfully!');
 
     return deduplicatedTests;
   } catch (error) {
-    console.error('Azure OpenAI API Error:', error.response?.data || error.message);
+    console.error('❌ Azure OpenAI API Error:', error.response?.data || error.message);
+    console.error('❌ Error stack:', error.stack);
+    console.error('❌ Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
     throw new Error(`Azure OpenAI API Error: ${error.response?.status || error.message}`);
   }
 }

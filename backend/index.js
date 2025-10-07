@@ -53,8 +53,31 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
+// Add memory monitoring
+function logMemoryUsage() {
+  const used = process.memoryUsage();
+  console.log(`💾 Memory usage: RSS ${Math.round(used.rss / 1024 / 1024)}MB, Heap ${Math.round(used.heapUsed / 1024 / 1024)}MB/${Math.round(used.heapTotal / 1024 / 1024)}MB`);
+}
+
+// Log memory usage every 30 seconds
+setInterval(logMemoryUsage, 30000);
+
+// Add uncaught exception handlers
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
+  console.error('💥 Stack:', error.stack);
+  logMemoryUsage();
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  logMemoryUsage();
+  process.exit(1);
+});
+
+// Start server with increased timeout
+const server = app.listen(PORT, () => {
   console.log(`🚀 Test Automation Platform server running on port ${PORT}`);
   console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
   console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
@@ -62,4 +85,12 @@ app.listen(PORT, () => {
   console.log(`📄 Document analysis endpoint: /api/analyze-document`);
   console.log(`🧪 Test generation endpoint: /api/generate-tests`);
   console.log(`🔄 Test refinement endpoint: /api/refine-tests`);
+  logMemoryUsage();
 });
+
+// Increase server timeout for long-running operations
+server.timeout = 300000; // 5 minutes
+server.keepAliveTimeout = 300000; // 5 minutes
+server.headersTimeout = 300000; // 5 minutes
+
+console.log(`⏱️  Server timeout set to 5 minutes for long-running operations`);

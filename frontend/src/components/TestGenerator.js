@@ -4,6 +4,9 @@ import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube
 import axios from 'axios';
 import TestOutput from './TestOutput';
 
+// Configure axios with longer timeout for long-running operations
+axios.defaults.timeout = 300000; // 5 minutes
+
 const TestGenerator = () => {
   // File input reference
   const fileInputRef = useRef(null);
@@ -14,6 +17,7 @@ const TestGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingFile, setProcessingFile] = useState(null);
+  const [currentDocumentName, setCurrentDocumentName] = useState(null);
   const [status, setStatus] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
@@ -354,6 +358,8 @@ const TestGenerator = () => {
             content: combinedJiraContent, 
             context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}`,
             enableLogging: false // Disable logging for Jira imports to reduce console noise
+          }, {
+            timeout: 300000 // 5 minutes timeout
           });
           
           if (requirementsResponse.data.success) {
@@ -510,6 +516,7 @@ const TestGenerator = () => {
   const processFile = useCallback(async (fileObj) => {
     setIsProcessing(true);
     setProcessingFile(fileObj.name);
+    setCurrentDocumentName(fileObj.name);
     setStatus({ type: 'info', message: `Processing ${fileObj.name}...` });
 
     try {
@@ -539,7 +546,10 @@ const TestGenerator = () => {
         try {
           requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
             content: response.data.content, 
-            context: context 
+            context: context,
+            documentName: fileObj.name
+          }, {
+            timeout: 300000 // 5 minutes timeout
           });
           
           if (requirementsResponse.data.success) {
@@ -886,7 +896,10 @@ SCENARIO NAMING GUIDELINES:
         
         const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
           content: testContent, 
-          context: context 
+          context: context,
+          documentName: currentDocumentName
+        }, {
+          timeout: 300000 // 5 minutes timeout
         });
         
         if (response.data.success) {
@@ -1030,6 +1043,7 @@ SCENARIO NAMING GUIDELINES:
     setGeneratedTests('');
     setExtractedRequirements('');
     setUploadedFiles([]);
+    setCurrentDocumentName(null);
     setShowModal(false);
     setActiveTab(0);
     setFeatureTabs([]);
@@ -2119,16 +2133,36 @@ SCENARIO NAMING GUIDELINES:
                   e.target.style.transform = 'translateY(0)';
                   e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
                 }}
-                onClick={() => {
-                  // Sync editable requirements back to extractedRequirements with proper markdown table format
-                  const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
-                  const tableSeparator = '|---|---|---|---|';
-                  const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                  const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
-                  
-                  setExtractedRequirements(newContent);
-                  setHasUnsavedChanges(false);
-                  setStatus({ type: 'success', message: 'Changes saved successfully!' });
+                onClick={async () => {
+                  try {
+                    // Sync editable requirements back to extractedRequirements with proper markdown table format
+                    const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
+                    const tableSeparator = '|---|---|---|---|';
+                    const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
+                    const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
+                    
+                    setExtractedRequirements(newContent);
+                    setHasUnsavedChanges(false);
+                    
+                    // Save edited requirements to cache if we have a current document
+                    if (currentDocumentName) {
+                      try {
+                        await axios.post(`${API_BASE_URL}/api/save-edited-requirements`, {
+                          documentName: currentDocumentName,
+                          requirements: newContent
+                        });
+                        setStatus({ type: 'success', message: 'Changes saved successfully and cached!' });
+                      } catch (error) {
+                        console.error('Failed to save to cache:', error);
+                        setStatus({ type: 'success', message: 'Changes saved locally!' });
+                      }
+                    } else {
+                      setStatus({ type: 'success', message: 'Changes saved successfully!' });
+                    }
+                  } catch (error) {
+                    console.error('Error saving changes:', error);
+                    setStatus({ type: 'error', message: 'Failed to save changes!' });
+                  }
                 }}
               >
                 Save Changes
@@ -2382,7 +2416,7 @@ SCENARIO NAMING GUIDELINES:
               <div className="modal-actions">
                 <button 
                   className="btn btn-info"
-                  onClick={() => {
+                  onClick={async () => {
                     const currentFeature = featureTabs[activeTab];
                     const isCurrentlyEditing = editingFeatures[activeTab];
                     
@@ -2395,7 +2429,24 @@ SCENARIO NAMING GUIDELINES:
                       };
                       setFeatureTabs(updatedFeatures);
                       setEditingFeatures(prev => ({ ...prev, [activeTab]: false }));
-                      setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                      
+                      // Save edited tests to cache if we have a current document
+                      if (currentDocumentName) {
+                        try {
+                          // Combine all test content
+                          const allTestContent = updatedFeatures.map(f => f.content).join('\n\n');
+                          await axios.post(`${API_BASE_URL}/api/save-edited-tests`, {
+                            documentName: currentDocumentName,
+                            tests: allTestContent
+                          });
+                          setStatus({ type: 'success', message: `Updated "${currentFeature.title}" and saved to cache!` });
+                        } catch (error) {
+                          console.error('Failed to save tests to cache:', error);
+                          setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                        }
+                      } else {
+                        setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                      }
                     } else {
                       // Start editing current feature
                       setEditingFeatures(prev => ({ ...prev, [activeTab]: true }));
