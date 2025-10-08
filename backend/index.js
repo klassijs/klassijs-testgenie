@@ -56,7 +56,7 @@ app.use('*', (req, res) => {
 // Add memory monitoring
 function logMemoryUsage() {
   const used = process.memoryUsage();
-  console.log(`💾 Memory usage: RSS ${Math.round(used.rss / 1024 / 1024)}MB, Heap ${Math.round(used.heapUsed / 1024 / 1024)}MB/${Math.round(used.heapTotal / 1024 / 1024)}MB`);
+  // console.log(`💾 Memory usage: RSS ${Math.round(used.rss / 1024 / 1024)}MB, Heap ${Math.round(used.heapUsed / 1024 / 1024)}MB/${Math.round(used.heapTotal / 1024 / 1024)}MB`);
 }
 
 // Log memory usage every 30 seconds
