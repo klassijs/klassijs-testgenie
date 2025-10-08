@@ -608,6 +608,29 @@ class CacheManager {
       };
       await this.saveDocumentMetadata(documentName, docMetadata);
 
+      // Update global metadata for Jira issues (they don't have file hashes)
+      if (documentName.startsWith('jira-')) {
+        const globalMetadata = await this.loadMetadata();
+        const jiraKey = `jira_${documentName.replace('jira-', '')}`;
+        
+        // Update or create Jira entry in global metadata
+        if (!globalMetadata[jiraKey]) {
+          globalMetadata[jiraKey] = {
+            filename: documentName,
+            cachedAt: new Date().toISOString(),
+            fileSize: 0,
+            issueCount: 0,
+            documentDir: this.sanitizeFileName(documentName),
+            type: 'jira_issue'
+          };
+        }
+        
+        // Update the cachedAt timestamp
+        globalMetadata[jiraKey].cachedAt = new Date().toISOString();
+        
+        await this.saveMetadata(globalMetadata);
+      }
+
       console.log(`💾 Cached ${type} results for ${documentName} (document-based)`);
     } catch (error) {
       console.error(`❌ Failed to cache ${type} results:`, error.message);
@@ -772,12 +795,17 @@ class CacheManager {
       let removedCount = 0;
       const keysToRemove = [];
       
-      // Find entries to remove by matching filename field
+      // Find entries to remove by matching filename field or Jira key
       for (const [hashKey, entry] of Object.entries(metadata)) {
         if (entry.filename && documentNames.includes(entry.filename)) {
           keysToRemove.push(hashKey);
           removedCount++;
           console.log(`📝 Found metadata entry to remove: ${entry.filename} (${hashKey.substring(0, 8)}...)`);
+        } else if (entry.type === 'jira_issue' && entry.filename && documentNames.includes(entry.filename)) {
+          // Handle Jira issues - the key is jira_PROJ-123 but filename is jira-PROJ-123
+          keysToRemove.push(hashKey);
+          removedCount++;
+          console.log(`📝 Found Jira metadata entry to remove: ${entry.filename} (${hashKey})`);
         }
       }
       
@@ -806,6 +834,169 @@ class CacheManager {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Get pushed state cache file path
+   * @param {string} documentName - Document name
+   * @returns {string} - Pushed state cache file path
+   */
+  getPushedStateFilePath(documentName) {
+    const docDir = path.join(this.cacheDir, this.sanitizeFileName(documentName));
+    return path.join(docDir, 'pushedState.json');
+  }
+
+  /**
+   * Check if pushed state exists for a document
+   * @param {string} documentName - Document name
+   * @returns {boolean} - True if pushed state exists
+   */
+  async hasPushedState(documentName) {
+    try {
+      const pushedStatePath = this.getPushedStateFilePath(documentName);
+      await fs.access(pushedStatePath);
+      return true;
+    } catch (error) {
+      return false;
+    }
+  }
+
+  /**
+   * Get pushed state for a document
+   * @param {string} documentName - Document name
+   * @returns {Object|null} - Pushed state or null if not found
+   */
+  async getPushedState(documentName) {
+    try {
+      const pushedStatePath = this.getPushedStateFilePath(documentName);
+      const data = await fs.readFile(pushedStatePath, 'utf8');
+      return JSON.parse(data);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
+   * Store pushed state for a document
+   * @param {string} documentName - Document name
+   * @param {Object} pushedState - Pushed state to store
+   */
+  async storePushedState(documentName, pushedState) {
+    try {
+      const pushedStatePath = this.getPushedStateFilePath(documentName);
+      const docDir = path.dirname(pushedStatePath);
+      
+      // Ensure directory exists
+      await fs.mkdir(docDir, { recursive: true });
+
+      // Add cache metadata
+      const cachedPushedState = {
+        ...pushedState,
+        _cacheInfo: {
+          hit: false,
+          cachedAt: new Date().toISOString(),
+          documentName,
+          type: 'pushed_state'
+        }
+      };
+
+      // Save pushed state to cache file
+      await fs.writeFile(pushedStatePath, JSON.stringify(cachedPushedState, null, 2));
+
+      // Update document-specific metadata
+      const docMetadata = await this.loadDocumentMetadata(documentName);
+      docMetadata.pushedState = {
+        type: 'pushed_state',
+        cachedAt: new Date().toISOString(),
+        pushedTabsCount: pushedState.pushedTabs?.length || 0,
+        testCaseIdsCount: Object.keys(pushedState.zephyrTestCaseIds || {}).length
+      };
+      await this.saveDocumentMetadata(documentName, docMetadata);
+
+      // Update global metadata for Jira issues (they don't have file hashes)
+      if (documentName.startsWith('jira-')) {
+        const globalMetadata = await this.loadMetadata();
+        const jiraKey = `jira_${documentName.replace('jira-', '')}`;
+        
+        globalMetadata[jiraKey] = {
+          filename: documentName,
+          cachedAt: new Date().toISOString(),
+          fileSize: 0,
+          issueCount: 0,
+          documentDir: this.sanitizeFileName(documentName),
+          type: 'jira_issue',
+          pushedTabsCount: pushedState.pushedTabs?.length || 0,
+          testCaseIdsCount: Object.keys(pushedState.zephyrTestCaseIds || {}).length
+        };
+        
+        await this.saveMetadata(globalMetadata);
+      }
+
+      console.log(`💾 Cached pushed state for ${documentName}`);
+    } catch (error) {
+      console.error('❌ Failed to cache pushed state:', error.message);
+    }
+  }
+
+  /**
+   * Clear pushed state for a document
+   * @param {string} documentName - Document name
+   */
+  async clearPushedState(documentName) {
+    try {
+      const pushedStatePath = this.getPushedStateFilePath(documentName);
+      await fs.unlink(pushedStatePath);
+      
+      // Update document metadata
+      const docMetadata = await this.loadDocumentMetadata(documentName);
+      delete docMetadata.pushedState;
+      await this.saveDocumentMetadata(documentName, docMetadata);
+      
+      // Remove from global metadata for Jira issues
+      if (documentName.startsWith('jira-')) {
+        const globalMetadata = await this.loadMetadata();
+        const jiraKey = `jira_${documentName.replace('jira-', '')}`;
+        delete globalMetadata[jiraKey];
+        await this.saveMetadata(globalMetadata);
+      }
+      
+      console.log(`🗑️ Cleared pushed state for ${documentName}`);
+    } catch (error) {
+      console.error('❌ Failed to clear pushed state:', error.message);
+    }
+  }
+
+  /**
+   * Get all documents with pushed state
+   * @returns {Array} - Array of documents with pushed state info
+   */
+  async getAllPushedStates() {
+    try {
+      const documents = [];
+      const entries = await fs.readdir(this.cacheDir, { withFileTypes: true });
+      
+      for (const entry of entries) {
+        if (entry.isDirectory() && entry.name !== 'node_modules') {
+          const docName = entry.name;
+          const pushedState = await this.getPushedState(docName);
+          
+          if (pushedState) {
+            documents.push({
+              documentName: docName,
+              pushedTabs: pushedState.pushedTabs || [],
+              zephyrTestCaseIds: pushedState.zephyrTestCaseIds || {},
+              jiraTicketInfo: pushedState.jiraTicketInfo || {},
+              cachedAt: pushedState._cacheInfo?.cachedAt || 'Unknown'
+            });
+          }
+        }
+      }
+      
+      return documents;
+    } catch (error) {
+      console.error('❌ Failed to get all pushed states:', error.message);
+      return [];
     }
   }
 }

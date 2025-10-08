@@ -77,6 +77,191 @@ const TestGenerator = () => {
   // Track Jira ticket information for imported features
   const [jiraTicketInfo, setJiraTicketInfo] = useState({});
 
+  // Track if cache was loaded on mount
+  const [cacheLoaded, setCacheLoaded] = useState(false);
+
+  // Cache functions for pushed state persistence using backend cache
+  const savePushedStateToCache = useCallback(async (pushedTabsSet, testCaseIds, documentName) => {
+    if (!documentName) {
+      console.warn('No document name provided for pushed state cache');
+      return;
+    }
+
+    try {
+      const pushedState = {
+        pushedTabs: Array.from(pushedTabsSet),
+        zephyrTestCaseIds: testCaseIds,
+        jiraTicketInfo: jiraTicketInfo
+      };
+
+      const response = await axios.post(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(documentName)}`, pushedState);
+      
+      if (response.data.success) {
+        console.log('💾 Pushed state saved to backend cache:', {
+          documentName,
+          pushedTabs: Array.from(pushedTabsSet),
+          testCaseCount: Object.keys(testCaseIds).length
+        });
+      }
+    } catch (error) {
+      console.error('Error saving pushed state to backend cache:', error);
+    }
+  }, [jiraTicketInfo]);
+
+  const loadPushedStateFromCache = useCallback(async (documentName) => {
+    if (!documentName) {
+      console.warn('No document name provided for loading pushed state');
+      return false;
+    }
+
+    try {
+      const response = await axios.get(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(documentName)}`);
+      
+      if (response.data.success && response.data.pushedState) {
+        const pushedState = response.data.pushedState;
+        
+        setPushedTabs(new Set(pushedState.pushedTabs || []));
+        setZephyrTestCaseIds(pushedState.zephyrTestCaseIds || {});
+        
+        // Restore Jira ticket info if available
+        if (pushedState.jiraTicketInfo) {
+          setJiraTicketInfo(pushedState.jiraTicketInfo);
+        }
+        
+        console.log('💾 Pushed state loaded from backend cache:', {
+          documentName,
+          pushedTabs: pushedState.pushedTabs?.length || 0,
+          testCaseCount: Object.keys(pushedState.zephyrTestCaseIds || {}).length,
+          cachedAt: pushedState._cacheInfo?.cachedAt || 'Unknown'
+        });
+        return true;
+      } else {
+        console.log('💾 No pushed state found in backend cache for:', documentName);
+        return false;
+      }
+    } catch (error) {
+      console.error('Error loading pushed state from backend cache:', error);
+      return false;
+    }
+  }, []);
+
+  // Load pushed state from cache when document changes
+  useEffect(() => {
+    if (currentDocumentName) {
+      loadPushedStateFromCache(currentDocumentName);
+    }
+  }, [currentDocumentName, loadPushedStateFromCache]);
+
+  // Load pushed state from cache when Jira issues are imported
+  useEffect(() => {
+    if (featureTabs.length > 0 && requirementsSource === 'jira') {
+      // For Jira issues, load pushed state for each issue and consolidate
+      const loadJiraPushedStates = async () => {
+        const consolidatedPushedTabs = new Set();
+        const consolidatedTestCaseIds = {};
+        const consolidatedJiraTicketInfo = {};
+        
+        for (let index = 0; index < featureTabs.length; index++) {
+          const tab = featureTabs[index];
+          if (tab.source === 'jira' && jiraTicketInfo[index]?.ticketKey) {
+            try {
+              const jiraDocumentName = `jira-${jiraTicketInfo[index].ticketKey}`;
+              const response = await axios.get(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(jiraDocumentName)}`);
+              
+              if (response.data.success && response.data.pushedState) {
+                const pushedState = response.data.pushedState;
+                
+                // If this Jira issue was pushed (has pushedTabs with index 0), add it to consolidated state
+                if (pushedState.pushedTabs?.includes(0)) {
+                  consolidatedPushedTabs.add(index);
+                  consolidatedTestCaseIds[index] = pushedState.zephyrTestCaseIds?.[0] || {};
+                  consolidatedJiraTicketInfo[index] = jiraTicketInfo[index];
+                }
+              }
+            } catch (error) {
+              console.error(`Error loading pushed state for Jira issue ${jiraTicketInfo[index].ticketKey}:`, error);
+            }
+          }
+        }
+        
+        // Update the consolidated state
+        if (consolidatedPushedTabs.size > 0) {
+          setPushedTabs(consolidatedPushedTabs);
+          setZephyrTestCaseIds(consolidatedTestCaseIds);
+          setJiraTicketInfo(consolidatedJiraTicketInfo);
+          
+          console.log('💾 Loaded consolidated Jira pushed states:', {
+            pushedTabs: Array.from(consolidatedPushedTabs),
+            testCaseCount: Object.keys(consolidatedTestCaseIds).length
+          });
+        }
+      };
+      
+      loadJiraPushedStates();
+    }
+  }, [featureTabs, requirementsSource, jiraTicketInfo]);
+
+  // Save pushed state to cache whenever it changes (for uploaded documents only)
+  useEffect(() => {
+    if ((pushedTabs.size > 0 || Object.keys(zephyrTestCaseIds).length > 0) && 
+        currentDocumentName && 
+        requirementsSource !== 'jira') {
+      savePushedStateToCache(pushedTabs, zephyrTestCaseIds, currentDocumentName);
+    }
+  }, [pushedTabs, zephyrTestCaseIds, currentDocumentName, requirementsSource, savePushedStateToCache]);
+
+  // Function to manually clear the pushed state cache
+  const clearPushedStateCache = useCallback(async () => {
+    try {
+      if (requirementsSource === 'jira' && featureTabs.length > 0) {
+        // For Jira issues, clear pushed state for each issue
+        for (let index = 0; index < featureTabs.length; index++) {
+          const tab = featureTabs[index];
+          if (tab.source === 'jira' && jiraTicketInfo[index]?.ticketKey) {
+            const jiraDocumentName = `jira-${jiraTicketInfo[index].ticketKey}`;
+            await axios.delete(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(jiraDocumentName)}`);
+          }
+        }
+      } else if (currentDocumentName) {
+        // For uploaded documents, clear normally
+        await axios.delete(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(currentDocumentName)}`);
+      }
+      
+      setPushedTabs(new Set());
+      setZephyrTestCaseIds({});
+      setJiraTicketInfo({});
+      console.log('💾 Pushed state cache cleared manually');
+    } catch (error) {
+      console.error('Error clearing pushed state cache:', error);
+    }
+  }, [currentDocumentName, requirementsSource, featureTabs, jiraTicketInfo]);
+
+  // Debug function to show cache status
+  const debugCacheStatus = useCallback(async () => {
+    try {
+      if (currentDocumentName) {
+        const response = await axios.get(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(currentDocumentName)}`);
+        if (response.data.success && response.data.pushedState) {
+          const pushedState = response.data.pushedState;
+          console.log('💾 Backend Cache Status:', {
+            documentName: currentDocumentName,
+            exists: true,
+            pushedTabs: pushedState.pushedTabs?.length || 0,
+            testCaseIds: Object.keys(pushedState.zephyrTestCaseIds || {}).length,
+            jiraTickets: Object.keys(pushedState.jiraTicketInfo || {}).length,
+            cachedAt: pushedState._cacheInfo?.cachedAt || 'Unknown'
+          });
+        } else {
+          console.log('💾 Backend Cache Status: No cache found for', currentDocumentName);
+        }
+      } else {
+        console.log('💾 Backend Cache Status: No document name available');
+      }
+    } catch (error) {
+      console.error('Error checking backend cache status:', error);
+    }
+  }, [currentDocumentName]);
+
   // Jira import state
   const [showJiraImport, setShowJiraImport] = useState(false);
   const [jiraConfig, setJiraConfig] = useState({
@@ -89,6 +274,8 @@ const TestGenerator = () => {
   const [jiraIssues, setJiraIssues] = useState([]);
   const [isLoadingJira, setIsLoadingJira] = useState(false);
   const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
+  const [jiraConnectionActive, setJiraConnectionActive] = useState(false);
+  const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
   const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
   const [jiraProjectSearch, setJiraProjectSearch] = useState('');
   const [jiraPagination, setJiraPagination] = useState({
@@ -236,6 +423,7 @@ const TestGenerator = () => {
         }
         
         setJiraProjects(response.data.projects || []);
+        setJiraConnectionActive(true);
         setJiraStep('select');
         setStatus({ type: 'success', message: 'Successfully connected to Jira!' });
       } else {
@@ -254,6 +442,7 @@ const TestGenerator = () => {
   const fetchJiraIssues = async () => {
     setIsLoadingJira(true);
     try {
+      // Make API call - backend will handle caching automatically
       const response = await axios.post(`${API_BASE_URL}/api/jira/fetch-issues`, {
         projectKey: jiraConfig.projectKey,
         issueTypes: jiraConfig.issueTypes
@@ -278,7 +467,18 @@ const TestGenerator = () => {
         // Set the first page of issues to display
         updateDisplayedIssues(allIssues, 1);
         
-        setStatus({ type: 'success', message: `Fetched all ${allIssues.length} issues from Jira` });
+        // Update cache info based on backend response
+        setJiraCacheInfo({
+          isCached: response.data.cached || false,
+          lastFetched: new Date().toISOString(),
+          projectKey: jiraConfig.projectKey,
+          issueTypes: [...jiraConfig.issueTypes]
+        });
+        
+        const message = response.data.cached 
+          ? `Loaded ${allIssues.length} cached issues from Jira` 
+          : `Fetched all ${allIssues.length} issues from Jira`;
+        setStatus({ type: 'success', message });
         setJiraStep('import');
       } else {
         setStatus({ type: 'error', message: response.data.error || 'Failed to fetch Jira issues' });
@@ -312,8 +512,11 @@ const TestGenerator = () => {
   // Clear Jira cache for current project
   const clearJiraCache = async () => {
     try {
-      const response = await axios.post(`${API_BASE_URL}/api/jira/clear-cache`, {
-        projectKey: jiraConfig.projectKey
+      const response = await axios.delete(`${API_BASE_URL}/api/jira/clear-cache`, {
+        data: {
+          projectKey: jiraConfig.projectKey,
+          issueTypes: jiraConfig.issueTypes
+        }
       });
 
       if (response.data.success) {
@@ -360,9 +563,19 @@ const TestGenerator = () => {
         setStatus({ type: 'info', message: 'Processing Jira content through AI requirements extraction...' });
         
         try {
+          // Extract Jira ticket prefix for document naming
+          const firstTicket = response.data.features[0];
+          const jiraDocumentName = firstTicket && firstTicket.title && firstTicket.title.includes(':') 
+            ? `jira-${firstTicket.title.split(':')[0].trim()}`
+            : 'jira-imported-issues';
+          
+          // Set current document name for Jira issues
+          setCurrentDocumentName(jiraDocumentName);
+          
           const requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
             content: combinedJiraContent, 
             context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}`,
+            documentName: jiraDocumentName, // Pass document name for proper cache folder creation
             enableLogging: false // Disable logging for Jira imports to reduce console noise
           }, {
             timeout: 300000 // 5 minutes timeout
@@ -372,15 +585,8 @@ const TestGenerator = () => {
             // Set the extracted requirements table (same as uploaded documents)
             setExtractedRequirements(requirementsResponse.data.content);
             
-            // Set requirements source and extract Jira ticket prefix
+            // Set requirements source
             setRequirementsSource('jira');
-            
-            // Extract Jira ticket prefix from the first ticket
-            const firstTicket = response.data.features[0];
-            if (firstTicket && firstTicket.title && firstTicket.title.includes(':')) {
-              const ticketKey = firstTicket.title.split(':')[0].trim();
-              setJiraTicketPrefix(ticketKey);
-            }
             
             // Parse the requirements table to extract individual requirements
             const requirementsContent = requirementsResponse.data.content;
@@ -427,44 +633,13 @@ const TestGenerator = () => {
               });
               setJiraTicketInfo(jiraTicketInfo);
               
-              // Force close the modal by resetting all related state
+              // Set the Jira ticket prefix for consistency
+              setJiraTicketPrefix(ticketKey);
+              
+              // Close the modal after successful import so user can see the requirements
               setShowJiraImport(false);
-              setJiraStep('connect'); // Reset Jira import flow
+              setJiraStep('connect'); // Reset to initial step for next time
               setJiraConfig(prev => ({ ...prev, selectedIssues: [] })); // Clear selected issues
-              
-              // Force a complete state reset to ensure modal closes
-              setTimeout(() => {
-                setShowJiraImport(false);
-                setJiraStep('connect');
-                
-                // Force close any remaining modal elements via DOM manipulation
-                const modalOverlays = document.querySelectorAll('.modal-overlay');
-                modalOverlays.forEach((overlay) => {
-                  if (overlay.closest('[data-modal="jira-import"]')) {
-                    overlay.style.display = 'none';
-                  }
-                });
-              }, 50);
-              
-              // Additional aggressive approach - multiple attempts
-              setTimeout(() => {
-                setShowJiraImport(false);
-                
-                // Force hide all modal overlays
-                document.querySelectorAll('.modal-overlay').forEach(overlay => {
-                  overlay.style.display = 'none';
-                });
-              }, 200);
-              
-              setTimeout(() => {
-                setShowJiraImport(false);
-                
-                // Last resort - remove modal from DOM
-                const jiraModal = document.querySelector('[data-modal="jira-import"]');
-                if (jiraModal) {
-                  jiraModal.remove();
-                }
-              }, 500);
               
               setStatus({ type: 'success', message: `Successfully imported ${response.data.features.length} Jira tickets, extracted ${requirements.length} requirements, and created feature tabs! You can now edit the requirements if needed, then click "Insert Requirements" to add them to the test generator.` });
               
@@ -975,6 +1150,11 @@ SCENARIO NAMING GUIDELINES:
         const totalPaths = validationResults.reduce((sum, f) => sum + f.coverage.expectedPaths, 0);
         const coveragePercentage = totalPaths > 0 ? Math.round((totalScenarios / totalPaths) * 100) : 0;
         
+        // Clear requirements, generated test content, and the test generation textarea content
+        setExtractedRequirements('');
+        setGeneratedTests('');
+        setContent('');
+        
         setShowModal(true);
         setStatus({ 
           type: 'success', 
@@ -1080,10 +1260,12 @@ SCENARIO NAMING GUIDELINES:
     setShowCacheModal(false);
     setShowCacheDeleteConfirmation(false);
     
-    // Clear Jira-related state completely
+    // Clear Jira-related content but keep connection active
     setRequirementsSource('');
     setJiraTicketPrefix('');
     setJiraTicketInfo({});
+    // Keep jiraConnectionActive as is - don't reset connection
+    setJiraIssueTypes([]);
     setShowJiraImport(false);
     setJiraConfig({
       baseUrl: '',
@@ -1091,8 +1273,11 @@ SCENARIO NAMING GUIDELINES:
       issueTypes: [],
       selectedIssues: []
     });
-    setJiraProjects([]);
-    setJiraIssues([]);
+    // Don't clear projects and issues if connection is active - keep them for step 2
+    if (!jiraConnectionActive) {
+      setJiraProjects([]);
+      setJiraIssues([]);
+    }
     setIsLoadingJira(false);
     setJiraStep('connect');
     setShowJiraProjectDropdown(false);
@@ -1130,8 +1315,8 @@ SCENARIO NAMING GUIDELINES:
       message: '',
       isComplete: false
     });
-    setPushedTabs(new Set());
-    setZephyrTestCaseIds({});
+    // Clear pushed state and cache
+    clearPushedStateCache();
     
     // Clear processing states
     setIsLoading(false);
@@ -1181,12 +1366,14 @@ SCENARIO NAMING GUIDELINES:
   };
 
   // Fetch Zephyr Scale folders for selected project
-  const fetchZephyrFolders = async (projectKey) => {
-    if (!projectKey) {
+  const fetchZephyrFolders = useCallback(async (projectKey) => {
+    if (!projectKey || projectKey.trim() === '') {
+      console.log('fetchZephyrFolders: No projectKey provided, clearing folders');
       setZephyrFolders([]);
       return;
     }
 
+    console.log('fetchZephyrFolders: Fetching folders for project:', projectKey);
     try {
       setLoadingFolders(true);
       const response = await axios.get(`${API_BASE_URL}/api/zephyr-folders/${projectKey}`);
@@ -1202,11 +1389,12 @@ SCENARIO NAMING GUIDELINES:
     } finally {
       setLoadingFolders(false);
     }
-  };
+  }, []);
 
   // Fetch all folders and organize them hierarchically
-  const fetchAllFolders = async (projectKey) => {
-    if (!projectKey) {
+  const fetchAllFolders = useCallback(async (projectKey) => {
+    if (!projectKey || projectKey.trim() === '') {
+      console.log('fetchAllFolders: No projectKey provided, clearing folders');
       setZephyrFolders([]);
       return;
     }
@@ -1234,7 +1422,7 @@ SCENARIO NAMING GUIDELINES:
     } finally {
       setLoadingFolders(false);
     }
-  };
+  }, []);
 
 
 
@@ -1437,21 +1625,19 @@ SCENARIO NAMING GUIDELINES:
     }
   };
 
-  // Load projects and refresh folders when Zephyr config modal opens
+  // Load projects when Zephyr config modal opens
   useEffect(() => {
-    if (showZephyrConfig) {
-      // Reset test case name to empty when modal opens
-      setZephyrConfig(prev => ({ ...prev, testCaseName: '' }));
-      
-      if (zephyrProjects.length === 0) {
-        fetchZephyrProjects();
-      }
-      // Refresh folders if a project is already selected
-      if (zephyrConfig.projectKey) {
-        fetchZephyrFolders(zephyrConfig.projectKey);
-      }
+    if (showZephyrConfig && zephyrProjects.length === 0) {
+      fetchZephyrProjects();
     }
-  }, [showZephyrConfig, fetchZephyrProjects, fetchZephyrFolders, zephyrConfig.projectKey, zephyrProjects.length]);
+  }, [showZephyrConfig, fetchZephyrProjects, zephyrProjects.length]);
+
+  // Refresh folders when project key changes
+  useEffect(() => {
+    if (zephyrConfig.projectKey && zephyrConfig.projectKey.trim() !== '') {
+      fetchZephyrFolders(zephyrConfig.projectKey);
+    }
+  }, [zephyrConfig.projectKey, fetchZephyrFolders]);
 
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
@@ -2084,13 +2270,34 @@ SCENARIO NAMING GUIDELINES:
             className="btn btn-primary"
             onClick={() => {
               setShowJiraImport(true);
-              setJiraStep('connect');
-              setJiraConfig({
-                projectKey: '',
-                issueTypes: [],
-                selectedIssues: [],
-                baseUrl: '' // Will be set from backend response
-              });
+              // If connection is active, go directly to project selection
+              if (jiraConnectionActive) {
+                setJiraStep('select');
+                // If projects are empty, refetch them
+                if (jiraProjects.length === 0) {
+                  axios.get(`${API_BASE_URL}/api/jira/projects`)
+                    .then(response => {
+                      if (response.data.success) {
+                        setJiraProjects(response.data.projects || []);
+                        if (response.data.jiraBaseUrl) {
+                          setJiraConfig(prev => ({ ...prev, baseUrl: response.data.jiraBaseUrl }));
+                        }
+                      }
+                    })
+                    .catch(error => {
+                      console.error('Error fetching Jira projects:', error);
+                      setStatus({ type: 'error', message: 'Failed to fetch Jira projects' });
+                    });
+                }
+              } else {
+                setJiraStep('connect');
+                setJiraConfig({
+                  projectKey: '',
+                  issueTypes: [],
+                  selectedIssues: [],
+                  baseUrl: '' // Will be set from backend response
+                });
+              }
             }}
             title="Import test cases from Jira"
             style={{
@@ -2613,13 +2820,17 @@ SCENARIO NAMING GUIDELINES:
             <button
               className="btn btn-primary"
               onClick={() => {
-                if (generatedTests && generatedTests.trim()) {
+                if (featureTabs.length > 0) {
+                  // Clear requirements, generated test content, and the test generation textarea content
+                  setExtractedRequirements('');
+                  setGeneratedTests('');
+                  setContent('');
                   setShowModal(true);
                 } else {
                   setStatus({ type: 'error', message: 'No test cases available to display. Please generate tests first.' });
                 }
               }}
-              disabled={isLoading || !generatedTests || !generatedTests.trim()}
+              disabled={isLoading || featureTabs.length === 0}
             >
               View Generated Test
             </button>
@@ -2898,7 +3109,7 @@ SCENARIO NAMING GUIDELINES:
                     const currentFeature = featureTabs[activeTab];
                     setZephyrConfig({
                       projectKey: '',
-                      testCaseName: currentFeature?.title || 'Test Feature',
+                      testCaseName: '',
                       folderId: '',
                       status: 'Draft',
                       isAutomatable: 'None'
@@ -3475,11 +3686,27 @@ SCENARIO NAMING GUIDELINES:
                     
                     if (result) {
                       // Add current tab to pushed tabs and store test case IDs
-                      setPushedTabs(prev => new Set([...prev, activeTab]));
-                      setZephyrTestCaseIds(prev => ({
-                        ...prev,
+                      const newPushedTabs = new Set([...pushedTabs, activeTab]);
+                      const newTestCaseIds = {
+                        ...zephyrTestCaseIds,
                         [activeTab]: result.zephyrTestCaseIds || [result.zephyrTestCaseId]
-                      }));
+                      };
+                      
+                      setPushedTabs(newPushedTabs);
+                      setZephyrTestCaseIds(newTestCaseIds);
+                      
+                      // Save pushed state to cache
+                      if (requirementsSource === 'jira' && jiraTicketInfo[activeTab]?.ticketKey) {
+                        // For Jira issues, save pushed state using the Jira ticket key with "jira-" prefix
+                        const issuePushedTabs = new Set([0]); // Map to index 0 for the issue
+                        const issueTestCaseIds = { 0: result.zephyrTestCaseIds || [result.zephyrTestCaseId] };
+                        const jiraDocumentName = `jira-${jiraTicketInfo[activeTab].ticketKey}`;
+                        savePushedStateToCache(issuePushedTabs, issueTestCaseIds, jiraDocumentName);
+                      } else if (currentDocumentName) {
+                        // For uploaded documents, save normally
+                        savePushedStateToCache(newPushedTabs, newTestCaseIds, currentDocumentName);
+                      }
+                      
                       setStatus({ 
                         type: 'success', 
                         message: `Successfully ${zephyrTestCaseIds[activeTab] ? 'updated' : 'pushed'} to Zephyr Scale! ${result.zephyrTestCaseIds ? `${result.zephyrTestCaseIds.length} test cases` : 'Test Case ID: ' + result.zephyrTestCaseId}${jiraTicketInfo[activeTab] ? ` | Jira ticket ${jiraTicketInfo[activeTab].ticketKey} automatically added to coverage` : ''}` 
@@ -3621,20 +3848,29 @@ SCENARIO NAMING GUIDELINES:
                   </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-primary"
-                      onClick={testJiraConnection}
-                      disabled={isLoadingJira}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Connecting...</span>
-                        </>
-                      ) : (
-                        'Jira Connect'
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={testJiraConnection}
+                        disabled={isLoadingJira}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Connecting...</span>
+                          </>
+                        ) : (
+                          'Connect to Jira'
+                        )}
+                      </button>
+                    </div>
                     
                     {jiraConfig.baseUrl && (
                       <div style={{ 
@@ -3657,6 +3893,56 @@ SCENARIO NAMING GUIDELINES:
               {jiraStep === 'select' && (
                 <div>
                   <h4 style={{ marginBottom: '1rem', color: '#2d3748' }}>Step 2: Select Project and Issues</h4>
+                  
+                  {/* Connection Status */}
+                  {jiraConnectionActive && (
+                    <div style={{ 
+                      background: '#f0f9ff', 
+                      border: '1px solid #0ea5e9', 
+                      borderRadius: '6px', 
+                      padding: '12px', 
+                      marginBottom: '1rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ 
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          backgroundColor: '#10b981' 
+                        }}></div>
+                        <span style={{ color: '#0c4a6e', fontSize: '0.9rem', fontWeight: '500' }}>
+                          Connected to {jiraConfig.baseUrl}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJiraConnectionActive(false);
+                          setJiraStep('connect');
+                          setJiraConfig({
+                            projectKey: '',
+                            issueTypes: [],
+                            selectedIssues: [],
+                            baseUrl: ''
+                          });
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid #0ea5e9',
+                          color: '#0ea5e9',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Change Connection
+                      </button>
+                    </div>
+                  )}
                   
                   <div className="form-group">
                     <label htmlFor="jiraProject">Project *</label>
@@ -3765,10 +4051,17 @@ SCENARIO NAMING GUIDELINES:
                       <label>Issue Types</label>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
                         {['Epic', 'Story', 'Task', 'Bug'].map((type) => (
-                          <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <label key={type} style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px',
+                            opacity: !jiraConfig.projectKey ? 0.5 : 1,
+                            cursor: !jiraConfig.projectKey ? 'not-allowed' : 'pointer'
+                          }}>
                             <input
                               type="checkbox"
                               checked={jiraConfig.issueTypes.includes(type)}
+                              disabled={!jiraConfig.projectKey}
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   setJiraConfig(prev => ({ 
@@ -3791,13 +4084,14 @@ SCENARIO NAMING GUIDELINES:
                     </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setJiraStep('connect')}
-                    >
-                      Back
-                    </button>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
                       <button
                         className="btn btn-primary"
                         onClick={() => fetchJiraIssues()}
@@ -3949,26 +4243,35 @@ SCENARIO NAMING GUIDELINES:
                   </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setJiraStep('select')}
-                    >
-                      Back
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={importJiraIssues}
-                      disabled={isLoadingJira || jiraConfig.selectedIssues.length === 0}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Importing...</span>
-                        </>
-                      ) : (
-                        `Import ${jiraConfig.selectedIssues.length} Issues`
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setJiraStep('select')}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={importJiraIssues}
+                        disabled={isLoadingJira || jiraConfig.selectedIssues.length === 0}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Importing...</span>
+                          </>
+                        ) : (
+                          `Import ${jiraConfig.selectedIssues.length} Issues`
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}

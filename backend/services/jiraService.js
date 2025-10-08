@@ -1,10 +1,12 @@
 const axios = require('axios');
+const CacheManager = require('../utils/cacheManager');
 
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL;
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
 const isJiraConfigured = JIRA_BASE_URL && JIRA_EMAIL && JIRA_API_TOKEN;
+const cacheManager = new CacheManager();
 
 
 
@@ -101,6 +103,28 @@ async function getJiraIssues(projectKey, issueTypes) {
     console.log(`📋 Project Key: ${projectKey}`);
     console.log(`🏷️  Issue Types: ${issueTypes.join(', ')}`);
     
+    // Create document name for Jira issues (same pattern as uploaded files)
+    const documentName = `jira-${projectKey}-${issueTypes.sort().join('-')}`;
+    
+    // Check if we have cached data (same pattern as uploaded files)
+    const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'jira_issues');
+    console.log(`🔍 Has Jira issues cache: ${hasDocumentCache}`);
+    
+    if (hasDocumentCache) {
+      const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'jira_issues');
+      if (documentCachedResults && documentCachedResults.issues) {
+        console.log(`💾 Using cached Jira issues for ${projectKey} (${issueTypes.join(', ')})`);
+        return {
+          success: true,
+          issues: documentCachedResults.issues,
+          total: documentCachedResults.issues.length,
+          cached: true,
+          cacheInfo: documentCachedResults._cacheInfo
+        };
+      }
+    }
+    
+    console.log(`🔄 Fetching fresh Jira issues for ${projectKey}...`);
     let allIssues = [];
     
     // Fetch each issue type individually using multi-approach strategy
@@ -175,10 +199,24 @@ async function getJiraIssues(projectKey, issueTypes) {
     console.log(`🎉 Successfully fetched ${allIssues.length} unique issues from project ${projectKey}`);
     console.log(`📊 Issue type breakdown:`, issueTypeCounts);
 
+    // Cache the results (same pattern as uploaded files)
+    try {
+      await cacheManager.storeDocumentCachedResults(documentName, 'jira_issues', {
+        issues: allIssues,
+        projectKey,
+        issueTypes,
+        fetchedAt: new Date().toISOString()
+      });
+      console.log(`💾 Cached ${allIssues.length} Jira issues for ${projectKey} (${issueTypes.join(', ')})`);
+    } catch (error) {
+      console.error('Failed to cache Jira issues:', error.message);
+    }
+
     return {
       success: true,
       issues: allIssues,
-      total: allIssues.length
+      total: allIssues.length,
+      cached: false
     };
   } catch (error) {
     console.error('Failed to fetch Jira issues:', error.message);

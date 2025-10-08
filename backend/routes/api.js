@@ -611,42 +611,42 @@ router.post('/generate-word-doc', async (req, res) => {
 });
 
 // Zephyr Scale Export endpoint
-router.post('/export-zephyr', async (req, res) => {
-  try {
-    const { content, featureName = 'Test Feature' } = req.body;
+// router.post('/export-zephyr', async (req, res) => {
+//   try {
+//     const { content, featureName = 'Test Feature' } = req.body;
 
-    if (!content || !content.trim()) {
-      return res.status(400).json({
-        error: 'Missing content',
-        details: 'No test content provided for export',
-        suggestion: 'Please provide valid test content to export'
-      });
-    }
+//     if (!content || !content.trim()) {
+//       return res.status(400).json({
+//         error: 'Missing content',
+//         details: 'No test content provided for export',
+//         suggestion: 'Please provide valid test content to export'
+//       });
+//     }
 
-    const zephyrContent = convertToZephyrFormat(content, featureName);
+//     const zephyrContent = convertToZephyrFormat(content, featureName);
 
-    res.json({
-      success: true,
-      zephyrContent: zephyrContent,
-      metadata: {
-        originalContentLength: content.length,
-        zephyrContentLength: zephyrContent.length,
-        featureName: featureName,
-        exportFormat: 'Zephyr Scale BDD-Gherkin Script',
-        timestamp: new Date().toISOString()
-      }
-    });
+//     res.json({
+//       success: true,
+//       zephyrContent: zephyrContent,
+//       metadata: {
+//         originalContentLength: content.length,
+//         zephyrContentLength: zephyrContent.length,
+//         featureName: featureName,
+//         exportFormat: 'Zephyr Scale BDD-Gherkin Script',
+//         timestamp: new Date().toISOString()
+//       }
+//     });
 
-  } catch (error) {
-    console.error('Error exporting to Zephyr Scale:', error);
+//   } catch (error) {
+//     console.error('Error exporting to Zephyr Scale:', error);
     
-    res.status(500).json({ 
-      error: 'Failed to export to Zephyr Scale format',
-      details: error.message,
-      suggestion: 'Please try again with valid test content'
-    });
-  }
-});
+//     res.status(500).json({ 
+//       error: 'Failed to export to Zephyr Scale format',
+//       details: error.message,
+//       suggestion: 'Please try again with valid test content'
+//     });
+//   }
+// });
 
 // Get Zephyr Scale projects
 router.get('/zephyr-projects', async (req, res) => {
@@ -693,8 +693,6 @@ router.get('/zephyr-projects', async (req, res) => {
     });
   }
 });
-
-
 
 // Get Zephyr Scale test folders for a project
 router.get('/zephyr-folders/:projectKey', async (req, res) => {
@@ -754,123 +752,123 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
 });
 
 // Get main folders (top-level folders) for a project
-router.get('/zephyr-main-folders/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
+// router.get('/zephyr-main-folders/:projectKey', async (req, res) => {
+//   try {
+//     const { projectKey } = req.params;
 
-    if (!isZephyrConfigured) {
-      return res.status(503).json({
-        error: 'Zephyr Scale integration not configured',
-        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-      });
-    }
+//     if (!isZephyrConfigured) {
+//       return res.status(503).json({
+//         error: 'Zephyr Scale integration not configured',
+//         details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
+//         suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
+//       });
+//     }
 
-    if (!projectKey) {
-      return res.status(400).json({
-        error: 'Missing project key',
-        details: 'Project key is required to fetch main folders',
-        suggestion: 'Please provide a valid project key'
-      });
-    }
+//     if (!projectKey) {
+//       return res.status(400).json({
+//         error: 'Missing project key',
+//         details: 'Project key is required to fetch main folders',
+//         suggestion: 'Please provide a valid project key'
+//       });
+//     }
 
-    const mainFolders = await getMainFolders(projectKey);
+//     const mainFolders = await getMainFolders(projectKey);
 
-    res.json({
-      success: true,
-      folders: mainFolders,
-      projectKey: projectKey,
-      metadata: {
-        count: mainFolders.length,
-        timestamp: new Date().toISOString()
-      }
-    });
+//     res.json({
+//       success: true,
+//       folders: mainFolders,
+//       projectKey: projectKey,
+//       metadata: {
+//         count: mainFolders.length,
+//         timestamp: new Date().toISOString()
+//       }
+//     });
 
-  } catch (error) {
-    console.error('Error fetching Zephyr Scale main folders:', error);
+//   } catch (error) {
+//     console.error('Error fetching Zephyr Scale main folders:', error);
     
-    let errorMessage = 'Failed to fetch main folders from Zephyr Scale';
-    let suggestion = 'Please check your Zephyr Scale credentials and try again';
+//     let errorMessage = 'Failed to fetch main folders from Zephyr Scale';
+//     let suggestion = 'Please check your Zephyr Scale credentials and try again';
     
-    if (error.response) {
-      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-    } else if (error.request) {
-      errorMessage = 'Network error connecting to Zephyr Scale';
-      suggestion = 'Please check your Zephyr Scale URL and network connection';
-    }
+//     if (error.response) {
+//       errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
+//       suggestion = 'Please check your Zephyr Scale credentials and project configuration';
+//     } else if (error.request) {
+//       errorMessage = 'Network error connecting to Zephyr Scale';
+//       suggestion = 'Please check your Zephyr Scale URL and network connection';
+//     }
     
-    res.status(500).json({ 
-      error: errorMessage,
-      details: error.message,
-      suggestion: suggestion
-    });
-  }
-});
+//     res.status(500).json({ 
+//       error: errorMessage,
+//       details: error.message,
+//       suggestion: suggestion
+//     });
+//   }
+// });
 
 // Get subfolders for a specific parent folder
-router.get('/zephyr-subfolders/:projectKey/:parentFolderId', async (req, res) => {
-  try {
-    const { projectKey, parentFolderId } = req.params;
+// router.get('/zephyr-subfolders/:projectKey/:parentFolderId', async (req, res) => {
+//   try {
+//     const { projectKey, parentFolderId } = req.params;
 
-    if (!isZephyrConfigured) {
-      return res.status(503).json({
-        error: 'Zephyr Scale integration not configured',
-        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-      });
-    }
+//     if (!isZephyrConfigured) {
+//       return res.status(503).json({
+//         error: 'Zephyr Scale integration not configured',
+//         details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
+//         suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
+//       });
+//     }
 
-    if (!projectKey) {
-      return res.status(400).json({
-        error: 'Missing project key',
-        details: 'Project key is required to fetch subfolders',
-        suggestion: 'Please provide a valid project key'
-      });
-    }
+//     if (!projectKey) {
+//       return res.status(400).json({
+//         error: 'Missing project key',
+//         details: 'Project key is required to fetch subfolders',
+//         suggestion: 'Please provide a valid project key'
+//       });
+//     }
 
-    if (!parentFolderId) {
-      return res.status(400).json({
-        error: 'Missing parent folder ID',
-        details: 'Parent folder ID is required to fetch subfolders',
-        suggestion: 'Please provide a valid parent folder ID'
-      });
-    }
+//     if (!parentFolderId) {
+//       return res.status(400).json({
+//         error: 'Missing parent folder ID',
+//         details: 'Parent folder ID is required to fetch subfolders',
+//         suggestion: 'Please provide a valid parent folder ID'
+//       });
+//     }
 
-    const subfolders = await getSubfolders(projectKey, parentFolderId);
+//     const subfolders = await getSubfolders(projectKey, parentFolderId);
 
-    res.json({
-      success: true,
-      folders: subfolders,
-      projectKey: projectKey,
-      parentFolderId: parentFolderId,
-      metadata: {
-        count: subfolders.length,
-        timestamp: new Date().toISOString()
-      }
-    });
+//     res.json({
+//       success: true,
+//       folders: subfolders,
+//       projectKey: projectKey,
+//       parentFolderId: parentFolderId,
+//       metadata: {
+//         count: subfolders.length,
+//         timestamp: new Date().toISOString()
+//       }
+//     });
 
-  } catch (error) {
-    console.error('Error fetching Zephyr Scale subfolders:', error);
+//   } catch (error) {
+//     console.error('Error fetching Zephyr Scale subfolders:', error);
     
-    let errorMessage = 'Failed to fetch subfolders from Zephyr Scale';
-    let suggestion = 'Please check your Zephyr Scale credentials and try again';
+//     let errorMessage = 'Failed to fetch subfolders from Zephyr Scale';
+//     let suggestion = 'Please check your Zephyr Scale credentials and try again';
     
-    if (error.response) {
-      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-    } else if (error.request) {
-      errorMessage = 'Network error connecting to Zephyr Scale';
-      suggestion = 'Please check your Zephyr Scale URL and network connection';
-    }
+//     if (error.response) {
+//       errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
+//       suggestion = 'Please check your Zephyr Scale credentials and project configuration';
+//     } else if (error.request) {
+//       errorMessage = 'Network error connecting to Zephyr Scale';
+//       suggestion = 'Please check your Zephyr Scale URL and network connection';
+//     }
     
-    res.status(500).json({ 
-      error: errorMessage,
-      details: error.message,
-      suggestion: suggestion
-    });
-  }
-});
+//     res.status(500).json({ 
+//       error: errorMessage,
+//       details: error.message,
+//       suggestion: suggestion
+//     });
+//   }
+// });
 
 // Search folders across all levels
 router.get('/zephyr-search-folders/:projectKey', async (req, res) => {
@@ -1029,110 +1027,110 @@ router.post('/push-to-zephyr', async (req, res) => {
 });
 
 // Discover available Zephyr Scale traceability endpoints
-router.get('/zephyr/discover-endpoints/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
+// router.get('/zephyr/discover-endpoints/:projectKey', async (req, res) => {
+//   try {
+//     const { projectKey } = req.params;
     
-    if (!projectKey) {
-      return res.status(400).json({ error: 'Project key is required' });
-    }
+//     if (!projectKey) {
+//       return res.status(400).json({ error: 'Project key is required' });
+//     }
 
-    const result = await discoverTraceabilityEndpoints(projectKey);
+//     const result = await discoverTraceabilityEndpoints(projectKey);
     
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Endpoint discovery completed',
-        projectKey,
-        endpoints: result.endpoints
-      });
-    } else {
-      res.status(500).json({
-        error: 'Failed to discover endpoints',
-        details: result.error
-      });
-    }
+//     if (result.success) {
+//       res.json({
+//         success: true,
+//         message: 'Endpoint discovery completed',
+//         projectKey,
+//         endpoints: result.endpoints
+//       });
+//     } else {
+//       res.status(500).json({
+//         error: 'Failed to discover endpoints',
+//         details: result.error
+//       });
+//     }
 
-  } catch (error) {
-    console.error('Error discovering Zephyr endpoints:', error);
-    res.status(500).json({ 
-      error: 'Failed to discover endpoints',
-      details: error.message
-    });
-  }
-});
+//   } catch (error) {
+//     console.error('Error discovering Zephyr endpoints:', error);
+//     res.status(500).json({ 
+//       error: 'Failed to discover endpoints',
+//       details: error.message
+//     });
+//   }
+// });
 
 // Test Zephyr Scale traceability endpoints
-router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
+// router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
+//   try {
+//     const { projectKey } = req.params;
     
-    if (!projectKey) {
-      return res.status(400).json({ error: 'Project key is required' });
-    }
+//     if (!projectKey) {
+//       return res.status(400).json({ error: 'Project key is required' });
+//     }
     
-    // Test common endpoint patterns
-    const testEndpoints = [
-      { name: 'testcases', url: `${process.env.ZEPHYR_BASE_URL}/testcases`, method: 'GET' },
-      { name: 'folders', url: `${process.env.ZEPHYR_BASE_URL}/folders`, method: 'GET' },
-      { name: 'coverage', url: `${process.env.ZEPHYR_BASE_URL}/coverage`, method: 'GET' },
-      { name: 'traceability', url: `${process.env.ZEPHYR_BASE_URL}/traceability`, method: 'GET' },
-      { name: 'issues', url: `${process.env.ZEPHYR_BASE_URL}/issues`, method: 'GET' },
-      { name: 'links', url: `${process.env.ZEPHYR_BASE_URL}/links`, method: 'GET' },
-      { name: 'weblinks', url: `${process.env.ZEPHYR_BASE_URL}/weblinks`, method: 'GET' },
-      { name: 'comments', url: `${process.env.ZEPHYR_BASE_URL}/comments`, method: 'GET' }
-    ];
+//     // Test common endpoint patterns
+//     const testEndpoints = [
+//       { name: 'testcases', url: `${process.env.ZEPHYR_BASE_URL}/testcases`, method: 'GET' },
+//       { name: 'folders', url: `${process.env.ZEPHYR_BASE_URL}/folders`, method: 'GET' },
+//       { name: 'coverage', url: `${process.env.ZEPHYR_BASE_URL}/coverage`, method: 'GET' },
+//       { name: 'traceability', url: `${process.env.ZEPHYR_BASE_URL}/traceability`, method: 'GET' },
+//       { name: 'issues', url: `${process.env.ZEPHYR_BASE_URL}/issues`, method: 'GET' },
+//       { name: 'links', url: `${process.env.ZEPHYR_BASE_URL}/links`, method: 'GET' },
+//       { name: 'weblinks', url: `${process.env.ZEPHYR_BASE_URL}/weblinks`, method: 'GET' },
+//       { name: 'comments', url: `${process.env.ZEPHYR_BASE_URL}/comments`, method: 'GET' }
+//     ];
     
-    const results = [];
+//     const results = [];
     
-    for (const endpoint of testEndpoints) {
-      try {
-        const response = await axios({
-          method: endpoint.method,
-          url: endpoint.url,
-          headers: {
-            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          params: { projectKey, maxResults: 1 }
-        });
+//     for (const endpoint of testEndpoints) {
+//       try {
+//         const response = await axios({
+//           method: endpoint.method,
+//           url: endpoint.url,
+//           headers: {
+//             'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
+//             'Content-Type': 'application/json'
+//           },
+//           params: { projectKey, maxResults: 1 }
+//         });
         
-        results.push({
-          name: endpoint.name,
-          url: endpoint.url,
-          status: response.status,
-          available: true,
-          data: response.data
-        });
+//         results.push({
+//           name: endpoint.name,
+//           url: endpoint.url,
+//           status: response.status,
+//           available: true,
+//           data: response.data
+//         });
         
-      } catch (error) {
-        results.push({
-          name: endpoint.name,
-          url: endpoint.url,
-          status: error.response?.status,
-          available: false,
-          error: error.response?.data?.message || error.message
-        });
-      }
-    }
+//       } catch (error) {
+//         results.push({
+//           name: endpoint.name,
+//           url: endpoint.url,
+//           status: error.response?.status,
+//           available: false,
+//           error: error.response?.data?.message || error.message
+//         });
+//       }
+//     }
     
-    // console.log('🔍 Endpoint test results:', results);
+//     // console.log('🔍 Endpoint test results:', results);
     
-    res.json({
-      success: true,
-      message: 'Endpoint discovery completed',
-      projectKey,
-      results
-    });
+//     res.json({
+//       success: true,
+//       message: 'Endpoint discovery completed',
+//       projectKey,
+//       results
+//     });
 
-  } catch (error) {
-    console.error('Error testing Zephyr endpoints:', error);
-    res.status(500).json({ 
-      error: 'Failed to test endpoints',
-      details: error.message
-    });
-  }
-});
+//   } catch (error) {
+//     console.error('Error testing Zephyr endpoints:', error);
+//     res.status(500).json({ 
+//       error: 'Failed to test endpoints',
+//       details: error.message
+//     });
+//   }
+// });
 
 // Jira Import endpoints
 
@@ -1206,6 +1204,50 @@ router.post('/jira/fetch-issues', async (req, res) => {
       error: 'Failed to fetch Jira issues',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
+    });
+  }
+});
+
+// Clear Jira issues cache
+router.delete('/jira/clear-cache', async (req, res) => {
+  try {
+    const { projectKey, issueTypes } = req.body;
+    
+    if (!projectKey || !issueTypes || issueTypes.length === 0) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Project key and issue types are required',
+        suggestion: 'Please provide project key and issue types to clear specific cache'
+      });
+    }
+
+    const documentName = `jira-${projectKey}-${issueTypes.sort().join('-')}`;
+    
+    try {
+      const results = await cacheManager.deleteMultipleDocuments([documentName]);
+      if (results.deletedCount > 0) {
+        res.json({
+          success: true,
+          message: `Cleared cache for project ${projectKey} with issue types: ${issueTypes.join(', ')}`
+        });
+      } else {
+        res.json({
+          success: true,
+          message: `No cache found for project ${projectKey} with issue types: ${issueTypes.join(', ')}`
+        });
+      }
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to clear cache',
+        details: error.message
+      });
+    }
+
+  } catch (error) {
+    console.error('Error clearing Jira cache:', error);
+    res.status(500).json({ 
+      error: 'Failed to clear Jira cache',
+      details: error.message
     });
   }
 });
@@ -1484,6 +1526,143 @@ router.post('/save-edited-tests', async (req, res) => {
     console.error('Error saving edited tests:', error);
     res.status(500).json({
       error: 'Failed to save edited tests',
+      details: error.message
+    });
+  }
+});
+
+// Pushed state cache endpoints
+
+// Get pushed state for a document
+router.get('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    const pushedState = await cacheManager.getPushedState(documentName);
+
+    if (pushedState) {
+      res.json({
+        success: true,
+        pushedState: pushedState,
+        message: 'Pushed state retrieved successfully'
+      });
+    } else {
+      res.json({
+        success: true,
+        pushedState: null,
+        message: 'No pushed state found for this document'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error getting pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to get pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Save pushed state for a document
+router.post('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+    const { pushedTabs, zephyrTestCaseIds, jiraTicketInfo } = req.body;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    const pushedState = {
+      pushedTabs: pushedTabs || [],
+      zephyrTestCaseIds: zephyrTestCaseIds || {},
+      jiraTicketInfo: jiraTicketInfo || {},
+      timestamp: new Date().toISOString()
+    };
+
+    await cacheManager.storePushedState(documentName, pushedState);
+
+    res.json({
+      success: true,
+      message: 'Pushed state saved successfully',
+      metadata: {
+        documentName,
+        pushedTabsCount: pushedTabs?.length || 0,
+        testCaseIdsCount: Object.keys(zephyrTestCaseIds || {}).length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error saving pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to save pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Clear pushed state for a document
+router.delete('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    await cacheManager.clearPushedState(documentName);
+
+    res.json({
+      success: true,
+      message: 'Pushed state cleared successfully',
+      metadata: {
+        documentName,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error clearing pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to clear pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Get all pushed states
+router.get('/pushed-states', async (req, res) => {
+  try {
+    const allPushedStates = await cacheManager.getAllPushedStates();
+
+    res.json({
+      success: true,
+      pushedStates: allPushedStates,
+      message: `Found ${allPushedStates.length} documents with pushed state`,
+      metadata: {
+        count: allPushedStates.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting all pushed states:', error);
+    res.status(500).json({
+      error: 'Failed to get pushed states',
       details: error.message
     });
   }
