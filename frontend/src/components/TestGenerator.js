@@ -65,6 +65,10 @@ import {
   searchFolders,
   pushToZephyr
 } from '../utils/zephyrUtils';
+import {
+  rotateImages,
+  loadImages
+} from '../utils/renderUtils';
 
 // Configure axios with longer timeout for long-running operations
 axios.defaults.timeout = 300000; // 5 minutes
@@ -562,6 +566,7 @@ const TestGenerator = () => {
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [currentImage, setCurrentImage] = useState(0);
   const [editableRequirements, setEditableRequirements] = useState([]);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [selectedRequirements, setSelectedRequirements] = useState(new Set());
@@ -594,87 +599,26 @@ const TestGenerator = () => {
     
     let isMounted = true;
     let intervalId = null;
-    let currentImage = 0;
     
     // Function to safely rotate images
-    const rotateImages = () => {
-      try {
-        // Check if component is still mounted
-        if (!isMounted) return;
-        
-        // Get all test-image elements
-        const images = document.querySelectorAll('.test-image');
-        
-        // Only proceed if images exist
-        if (!images || images.length === 0) {
-          console.log('⚠️  No test-image elements found, retrying in 500ms');
-          // Retry after a short delay
-          setTimeout(rotateImages, 500);
-          return;
-        }
-        
-        console.log(`🔄 Rotating to image ${currentImage + 1} of ${images.length}`);
-        
-        // Remove active class from all images
-        images.forEach((img, index) => {
-          if (img && img.classList) {
-            img.classList.remove('active');
-            console.log(`📷 Image ${index + 1}: removed active class`);
-          }
-        });
-        
-        // Add active class to current image
-        if (images[currentImage]) {
-          images[currentImage].classList.add('active');
-          console.log(`📷 Image ${currentImage + 1}: added active class`);
-        }
-        
-        // Move to next image
-        currentImage = (currentImage + 1) % images.length;
-        
-      } catch (error) {
-        console.error('❌ Error in rotateImages function:', error);
-      }
-    };
+    // rotateImages function moved to utils/renderUtils.js
     
     // Start rotation immediately
-    rotateImages();
-    
-    // Set up interval for continuous rotation
-    intervalId = setInterval(rotateImages, 2000);
+    const cleanup = rotateImages(currentImage, isMounted, setCurrentImage, isGenerating, 5);
     
     // Cleanup function
     return () => {
       isMounted = false;
-      if (intervalId) {
-        clearInterval(intervalId);
+      if (cleanup) {
+        cleanup();
       }
     };
   }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
-    const loadImages = async () => {
-      try {
-        setImagesLoaded(false);
-        const images = await fetchLoadingImages(API_BASE_URL);
-        setLoadingImages(images);
-        setImagesLoaded(true);
-      } catch (error) {
-        console.error('Error loading images:', error);
-        // Fallback to static images if API fails
-        const fallbackImages = [
-          { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
-          { image: "Google's Updated Spam Policy - Repeated_.jpeg", title: "Creating Test Scenarios" },
-          { image: "Paperwork Robot Stock Illustrations_.png", title: "Adding Edge Cases" },
-          { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
-        ];
-        setLoadingImages(fallbackImages);
-        setImagesLoaded(true);
-      }
-    };
-    
-    loadImages();
-    }, [API_BASE_URL]);
+    // loadImages function moved to utils/renderUtils.js
+    loadImages(setImagesLoaded, setLoadingImages, API_BASE_URL);
+  }, [API_BASE_URL]);
   
   // Initialize editable requirements when extractedRequirements changes
   useEffect(() => {
@@ -2268,7 +2212,7 @@ const TestGenerator = () => {
                               ));
                             } else {
                               const folderTree = buildFolderTree(zephyrFolders);
-                              return renderFolderTree(folderTree);
+                              return renderFolderTree(folderTree, 0);
                             }
                           })()}
                         </div>
