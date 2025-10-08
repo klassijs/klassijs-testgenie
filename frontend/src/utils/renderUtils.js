@@ -15,6 +15,7 @@ import { fetchLoadingImages } from './testGeneratorUtils';
 export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerating, maxRetries = 5) => {
   let retryCount = 0;
   let intervalId = null;
+  let localImageIndex = currentImage; // Use local counter instead of parameter
   
   const rotate = () => {
     try {
@@ -45,7 +46,7 @@ export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerat
       // Reset retry count when images are found
       retryCount = 0;
       
-      console.log(`🔄 Rotating to image ${currentImage + 1} of ${images.length}`);
+      console.log(`🔄 Rotating to image ${localImageIndex + 1} of ${images.length}`);
       
       // Remove active class from all images
       images.forEach((img, index) => {
@@ -55,12 +56,13 @@ export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerat
       });
       
       // Add active class to current image
-      if (images[currentImage]) {
-        images[currentImage].classList.add('active');
+      if (images[localImageIndex]) {
+        images[localImageIndex].classList.add('active');
       }
       
       // Move to next image
-      setCurrentImage((prev) => (prev + 1) % images.length);
+      localImageIndex = (localImageIndex + 1) % images.length;
+      setCurrentImage(localImageIndex);
       
     } catch (error) {
       console.error('❌ Error in rotateImages function:', error);

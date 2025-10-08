@@ -692,5 +692,5 @@ module.exports = {
   getJiraProjects,
   getJiraIssues,
   importJiraIssues,
-  isJiraConfigured
+  // isJiraConfigured
 }; 
