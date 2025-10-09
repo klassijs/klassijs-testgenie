@@ -1,6 +1,4 @@
 // UI State Management utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 /**
  * Handles clicks outside dropdown elements to close them
  * @param {Event} event - The click event
@@ -118,7 +116,7 @@ export const clearAll = (setters, clearPushedStateCache) => {
     issueTypes: [],
     selectedIssues: []
   });
-  // Don't clear projects and issues if connection is active - keep them for step 2
+  // Don't clear projects and issues if connection is active - keep for step 2
   if (!jiraConnectionActive) {
     setJiraProjects([]);
     setJiraIssues([]);
@@ -172,8 +170,6 @@ export const clearAll = (setters, clearPushedStateCache) => {
   // Clear any other state that might hold residue
   setLoadingImages([]);
   setImagesLoaded(false);
-  
-  console.log('🧹 Clear All: All state has been completely reset');
 };
 
 /**
@@ -204,9 +200,9 @@ export const handleProjectChange = (projectKey, setZephyrConfig, fetchAllFolders
   setZephyrConfig(prev => ({
     ...prev,
     projectKey: projectKey,
-    folderId: '' // Reset folder when project changes
+    folderId: '' // Reset folder on project changes
   }));
-  fetchAllFoldersWrapper(projectKey); // Fetch all folders to show hierarchy
+  fetchAllFoldersWrapper(projectKey); // Fetch all folders for hierarchy
 };
 
 /**

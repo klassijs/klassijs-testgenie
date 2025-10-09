@@ -1,6 +1,4 @@
 // Requirements and Test Generation utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 /**
  * Generates test cases from requirements
  * @param {string} content - Content containing requirements

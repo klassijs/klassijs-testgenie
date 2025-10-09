@@ -1,6 +1,4 @@
 // Jira Integration utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 /**
  * Tests Jira connection and retrieves available projects
  * @param {Function} setIsLoadingJira - Function to set loading state
@@ -98,12 +96,6 @@ export const fetchJiraIssues = async (
       const allIssues = data.issues || [];
       setAllJiraIssues(allIssues);
       
-      // Update pagination state
-      console.log('Setting pagination:', {
-        currentPage: 1,
-        itemsPerPage: 100,
-        totalItems: allIssues.length
-      });
       setJiraPagination({
         currentPage: 1,
         itemsPerPage: 100,

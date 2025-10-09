@@ -24,7 +24,7 @@ class CacheManager {
       require('fs').accessSync(this.cacheDir);
     } catch (error) {
       require('fs').mkdirSync(this.cacheDir, { recursive: true });
-      console.log('📁 Created cache directory');
+      // console.log('📁 Created cache directory');
     }
   }
 
@@ -238,7 +238,7 @@ class CacheManager {
       };
       await this.saveDocumentMetadata(originalFilename, docMetadata);
 
-      console.log(`💾 Cached analysis results for ${originalFilename} in ${this.sanitizeFileName(originalFilename)}/ (${hash.substring(0, 8)}...)`);
+      // console.log(`💾 Cached analysis results for ${originalFilename} in ${this.sanitizeFileName(originalFilename)}/ (${hash.substring(0, 8)}...)`);
     } catch (error) {
       console.error('❌ Failed to cache results:', error.message);
     }
@@ -386,7 +386,7 @@ class CacheManager {
       }
 
       const location = documentName ? `in ${this.sanitizeFileName(documentName)}/` : 'in root cache';
-      console.log(`💾 Cached test generation results ${location} (${contentHash.substring(0, 8)}...)`);
+      // console.log(`💾 Cached test generation results ${location} (${contentHash.substring(0, 8)}...)`);
     } catch (error) {
       console.error('❌ Failed to cache test results:', error.message);
     }
@@ -437,7 +437,7 @@ class CacheManager {
               }
             }
           } catch (error) {
-            console.log(`⚠️  Could not read directory ${dir}:`, error.message);
+            // console.log(`⚠️  Could not read directory ${dir}:`, error.message);
           }
         }
       }
@@ -499,7 +499,7 @@ class CacheManager {
         await fs.unlink(filePath);
       }
       
-      console.log(`🗑️  Cleared ${cacheFiles.length} cached files`);
+      // console.log(`🗑️  Cleared ${cacheFiles.length} cached files`);
     } catch (error) {
       console.error('❌ Failed to clear cache:', error.message);
     }
@@ -519,7 +519,7 @@ class CacheManager {
       delete metadata[hash];
       await this.saveMetadata(metadata);
       
-      console.log(`🗑️  Removed cached file ${hash.substring(0, 8)}...`);
+      // console.log(`🗑️  Removed cached file ${hash.substring(0, 8)}...`);
     } catch (error) {
       console.error('❌ Failed to remove cached file:', error.message);
     }
@@ -631,7 +631,7 @@ class CacheManager {
         await this.saveMetadata(globalMetadata);
       }
 
-      console.log(`💾 Cached ${type} results for ${documentName} (document-based)`);
+      // console.log(`💾 Cached ${type} results for ${documentName} (document-based)`);
     } catch (error) {
       console.error(`❌ Failed to cache ${type} results:`, error.message);
     }
@@ -758,7 +758,7 @@ class CacheManager {
         
         results.deletedCount++;
         results.deletedDocuments.push(docName);
-        console.log(`🗑️ Deleted cached document: ${docName}`);
+        // console.log(`🗑️ Deleted cached document: ${docName}`);
         
       } catch (error) {
         results.failedCount++;
@@ -800,12 +800,12 @@ class CacheManager {
         if (entry.filename && documentNames.includes(entry.filename)) {
           keysToRemove.push(hashKey);
           removedCount++;
-          console.log(`📝 Found metadata entry to remove: ${entry.filename} (${hashKey.substring(0, 8)}...)`);
+          // console.log(`📝 Found metadata entry to remove: ${entry.filename} (${hashKey.substring(0, 8)}...)`);
         } else if (entry.type === 'jira_issue' && entry.filename && documentNames.includes(entry.filename)) {
           // Handle Jira issues - the key is jira_PROJ-123 but filename is jira-PROJ-123
           keysToRemove.push(hashKey);
           removedCount++;
-          console.log(`📝 Found Jira metadata entry to remove: ${entry.filename} (${hashKey})`);
+          // console.log(`📝 Found Jira metadata entry to remove: ${entry.filename} (${hashKey})`);
         }
       }
       
@@ -816,7 +816,7 @@ class CacheManager {
 
       // Write updated metadata back to file
       await fs.writeFile(this.metadataFile, JSON.stringify(metadata, null, 2));
-      console.log(`📝 Removed ${removedCount} entries from root metadata.json`);
+      // console.log(`📝 Removed ${removedCount} entries from root metadata.json`);
       
     } catch (error) {
       console.error('❌ Failed to update root metadata:', error.message);
@@ -933,7 +933,7 @@ class CacheManager {
         await this.saveMetadata(globalMetadata);
       }
 
-      console.log(`💾 Cached pushed state for ${documentName}`);
+      // console.log(`💾 Cached pushed state for ${documentName}`);
     } catch (error) {
       console.error('❌ Failed to cache pushed state:', error.message);
     }
@@ -961,7 +961,7 @@ class CacheManager {
         await this.saveMetadata(globalMetadata);
       }
       
-      console.log(`🗑️ Cleared pushed state for ${documentName}`);
+      // console.log(`🗑️ Cleared pushed state for ${documentName}`);
     } catch (error) {
       console.error('❌ Failed to clear pushed state:', error.message);
     }

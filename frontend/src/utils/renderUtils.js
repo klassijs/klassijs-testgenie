@@ -1,6 +1,4 @@
 // Render utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 import { fetchLoadingImages } from './testGeneratorUtils';
 
 /**
@@ -29,11 +27,9 @@ export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerat
       if (!images || images.length === 0) {
         retryCount++;
         if (retryCount < maxRetries) {
-          console.log(`⚠️  No test-image elements found, retrying in 1000ms (${retryCount}/${maxRetries})`);
           // Retry after a longer delay
           setTimeout(rotate, 1000);
         } else {
-          console.log('⚠️  Max retries reached, stopping image rotation');
           // Clear the interval if we can't find images
           if (intervalId) {
             clearInterval(intervalId);
@@ -45,8 +41,6 @@ export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerat
       
       // Reset retry count when images are found
       retryCount = 0;
-      
-      console.log(`🔄 Rotating to image ${localImageIndex + 1} of ${images.length}`);
       
       // Remove active class from all images
       images.forEach((img, index) => {

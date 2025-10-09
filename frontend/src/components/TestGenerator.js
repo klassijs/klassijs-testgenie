@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, X, ExternalLink, Edit, Zap } from 'lucide-react';
-// import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap, GitBranch } from 'lucide-react';
+
 import axios from 'axios';
 import TestOutput from './TestOutput';
 import { 
@@ -144,14 +144,7 @@ const TestGenerator = () => {
   // Track Jira ticket information for imported features
   const [jiraTicketInfo, setJiraTicketInfo] = useState({});
 
-  // Track if cache was loaded on mount
-  // const [cacheLoaded, setCacheLoaded] = useState(false);
-
-  // Cache functions for pushed state persistence using backend cache
-  // savePushedStateToCache function moved to utils/cacheUtils.js
-
-  // loadPushedStateFromCache function moved to utils/cacheUtils.js
-
+  
   // Load pushed state from cache when document changes
   useEffect(() => {
     if (currentDocumentName) {
@@ -180,9 +173,6 @@ const TestGenerator = () => {
   const clearPushedStateCacheWrapper = () => {
     clearPushedStateCache(requirementsSource, featureTabs, jiraTicketInfo, currentDocumentName, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
   };
-
-  // Debug function to show cache status
-  // debugCacheStatus function moved to utils/cacheUtils.js
 
   // Jira import state
   const [showJiraImport, setShowJiraImport] = useState(false);
@@ -214,28 +204,6 @@ const TestGenerator = () => {
     issueTypes: []
   });
 
-  // Function to parse requirements table and extract individual requirements
-  // parseRequirementsTable function moved to utils/testGeneratorUtils.js
-
-
-
-
-
-  // Jira import functions
-  // testJiraConnection function moved to utils/jiraUtils.js
-
-  // fetchJiraIssues function moved to utils/jiraUtils.js
-
-  // updateDisplayedIssues function moved to utils/jiraUtils.js
-
-  // goToPage function moved to utils/jiraUtils.js
-
-  // clearJiraCache function moved to utils/jiraUtils.js
-
-  // shouldRefetch function moved to utils/jiraUtils.js
-
-  // importJiraIssues function moved to utils/jiraUtils.js
-  
   // Wrapper functions for Jira integration functions
   const testJiraConnectionWrapper = () => {
     testJiraConnection(
@@ -314,24 +282,6 @@ const TestGenerator = () => {
     };
   }, [showFolderDropdown, showProjectDropdown, setShowFolderDropdown, setShowProjectDropdown]);
 
-  // Process uploaded file content
-  // processFile function moved to utils/requirementsTestUtils.js
-
-  // handleFileUpload function moved to utils/requirementsTestUtils.js
-
-  // removeFile function moved to utils/requirementsTestUtils.js
-
-  // Drag and drop handlers moved to utils/requirementsTestUtils.js
-
-  // Remove the separate extractRequirements function - it will be integrated into document processing
-
-  // Validate test coverage for generated tests
-  // validateTestCoverage function moved to utils/testGeneratorUtils.js
-
-  // generateTests function moved to utils/requirementsTestUtils.js
-
-  // refineTests function moved to utils/requirementsTestUtils.js
-  
   // Wrapper functions for requirements and test generation functions
   const processFileWrapper = (fileObj) => {
     processFile(
@@ -476,36 +426,6 @@ const TestGenerator = () => {
     clearAll(setters, clearPushedStateCacheWrapper);
   };
 
-  // formatFileSize function moved to utils/testGeneratorUtils.js
-
-
-
-  // Helper function to get current content (edited or original)
-
-
-
-
-  // Fetch Zephyr Scale projects
-  // fetchZephyrProjects function moved to utils/zephyrUtils.js
-
-  // fetchZephyrFolders function moved to utils/zephyrUtils.js
-
-  // fetchAllFolders function moved to utils/zephyrUtils.js
-
-
-
-  // Build folder tree structure
-  // buildFolderTree function moved to utils/testGeneratorUtils.js
-
-  // Toggle folder expansion
-  // toggleFolderExpansion function moved to utils/uiStateUtils.js
-
-  // searchFolders function moved to utils/zephyrUtils.js
-
-  // Handle project selection
-  // handleProjectChange function moved to utils/uiStateUtils.js
-
-  // pushToZephyr function moved to utils/zephyrUtils.js
   
   // Wrapper functions for Zephyr Scale integration functions
   const fetchZephyrProjectsWrapper = useCallback(() => {
@@ -570,6 +490,7 @@ const TestGenerator = () => {
   const [selectedRequirements, setSelectedRequirements] = useState(new Set());
   const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [showClearAllConfirmation, setShowClearAllConfirmation] = useState(false);
   const [showCacheModal, setShowCacheModal] = useState(false);
   const [cacheList, setCacheList] = useState([]);
   const [selectedCaches, setSelectedCaches] = useState(new Set());
@@ -577,17 +498,10 @@ const TestGenerator = () => {
   const [isSelectAllCachesChecked, setIsSelectAllCachesChecked] = useState(false);
   const [showCacheDeleteConfirmation, setShowCacheDeleteConfirmation] = useState(false);
   
-  // Selection management functions
-  // Requirement selection functions moved to utils/uiStateUtils.js
-
-  // Cache management functions
-  // fetchCacheList function moved to utils/cacheUtils.js
   const fetchCacheListWrapper = () => {
     fetchCacheList(setIsLoadingCache, setCacheList, setStatus, API_BASE_URL);
   };
 
-  // Cache management functions moved to utils/uiStateUtils.js
-  
   // Rotate through test generation images with improved reliability
   useEffect(() => {
     // Only proceed if we're generating, have images, and images are loaded
@@ -596,11 +510,6 @@ const TestGenerator = () => {
     }
     
     let isMounted = true;
-    // let intervalId = null;
-    
-    // Function to safely rotate images
-    // rotateImages function moved to utils/renderUtils.js
-    
     // Start rotation immediately
     const cleanup = rotateImages(currentImage, isMounted, setCurrentImage, isGenerating, 5);
     
@@ -627,65 +536,6 @@ const TestGenerator = () => {
     }
   }, [extractedRequirements, jiraTicketInfo, jiraTicketPrefix, requirementsSource]);
   
-  // const handleInsertRequirements = () => {
-  //   // Format requirements nicely before inserting (remove markdown syntax)
-  //   const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
-  //   setContent(formattedRequirements);
-  //   setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
-  // };
-
-  // Helper function to format requirements for insertion (remove markdown, format nicely)
-  // const formatRequirementsForInsertion = (markdownContent) => {
-  //   const lines = markdownContent.split('\n');
-  //   let formattedContent = 'Business Requirements:\n\n';
-  //
-  //   // First, find and include the header row
-  //   let headerRow = '';
-  //   for (let i = 0; i < lines.length; i++) {
-  //     const line = lines[i].trim();
-  //     if (line.startsWith('|') && line.endsWith('|')) {
-  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
-  //       if (parts.length >= 3 && parts[0].toLowerCase().includes('requirement id')) {
-  //         headerRow = line;
-  //         break;
-  //       }
-  //     }
-  //   }
-  //
-  //   // Add header row if found
-  //   if (headerRow) {
-  //     formattedContent += headerRow + '\n';
-  //     // Add separator line
-  //     const headerParts = headerRow.split('|').map(p => p.trim()).filter(p => p);
-  //     const separatorLine = '|' + headerParts.map(() => '---').join('|') + '|';
-  //     formattedContent += separatorLine + '\n';
-  //   }
-  //
-  //   // Add data rows
-  //   for (let i = 0; i < lines.length; i++) {
-  //     const line = lines[i].trim();
-  //     if (line.startsWith('|') && line.endsWith('|')) {
-  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
-  //       if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
-  //         formattedContent += line + '\n';
-  //       }
-  //     }
-  //   }
-  //
-  //   return formattedContent.trim();
-  // };
-
-  // formatRequirementsForInsertionWithGeneratedIds function moved to utils/testGeneratorUtils.js
-
-  // const handleCopyContent = () => {
-  //   navigator.clipboard.writeText(extractedRequirements);
-  //   setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
-  // };
-
-  // handleDownloadContent function moved to utils/testGeneratorUtils.js
-
-  // validateComplexityValues function moved to utils/testGeneratorUtils.js
-
   return (
     <div className="container">
       {/* Status Message */}
@@ -1195,8 +1045,7 @@ const TestGenerator = () => {
                   e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
                 }}
                 onClick={() => {
-                  // Use the editable requirements state
-                  
+                 
                   // Validate complexity values and show warnings
                   const complexityWarnings = validateComplexityValues(editableRequirements);
                   if (complexityWarnings.length > 0) {
@@ -1218,23 +1067,30 @@ const TestGenerator = () => {
               </button>
               <button 
                 className="btn btn-secondary"
+                disabled={!hasUnsavedChanges}
                 style={{
-                  backgroundColor: '#10b981',
-                  borderColor: '#10b981',
+                  backgroundColor: hasUnsavedChanges ? '#10b981' : '#9ca3af',
+                  borderColor: hasUnsavedChanges ? '#10b981' : '#9ca3af',
                   color: 'white',
                   fontWeight: '600',
                   transition: 'all 0.2s ease-in-out',
-                  boxShadow: '0 2px 4px rgba(16, 185, 129, 0.2)'
+                  boxShadow: hasUnsavedChanges ? '0 2px 4px rgba(16, 185, 129, 0.2)' : 'none',
+                  cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed',
+                  opacity: hasUnsavedChanges ? 1 : 0.6
                 }}
                 onMouseEnter={(e) => {
-                  e.target.style.backgroundColor = '#059669';
-                  e.target.style.transform = 'translateY(-1px)';
-                  e.target.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#059669';
+                    e.target.style.transform = 'translateY(-1px)';
+                    e.target.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                  }
                 }}
                 onMouseLeave={(e) => {
-                  e.target.style.backgroundColor = '#10b981';
-                  e.target.style.transform = 'translateY(0)';
-                  e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#10b981';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                  }
                 }}
                 onClick={async () => {
                   try {
@@ -1272,11 +1128,30 @@ const TestGenerator = () => {
               </button>
               <button 
                 className="btn btn-secondary"
+                disabled={!hasUnsavedChanges}
                 style={{
-                  backgroundColor: '#f59e0b',
-                  borderColor: '#f59e0b',
+                  backgroundColor: hasUnsavedChanges ? '#f59e0b' : '#9ca3af',
+                  borderColor: hasUnsavedChanges ? '#f59e0b' : '#9ca3af',
                   color: 'white',
-                  fontWeight: '600'
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: hasUnsavedChanges ? '0 2px 4px rgba(245, 158, 11, 0.2)' : 'none',
+                  cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed',
+                  opacity: hasUnsavedChanges ? 1 : 0.6
+                }}
+                onMouseEnter={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#d97706';
+                    e.target.style.transform = 'translateY(-1px)';
+                    e.target.style.boxShadow = '0 4px 8px rgba(245, 158, 11, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#f59e0b';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 2px 4px rgba(245, 158, 11, 0.2)';
+                  }
                 }}
                 onClick={() => {
                   // Reset to original requirements
@@ -1288,27 +1163,7 @@ const TestGenerator = () => {
               >
                 Reset Changes
               </button>
-              {/* Debug State button - Hidden during production, uncomment for development/testing
-              <button 
-                className="btn btn-secondary"
-                style={{
-                  backgroundColor: '#8b5cf6',
-                  borderColor: '#8b5cf6',
-                  color: 'white',
-                  fontWeight: '600'
-                }}
-                onClick={() => {
-                  // Debug button to see current state
-                  console.log('🔍 Debug - Current state:');
-                  console.log('🔍 editableRequirements:', editableRequirements);
-                  console.log('🔍 extractedRequirements:', extractedRequirements);
-                  console.log('🔍 hasUnsavedChanges:', hasUnsavedChanges);
-                  setStatus({ type: 'info', message: 'Check console for debug info' });
-                }}
-              >
-                Debug State
-              </button>
-              */}
+              
               <button 
                 className="btn btn-secondary"
                 style={{
@@ -1447,7 +1302,7 @@ const TestGenerator = () => {
             
             <button
               className="btn btn-danger"
-              onClick={clearAll}
+              onClick={() => setShowClearAllConfirmation(true)}
               disabled={isLoading}
             >
               Clear All
@@ -1490,7 +1345,7 @@ const TestGenerator = () => {
 
 
 
-      {/* Instructions */}
+      
       {/* Empty State */}
       {!generatedTests && !extractedRequirements && (
         <div className="card">
@@ -2828,11 +2683,7 @@ const TestGenerator = () => {
                     
                     {/* Pagination Controls */}
                     {(() => {
-                      // console.log('Pagination check:', {
-                      //   totalItems: jiraPagination.totalItems,
-                      //   itemsPerPage: jiraPagination.itemsPerPage,
-                      //   shouldShow: jiraPagination.totalItems > jiraPagination.itemsPerPage
-                      // });
+                      
                       return jiraPagination.totalItems > jiraPagination.itemsPerPage;
                     })() && (
                       <>
@@ -3075,6 +2926,83 @@ const TestGenerator = () => {
                 }}
               >
                 Delete {selectedCaches.size} Document(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Dialog */}
+      {showClearAllConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '500px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🧹 Clear All Data
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to clear all data? This will remove:
+            </p>
+            <ul style={{ margin: '0 0 20px 0', paddingLeft: '20px', color: '#495057' }}>
+              <li>All uploaded files and extracted requirements</li>
+              <li>Generated test cases and feature tabs</li>
+              <li>Jira imported data (connection will be preserved)</li>
+              <li>Zephyr configuration and pushed state</li>
+              <li>All form inputs and selections</li>
+            </ul>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              <strong>This action cannot be undone.</strong> You will need to start over from the beginning.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowClearAllConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  clearAllWrapper();
+                  setShowClearAllConfirmation(false);
+                  setStatus({ type: 'info', message: 'All data has been cleared. You can now start fresh.' });
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Clear All Data
               </button>
             </div>
           </div>

@@ -1,6 +1,4 @@
 // Utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 /**
  * Parses requirements table content and extracts structured requirements
  * @param {string} requirementsContent - The content containing requirements table
@@ -12,8 +10,6 @@
  * @returns {Array} Array of requirement objects
  */
 export const parseRequirementsTable = (requirementsContent, requirementsSource = 'upload', jiraTicketPrefix = '', jiraTicketInfo = {}, setJiraTicketPrefix = null, setJiraTicketInfo = null) => {
-  console.log('🔍 Frontend: parseRequirementsTable called with content length:', requirementsContent?.length || 0);
-  
   // Validate requirements source consistency
   if (requirementsSource === 'upload' && (jiraTicketPrefix || Object.keys(jiraTicketInfo).length > 0)) {
     if (setJiraTicketPrefix) setJiraTicketPrefix('');
@@ -22,16 +18,15 @@ export const parseRequirementsTable = (requirementsContent, requirementsSource =
   
   const requirements = [];
   const lines = requirementsContent.split('\n');
-  console.log('🔍 Frontend: Split into', lines.length, 'lines');
   
   let inTable = false;
   let tableLines = [];
   
-  // Find the table section - look for the header (more flexible detection)
+  // Find the table section by looking for the header
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     
-    // More flexible header detection - check for key words in the right order
+    // check for key words in the right order
     if (line.includes('|') && 
         line.toLowerCase().includes('requirement id') && 
         line.toLowerCase().includes('business requirement') && 
@@ -72,7 +67,6 @@ export const parseRequirementsTable = (requirementsContent, requirementsSource =
   
   // Parse table rows
   let requirementCounter = 0; // Use a separate counter for requirement IDs
-  console.log('🔍 Frontend: Found', tableLines.length, 'table lines to parse');
   
   for (let i = 0; i < tableLines.length; i++) {
     const line = tableLines[i];
@@ -113,11 +107,9 @@ export const parseRequirementsTable = (requirementsContent, requirementsSource =
         acceptanceCriteria: acceptanceCriteria,
         complexity: columns[3] || 'CC: 1, Paths: 1'
       });
-      console.log('🔍 Frontend: Added requirement', generatedId, ':', requirement.substring(0, 50) + '...');
     }
   }
   
-  console.log('🔍 Frontend: parseRequirementsTable returning', requirements.length, 'requirements');
   return requirements;
 };
 
@@ -250,8 +242,6 @@ export const buildFolderTree = (folders) => {
   
   return rootFolders;
 };
-
-// rotateImages function is kept in the component as it requires DOM manipulation and component state
 
 /**
  * Fetches loading images from the API

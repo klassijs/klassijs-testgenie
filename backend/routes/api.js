@@ -135,7 +135,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // First check for document-based cache (edited versions)
     const hasDocumentCache = await cacheManager.hasDocumentCachedResults(req.file.originalname, 'analysis');
-    console.log(`🔍 Has document-based cache: ${hasDocumentCache}`);
+    // console.log(`🔍 Has document-based cache: ${hasDocumentCache}`);
     
     if (hasDocumentCache) {
       const startTime = Date.now();
@@ -156,18 +156,18 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // Fallback to hash-based cache
     const fileHash = cacheManager.generateFileHash(req.file.buffer);
-    console.log(`🔍 File hash: ${fileHash.substring(0, 8)}...`);
-    console.log(`📁 Cache directory: ${cacheManager.cacheDir}`);
+      // console.log(`🔍 File hash: ${fileHash.substring(0, 8)}...`);
+      // console.log(`📁 Cache directory: ${cacheManager.cacheDir}`);
 
     // Check if we have cached results
     const hasCached = await cacheManager.hasCachedResults(fileHash, req.file.originalname);
-    console.log(`🔍 Has hash-based cached results: ${hasCached}`);
+    // console.log(`🔍 Has hash-based cached results: ${hasCached}`);
     
     const startTime = Date.now();
     const cachedResults = await cacheManager.getCachedResults(fileHash, req.file.originalname);
     if (cachedResults) {
       const cacheHitTime = Date.now() - startTime;
-      console.log(`⚡ Hash cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
+      // console.log(`⚡ Hash cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
       return res.json({
         success: true,
         content: cachedResults.content,
@@ -178,7 +178,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
-    console.log(`🔄 Cache miss. Processing document: ${req.file.originalname}`);
+    // console.log(`🔄 Cache miss. Processing document: ${req.file.originalname}`);
     const content = await extractFileContent(req.file);
     
     if (!content || content.trim().length < 10) {
@@ -198,10 +198,10 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
     };
 
     // Store results in cache (both hash-based and document-based)
-    console.log(`💾 Storing results in cache...`);
+    // console.log(`💾 Storing results in cache...`);
     await cacheManager.storeCachedResults(fileHash, analysisResults, req.file.originalname);
     await cacheManager.storeDocumentCachedResults(req.file.originalname, 'analysis', analysisResults);
-    console.log(`✅ Results stored in cache (both hash-based and document-based)`);
+    // console.log(`✅ Results stored in cache (both hash-based and document-based)`);
 
     res.json({
       success: true,
@@ -262,12 +262,12 @@ router.post('/generate-tests', async (req, res) => {
     // First check for document-based cache (edited versions)
     if (documentName) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
-      console.log(`🔍 Has document-based test cache: ${hasDocumentCache}`);
+      // console.log(`🔍 Has document-based test cache: ${hasDocumentCache}`);
       
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'tests');
         if (documentCachedResults) {
-          console.log(`⚡ Document test cache hit! Returning cached test results`);
+          // console.log(`⚡ Document test cache hit! Returning cached test results`);
           return res.json({
             success: true,
             content: documentCachedResults.content,
@@ -286,12 +286,12 @@ router.post('/generate-tests', async (req, res) => {
 
     // Fallback to hash-based cache
     const contentHash = cacheManager.generateContentHash(content, context);
-    console.log(`🔍 Test generation hash: ${contentHash.substring(0, 8)}...`);
+    // console.log(`🔍 Test generation hash: ${contentHash.substring(0, 8)}...`);
 
     // Check if we have cached test results
     const cachedTestResults = await cacheManager.getCachedTestResults(contentHash, documentName);
     if (cachedTestResults) {
-      console.log(`⚡ Hash test cache hit! Returning cached test results`);
+      // console.log(`⚡ Hash test cache hit! Returning cached test results`);
       return res.json({
         success: true,
         content: cachedTestResults.content,
@@ -305,7 +305,7 @@ router.post('/generate-tests', async (req, res) => {
       });
     }
 
-    console.log(`🔄 Test cache miss. Generating test cases...`);
+    // console.log(`🔄 Test cache miss. Generating test cases...`);
     const generatedTests = await generateTestCases(content, context);
 
     // Prepare test results for caching
@@ -455,12 +455,12 @@ router.post('/extract-requirements', async (req, res) => {
     // First check for document-based cache (edited versions)
     if (documentName) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'requirements');
-      console.log(`🔍 Has document-based requirements cache: ${hasDocumentCache}`);
+      // console.log(`🔍 Has document-based requirements cache: ${hasDocumentCache}`);
       
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'requirements');
         if (documentCachedResults) {
-          console.log(`⚡ Document requirements cache hit! Returning cached requirements`);
+          // console.log(`⚡ Document requirements cache hit! Returning cached requirements`);
           return res.json({
             success: true,
             content: documentCachedResults.content,
@@ -480,12 +480,12 @@ router.post('/extract-requirements', async (req, res) => {
 
     // Fallback to hash-based cache
     const contentHash = cacheManager.generateContentHash(content, context);
-    console.log(`🔍 Requirements extraction hash: ${contentHash.substring(0, 8)}...`);
+    // console.log(`🔍 Requirements extraction hash: ${contentHash.substring(0, 8)}...`);
 
     // Check if we have cached requirements results
     const cachedRequirements = await cacheManager.getCachedTestResults(contentHash, documentName);
     if (cachedRequirements) {
-      console.log(`⚡ Hash requirements cache hit! Returning cached requirements (${Date.now() - Date.now()}ms)`);
+      // console.log(`⚡ Hash requirements cache hit! Returning cached requirements (${Date.now() - Date.now()}ms)`);
       return res.json({
         success: true,
         content: cachedRequirements.content,
@@ -501,11 +501,11 @@ router.post('/extract-requirements', async (req, res) => {
       });
     }
 
-    console.log(`🔄 Requirements cache miss. Extracting requirements...`);
-    console.log(`🔍 Backend: Content length: ${content.length}, Context: ${context}, Document: ${documentName}`);
+    // console.log(`🔄 Requirements cache miss. Extracting requirements...`);
+    // console.log(`🔍 Backend: Content length: ${content.length}, Context: ${context}, Document: ${documentName}`);
     const { enableLogging = true } = req.body;
     const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
-    console.log(`🔍 Backend: Extracted requirements length: ${extractedRequirements.content?.length || 0}`);
+    // console.log(`🔍 Backend: Extracted requirements length: ${extractedRequirements.content?.length || 0}`);
 
     // Prepare requirements results for caching
     const requirementsResults = {

@@ -1,6 +1,4 @@
 // Cache Management utility functions for TestGenerator component
-// These functions were extracted from TestGenerator.js to improve code organization
-
 /**
  * Saves pushed state to backend cache
  * @param {Set} pushedTabsSet - Set of pushed tab indices
@@ -23,23 +21,13 @@ export const savePushedStateToCache = async (pushedTabsSet, testCaseIds, documen
       jiraTicketInfo: jiraTicketInfo
     };
 
-    const response = await fetch(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(documentName)}`, {
+    await fetch(`${API_BASE_URL}/api/pushed-state/${encodeURIComponent(documentName)}`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(pushedState)
     });
-
-    const data = await response.json();
-    
-    if (data.success) {
-      console.log('💾 Pushed state saved to backend cache:', {
-        documentName,
-        pushedTabs: Array.from(pushedTabsSet),
-        testCaseCount: Object.keys(testCaseIds).length
-      });
-    }
   } catch (error) {
     console.error('Error saving pushed state to backend cache:', error);
   }
@@ -74,16 +62,9 @@ export const loadPushedStateFromCache = async (documentName, setPushedTabs, setZ
       if (pushedState.jiraTicketInfo) {
         setJiraTicketInfo(pushedState.jiraTicketInfo);
       }
-      
-      console.log('💾 Pushed state loaded from backend cache:', {
-        documentName,
-        pushedTabs: pushedState.pushedTabs?.length || 0,
-        testCaseCount: Object.keys(pushedState.zephyrTestCaseIds || {}).length,
-        cachedAt: pushedState._cacheInfo?.cachedAt || 'Unknown'
-      });
+
       return true;
     } else {
-      console.log('💾 No pushed state found in backend cache for:', documentName);
       return false;
     }
   } catch (error) {
@@ -136,11 +117,6 @@ export const loadJiraPushedStates = async (featureTabs, jiraTicketInfo, setPushe
     setPushedTabs(consolidatedPushedTabs);
     setZephyrTestCaseIds(consolidatedTestCaseIds);
     setJiraTicketInfo(consolidatedJiraTicketInfo);
-    
-    console.log('💾 Loaded consolidated Jira pushed states:', {
-      pushedTabs: Array.from(consolidatedPushedTabs),
-      testCaseCount: Object.keys(consolidatedTestCaseIds).length
-    });
   }
 };
 
@@ -179,7 +155,6 @@ export const clearPushedStateCache = async (requirementsSource, featureTabs, jir
     setPushedTabs(new Set());
     setZephyrTestCaseIds({});
     setJiraTicketInfo({});
-    console.log('💾 Pushed state cache cleared manually');
   } catch (error) {
     console.error('Error clearing pushed state cache:', error);
   }
@@ -198,20 +173,13 @@ export const debugCacheStatus = async (currentDocumentName, API_BASE_URL) => {
       const data = await response.json();
       
       if (data.success && data.pushedState) {
-        const pushedState = data.pushedState;
-        console.log('💾 Backend Cache Status:', {
-          documentName: currentDocumentName,
-          exists: true,
-          pushedTabs: pushedState.pushedTabs?.length || 0,
-          testCaseIds: Object.keys(pushedState.zephyrTestCaseIds || {}).length,
-          jiraTickets: Object.keys(pushedState.jiraTicketInfo || {}).length,
-          cachedAt: pushedState._cacheInfo?.cachedAt || 'Unknown'
-        });
+        // const pushedState = data.pushedState;
+        console.log('Cache status: Pushed state found for', currentDocumentName);
       } else {
-        console.log('💾 Backend Cache Status: No cache found for', currentDocumentName);
+        console.log('Cache status: No pushed state found for', currentDocumentName);
       }
     } else {
-      console.log('💾 Backend Cache Status: No document name available');
+      console.log('Cache status: No document name provided');
     }
   } catch (error) {
     console.error('Error checking cache status:', error);
@@ -234,7 +202,6 @@ export const fetchCacheList = async (setIsLoadingCache, setCacheList, setStatus,
     
     if (data.success) {
       setCacheList(data.documents);
-      console.log('🔍 Frontend: Fetched cache list:', data.documents.length, 'documents');
     } else {
       setStatus({ type: 'error', message: 'Failed to fetch cache list' });
     }

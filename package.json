@@ -20,6 +20,12 @@
   ],
   "keywords": [
     "test-automation",
+    "test-case-generation",
+    "test-case-generation-ai",
+    "test-case-generation-ai-cucumber",
+    "test-case-generation-ai-gherkin",
+    "test-case-generation-ai-openai",
+    "test-case-generation-ai-monorepo",
     "cucumber",
     "gherkin",
     "ai",
