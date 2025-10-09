@@ -173,13 +173,12 @@ export const debugCacheStatus = async (currentDocumentName, API_BASE_URL) => {
       const data = await response.json();
       
       if (data.success && data.pushedState) {
-        // const pushedState = data.pushedState;
-        console.log('Cache status: Pushed state found for', currentDocumentName);
+        
       } else {
-        console.log('Cache status: No pushed state found for', currentDocumentName);
+       
       }
     } else {
-      console.log('Cache status: No document name provided');
+     
     }
   } catch (error) {
     console.error('Error checking cache status:', error);

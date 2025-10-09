@@ -56,7 +56,6 @@ app.use('*', (req, res) => {
 // Add memory monitoring
 function logMemoryUsage() {
   const used = process.memoryUsage();
-  // console.log(`💾 Memory usage: RSS ${Math.round(used.rss / 1024 / 1024)}MB, Heap ${Math.round(used.heapUsed / 1024 / 1024)}MB/${Math.round(used.heapTotal / 1024 / 1024)}MB`);
 }
 
 // Log memory usage every 30 seconds
@@ -78,13 +77,13 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // Start server with increased timeout
 const server = app.listen(PORT, () => {
-  console.log(`🚀 Test Automation Platform server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-  console.log(`🤖 Azure OpenAI: ${require('./services/openaiService').isAzureOpenAIConfigured ? 'configured' : 'not configured'}`);
-  console.log(`📄 Document analysis endpoint: /api/analyze-document`);
-  console.log(`🧪 Test generation endpoint: /api/generate-tests`);
-  console.log(`🔄 Test refinement endpoint: /api/refine-tests`);
+  console.info(`🚀 Test Automation Platform server running on port ${PORT}`);
+  console.info(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.info(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.info(`🤖 Azure OpenAI: ${require('./services/openaiService').isAzureOpenAIConfigured ? 'configured' : 'not configured'}`);
+  console.info(`📄 Document analysis endpoint: /api/analyze-document`);
+  console.info(`🧪 Test generation endpoint: /api/generate-tests`);
+  console.info(`🔄 Test refinement endpoint: /api/refine-tests`);
   logMemoryUsage();
 });
 
@@ -93,4 +92,4 @@ server.timeout = 300000; // 5 minutes
 server.keepAliveTimeout = 300000; // 5 minutes
 server.headersTimeout = 300000; // 5 minutes
 
-console.log(`⏱️  Server timeout set to 5 minutes for long-running operations`);
+console.info(`⏱️  Server timeout set to 5 minutes for long-running operations`);

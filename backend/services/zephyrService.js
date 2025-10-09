@@ -62,8 +62,6 @@ async function getTestFolders(projectKey) {
 
   const { ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN } = getZephyrConfig();
 
-  // console.log('Fetching folders for project:', projectKey);
-
   try {
     const zephyrBaseUrl = ZEPHYR_BASE_URL;
     const allFolders = [];
@@ -270,12 +268,6 @@ async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
   const { ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN } = getZephyrConfig();
 
   try {
-    console.log('🔗 Adding Jira ticket information for manual traceability:', {
-      testCaseKey: testCaseKey,
-      jiraTicketKey: jiraTicketKey,
-      jiraBaseUrl: jiraBaseUrl
-    });
-
     // Add Jira ticket information as a comment for easy reference
     // Users can then manually add the ticket to the coverage using Zephyr's UI
     const commentData = {
@@ -290,19 +282,12 @@ async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
             `This test case was imported from Jira ticket ${jiraTicketKey}.`
     };
 
-    console.log('📤 Adding Jira ticket info as comment for manual traceability...');
-
     const commentResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${testCaseKey}/comments`, commentData, {
       headers: {
         'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
         'Content-Type': 'application/json'
       },
       timeout: 10000
-    });
-
-    console.log('✅ Jira ticket info added as comment for manual traceability:', {
-      status: commentResponse.status,
-      data: commentResponse.data
     });
 
     return {
@@ -313,10 +298,9 @@ async function addJiraTicketInfo(testCaseKey, jiraTicketKey, jiraBaseUrl) {
     };
 
   } catch (error) {
-    console.log('❌ Failed to add Jira ticket information:');
     return {
       success: false,
-      error: `Failed to add Jira ticket information: `,      // error: `Failed to add Jira ticket information: ${error.message}`,
+      error: `Failed to add Jira ticket information: ${error.message}`,
       manualInstructions: `Manually add Jira ticket ${jiraTicketKey} to coverage via Traceability tab > Issues section`
     };
   }
@@ -392,8 +376,6 @@ async function discoverTraceabilityEndpoints(projectKey) {
   }
 
   const { ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN } = getZephyrConfig();
-
-  console.log('🔍 Discovering available traceability endpoints for project:', projectKey);
   
   try {
     // Get project details to see what's available
@@ -402,13 +384,6 @@ async function discoverTraceabilityEndpoints(projectKey) {
         'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
         'Content-Type': 'application/json'
       }
-    });
-    
-    console.log('📋 Project details:', {
-      id: projectResponse.data.id,
-      key: projectResponse.data.key,
-      name: projectResponse.data.name,
-      links: projectResponse.data.links
     });
     
     // Try to discover what endpoints exist by testing common patterns
@@ -452,12 +427,9 @@ async function discoverTraceabilityEndpoints(projectKey) {
       }
     }
     
-    console.log('🔍 Discovered endpoints:', discoveredEndpoints);
     return { success: true, endpoints: discoveredEndpoints };
     
   } catch (error) {
-    console.log('❌ Failed to discover endpoints:');
-    // console.log('❌ Failed to discover endpoints:', error.message);
     return { success: false, error: error.message };
   }
 }
@@ -469,8 +441,6 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
   }
 
   const { ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN } = getZephyrConfig();
-
-  console.log('🔍 Searching for existing Zephyr issue with Jira key:', jiraTicketKey);
   
   try {
     // Try to search for issues containing the Jira ticket key
@@ -488,8 +458,6 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
 
     if (searchResponse.data && searchResponse.data.values) {
       const issues = searchResponse.data.values;
-      console.log(`📋 Found ${issues.length} issues in project ${projectKey}`);
-      
       // Search for issues that contain the Jira ticket key
       const matchingIssue = issues.find(issue => {
         const issueKey = issue.key || '';
@@ -501,13 +469,7 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
                issueDescription.includes(jiraTicketKey);
       });
 
-      if (matchingIssue) {
-        console.log('✅ Found matching Zephyr issue:', {
-          id: matchingIssue.id,
-          key: matchingIssue.key,
-          summary: matchingIssue.summary
-        });
-        
+      if (matchingIssue) {        
         return {
           success: true,
           issue: {
@@ -517,8 +479,7 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
           }
         };
       } else {
-        console.log('❌ No matching Zephyr issue found for Jira ticket:');
-        // console.log('❌ No matching Zephyr issue found for Jira ticket:', jiraTicketKey);
+        
         return {
           success: false,
           message: 'No matching Zephyr issue found'
@@ -528,9 +489,7 @@ async function findZephyrIssueByJiraKey(jiraTicketKey, projectKey) {
       throw new Error('Invalid response format from issues endpoint');
     }
 
-  } catch (error) {
-    console.log('❌ Failed to search for Zephyr issues:');
-    
+  } catch (error) {    
     return {
       success: false,
       error: error.message
@@ -612,13 +571,11 @@ async function searchFolders(projectKey, searchTerm) {
 
 async function addJiraTicketInfo(testCaseId, jiraTicketKey, jiraBaseUrl) {
   // This function adds Jira ticket information to a test case
-  console.log(`Adding Jira ticket ${jiraTicketKey} to test case ${testCaseId}`);
   return { success: true, message: 'Jira ticket info added' };
 }
 
 async function addJiraTicketToCoverage(testCaseId, jiraTicketKey, jiraBaseUrl) {
   // This function adds Jira ticket to test coverage
-  console.log(`Adding Jira ticket ${jiraTicketKey} to coverage for test case ${testCaseId}`);
   return { success: true, message: 'Jira ticket added to coverage' };
 }
 
@@ -718,7 +675,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
 
   // Only proceed if scenarios are found - no default scenarios should be created
   if (scenarios.length === 0) {
-    console.log('⚠️  No scenarios found in the content. Test cases should only be created from actual business requirements and acceptance criteria.');
     return {
       success: false,
       message: 'No scenarios found. Test cases must be mapped to actual business requirements and acceptance criteria.',
@@ -780,16 +736,10 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     // Set folder ID if provided
     if (folderId) {
       const folderIdType = typeof folderId;
-      console.log(`Setting folder ID: ${folderId} Type: ${folderIdType}`);
-      
-      // Attempt to assign test case to folder during creation
-      console.log('Attempting to assign test case to folder during creation...');
       
       // Get folder details for verification
       const folderDetails = await getFolderDetails(folderId);
-      if (folderDetails) {
-        console.log(`Selected folder: ${folderDetails.name}`);
-        
+      if (folderDetails) {        
         // Add folder to test case data
         testCaseData.folder = { id: folderId };
       }
@@ -802,8 +752,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
     while (retryCount < maxRetries) {
       try {
         // Create test case in Zephyr Scale
-        console.log('Sending test case creation request to Zephyr Scale...');
-        
         zephyrResponse = await axios.post(`${zephyrBaseUrl}/testcases`, testCaseData, {
           headers: {
             'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
@@ -822,15 +770,13 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             timeout: 10000
           });
         } catch (verifyError) {
-          console.log('Could not verify test case exists:', verifyError.message);
+          console.error('Could not verify test case exists:', verifyError.message);
         }
 
         // Check if folder assignment was successful
         if (zephyrResponse.data.folder && zephyrResponse.data.folder.id === folderId) {
-          console.log('Test case created and assigned to correct folder');
-        } else if (folderId) {
-          console.log('Test case created but folder assignment failed - attempting post-creation assignment...');
           
+        } else if (folderId) {          
           // Try to assign the test case to the folder after creation
           try {
             // First get the full test case data to include all required fields
@@ -861,12 +807,10 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
                 'Content-Type': 'application/json'
               },
               timeout: 10000
-            });
-            
-            console.log('Test case successfully moved to folder');
+            });          
             
           } catch (moveError) {
-            console.log('Post-creation folder assignment failed:', moveError.message);
+            console.error('Post-creation folder assignment failed:', moveError.message);
           }
         }
         
@@ -883,11 +827,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               'Content-Type': 'application/json'
             },
             timeout: 30000
-          });
-
-          console.log('Test script added successfully:', {
-            status: testScriptResponse.status,
-            data: testScriptResponse.data
           });
           
         } catch (scriptError) {
@@ -942,10 +881,6 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
         
               } catch (error) {
           retryCount++;
-          
-          console.log('🔍 DEBUG: Error response:', error.response?.data);
-          console.log('🔍 DEBUG: Error status:', error.response?.status);
-          console.log('🔍 DEBUG: Error message:', error.message);
           
           if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
             if (retryCount < maxRetries) {

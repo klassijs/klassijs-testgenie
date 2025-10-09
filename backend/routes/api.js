@@ -135,14 +135,12 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // First check for document-based cache (edited versions)
     const hasDocumentCache = await cacheManager.hasDocumentCachedResults(req.file.originalname, 'analysis');
-    // console.log(`🔍 Has document-based cache: ${hasDocumentCache}`);
     
     if (hasDocumentCache) {
       const startTime = Date.now();
       const documentCachedResults = await cacheManager.getDocumentCachedResults(req.file.originalname, 'analysis');
       if (documentCachedResults) {
         const cacheHitTime = Date.now() - startTime;
-        console.log(`⚡ Document cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
         return res.json({
           success: true,
           content: documentCachedResults.content,
@@ -156,18 +154,14 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // Fallback to hash-based cache
     const fileHash = cacheManager.generateFileHash(req.file.buffer);
-      // console.log(`🔍 File hash: ${fileHash.substring(0, 8)}...`);
-      // console.log(`📁 Cache directory: ${cacheManager.cacheDir}`);
 
     // Check if we have cached results
     const hasCached = await cacheManager.hasCachedResults(fileHash, req.file.originalname);
-    // console.log(`🔍 Has hash-based cached results: ${hasCached}`);
     
     const startTime = Date.now();
     const cachedResults = await cacheManager.getCachedResults(fileHash, req.file.originalname);
     if (cachedResults) {
       const cacheHitTime = Date.now() - startTime;
-      // console.log(`⚡ Hash cache hit! Returning cached results for ${req.file.originalname} (${cacheHitTime}ms)`);
       return res.json({
         success: true,
         content: cachedResults.content,
@@ -178,7 +172,6 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
-    // console.log(`🔄 Cache miss. Processing document: ${req.file.originalname}`);
     const content = await extractFileContent(req.file);
     
     if (!content || content.trim().length < 10) {
@@ -198,10 +191,8 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
     };
 
     // Store results in cache (both hash-based and document-based)
-    // console.log(`💾 Storing results in cache...`);
     await cacheManager.storeCachedResults(fileHash, analysisResults, req.file.originalname);
     await cacheManager.storeDocumentCachedResults(req.file.originalname, 'analysis', analysisResults);
-    // console.log(`✅ Results stored in cache (both hash-based and document-based)`);
 
     res.json({
       success: true,
@@ -262,12 +253,10 @@ router.post('/generate-tests', async (req, res) => {
     // First check for document-based cache (edited versions)
     if (documentName) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
-      // console.log(`🔍 Has document-based test cache: ${hasDocumentCache}`);
       
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'tests');
         if (documentCachedResults) {
-          // console.log(`⚡ Document test cache hit! Returning cached test results`);
           return res.json({
             success: true,
             content: documentCachedResults.content,
@@ -286,12 +275,10 @@ router.post('/generate-tests', async (req, res) => {
 
     // Fallback to hash-based cache
     const contentHash = cacheManager.generateContentHash(content, context);
-    // console.log(`🔍 Test generation hash: ${contentHash.substring(0, 8)}...`);
 
     // Check if we have cached test results
     const cachedTestResults = await cacheManager.getCachedTestResults(contentHash, documentName);
     if (cachedTestResults) {
-      // console.log(`⚡ Hash test cache hit! Returning cached test results`);
       return res.json({
         success: true,
         content: cachedTestResults.content,
@@ -304,8 +291,7 @@ router.post('/generate-tests', async (req, res) => {
         cacheInfo: cachedTestResults._cacheInfo
       });
     }
-
-    // console.log(`🔄 Test cache miss. Generating test cases...`);
+ 
     const generatedTests = await generateTestCases(content, context);
 
     // Prepare test results for caching
@@ -455,12 +441,10 @@ router.post('/extract-requirements', async (req, res) => {
     // First check for document-based cache (edited versions)
     if (documentName) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'requirements');
-      // console.log(`🔍 Has document-based requirements cache: ${hasDocumentCache}`);
       
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'requirements');
         if (documentCachedResults) {
-          // console.log(`⚡ Document requirements cache hit! Returning cached requirements`);
           return res.json({
             success: true,
             content: documentCachedResults.content,
@@ -480,12 +464,10 @@ router.post('/extract-requirements', async (req, res) => {
 
     // Fallback to hash-based cache
     const contentHash = cacheManager.generateContentHash(content, context);
-    // console.log(`🔍 Requirements extraction hash: ${contentHash.substring(0, 8)}...`);
 
     // Check if we have cached requirements results
     const cachedRequirements = await cacheManager.getCachedTestResults(contentHash, documentName);
     if (cachedRequirements) {
-      // console.log(`⚡ Hash requirements cache hit! Returning cached requirements (${Date.now() - Date.now()}ms)`);
       return res.json({
         success: true,
         content: cachedRequirements.content,
@@ -501,11 +483,8 @@ router.post('/extract-requirements', async (req, res) => {
       });
     }
 
-    // console.log(`🔄 Requirements cache miss. Extracting requirements...`);
-    // console.log(`🔍 Backend: Content length: ${content.length}, Context: ${context}, Document: ${documentName}`);
     const { enableLogging = true } = req.body;
     const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
-    // console.log(`🔍 Backend: Extracted requirements length: ${extractedRequirements.content?.length || 0}`);
 
     // Prepare requirements results for caching
     const requirementsResults = {
@@ -610,44 +589,6 @@ router.post('/generate-word-doc', async (req, res) => {
   }
 });
 
-// Zephyr Scale Export endpoint
-// router.post('/export-zephyr', async (req, res) => {
-//   try {
-//     const { content, featureName = 'Test Feature' } = req.body;
-
-//     if (!content || !content.trim()) {
-//       return res.status(400).json({
-//         error: 'Missing content',
-//         details: 'No test content provided for export',
-//         suggestion: 'Please provide valid test content to export'
-//       });
-//     }
-
-//     const zephyrContent = convertToZephyrFormat(content, featureName);
-
-//     res.json({
-//       success: true,
-//       zephyrContent: zephyrContent,
-//       metadata: {
-//         originalContentLength: content.length,
-//         zephyrContentLength: zephyrContent.length,
-//         featureName: featureName,
-//         exportFormat: 'Zephyr Scale BDD-Gherkin Script',
-//         timestamp: new Date().toISOString()
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error exporting to Zephyr Scale:', error);
-    
-//     res.status(500).json({ 
-//       error: 'Failed to export to Zephyr Scale format',
-//       details: error.message,
-//       suggestion: 'Please try again with valid test content'
-//     });
-//   }
-// });
-
 // Get Zephyr Scale projects
 router.get('/zephyr-projects', async (req, res) => {
   try {
@@ -750,125 +691,6 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
     });
   }
 });
-
-// Get main folders (top-level folders) for a project
-// router.get('/zephyr-main-folders/:projectKey', async (req, res) => {
-//   try {
-//     const { projectKey } = req.params;
-
-//     if (!isZephyrConfigured) {
-//       return res.status(503).json({
-//         error: 'Zephyr Scale integration not configured',
-//         details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-//         suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-//       });
-//     }
-
-//     if (!projectKey) {
-//       return res.status(400).json({
-//         error: 'Missing project key',
-//         details: 'Project key is required to fetch main folders',
-//         suggestion: 'Please provide a valid project key'
-//       });
-//     }
-
-//     const mainFolders = await getMainFolders(projectKey);
-
-//     res.json({
-//       success: true,
-//       folders: mainFolders,
-//       projectKey: projectKey,
-//       metadata: {
-//         count: mainFolders.length,
-//         timestamp: new Date().toISOString()
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching Zephyr Scale main folders:', error);
-    
-//     let errorMessage = 'Failed to fetch main folders from Zephyr Scale';
-//     let suggestion = 'Please check your Zephyr Scale credentials and try again';
-    
-//     if (error.response) {
-//       errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-//       suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-//     } else if (error.request) {
-//       errorMessage = 'Network error connecting to Zephyr Scale';
-//       suggestion = 'Please check your Zephyr Scale URL and network connection';
-//     }
-    
-//     res.status(500).json({ 
-//       error: errorMessage,
-//       details: error.message,
-//       suggestion: suggestion
-//     });
-//   }
-// });
-
-// Get subfolders for a specific parent folder
-// router.get('/zephyr-subfolders/:projectKey/:parentFolderId', async (req, res) => {
-//   try {
-//     const { projectKey, parentFolderId } = req.params;
-
-//     if (!isZephyrConfigured) {
-//       return res.status(503).json({
-//         error: 'Zephyr Scale integration not configured',
-//         details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-//         suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-//       });
-//     }
-
-//     if (!projectKey) {
-//       return res.status(400).json({
-//         error: 'Missing project key',
-//         details: 'Project key is required to fetch subfolders',
-//         suggestion: 'Please provide a valid project key'
-//       });
-//     }
-
-//     if (!parentFolderId) {
-//       return res.status(400).json({
-//         error: 'Missing parent folder ID',
-//         details: 'Parent folder ID is required to fetch subfolders',
-//         suggestion: 'Please provide a valid parent folder ID'
-//       });
-//     }
-
-//     const subfolders = await getSubfolders(projectKey, parentFolderId);
-
-//     res.json({
-//       success: true,
-//       folders: subfolders,
-//       projectKey: projectKey,
-//       parentFolderId: parentFolderId,
-//       metadata: {
-//         count: subfolders.length,
-//         timestamp: new Date().toISOString()
-//       }
-//     });
-
-//   } catch (error) {
-//     console.error('Error fetching Zephyr Scale subfolders:', error);
-    
-//     let errorMessage = 'Failed to fetch subfolders from Zephyr Scale';
-//     let suggestion = 'Please check your Zephyr Scale credentials and try again';
-    
-//     if (error.response) {
-//       errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-//       suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-//     } else if (error.request) {
-//       errorMessage = 'Network error connecting to Zephyr Scale';
-//       suggestion = 'Please check your Zephyr Scale URL and network connection';
-//     }
-    
-//     res.status(500).json({ 
-//       error: errorMessage,
-//       details: error.message,
-//       suggestion: suggestion
-//     });
-//   }
-// });
 
 // Search folders across all levels
 router.get('/zephyr-search-folders/:projectKey', async (req, res) => {
@@ -1025,114 +847,6 @@ router.post('/push-to-zephyr', async (req, res) => {
     });
   }
 });
-
-// Discover available Zephyr Scale traceability endpoints
-// router.get('/zephyr/discover-endpoints/:projectKey', async (req, res) => {
-//   try {
-//     const { projectKey } = req.params;
-    
-//     if (!projectKey) {
-//       return res.status(400).json({ error: 'Project key is required' });
-//     }
-
-//     const result = await discoverTraceabilityEndpoints(projectKey);
-    
-//     if (result.success) {
-//       res.json({
-//         success: true,
-//         message: 'Endpoint discovery completed',
-//         projectKey,
-//         endpoints: result.endpoints
-//       });
-//     } else {
-//       res.status(500).json({
-//         error: 'Failed to discover endpoints',
-//         details: result.error
-//       });
-//     }
-
-//   } catch (error) {
-//     console.error('Error discovering Zephyr endpoints:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to discover endpoints',
-//       details: error.message
-//     });
-//   }
-// });
-
-// Test Zephyr Scale traceability endpoints
-// router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
-//   try {
-//     const { projectKey } = req.params;
-    
-//     if (!projectKey) {
-//       return res.status(400).json({ error: 'Project key is required' });
-//     }
-    
-//     // Test common endpoint patterns
-//     const testEndpoints = [
-//       { name: 'testcases', url: `${process.env.ZEPHYR_BASE_URL}/testcases`, method: 'GET' },
-//       { name: 'folders', url: `${process.env.ZEPHYR_BASE_URL}/folders`, method: 'GET' },
-//       { name: 'coverage', url: `${process.env.ZEPHYR_BASE_URL}/coverage`, method: 'GET' },
-//       { name: 'traceability', url: `${process.env.ZEPHYR_BASE_URL}/traceability`, method: 'GET' },
-//       { name: 'issues', url: `${process.env.ZEPHYR_BASE_URL}/issues`, method: 'GET' },
-//       { name: 'links', url: `${process.env.ZEPHYR_BASE_URL}/links`, method: 'GET' },
-//       { name: 'weblinks', url: `${process.env.ZEPHYR_BASE_URL}/weblinks`, method: 'GET' },
-//       { name: 'comments', url: `${process.env.ZEPHYR_BASE_URL}/comments`, method: 'GET' }
-//     ];
-    
-//     const results = [];
-    
-//     for (const endpoint of testEndpoints) {
-//       try {
-//         const response = await axios({
-//           method: endpoint.method,
-//           url: endpoint.url,
-//           headers: {
-//             'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-//             'Content-Type': 'application/json'
-//           },
-//           params: { projectKey, maxResults: 1 }
-//         });
-        
-//         results.push({
-//           name: endpoint.name,
-//           url: endpoint.url,
-//           status: response.status,
-//           available: true,
-//           data: response.data
-//         });
-        
-//       } catch (error) {
-//         results.push({
-//           name: endpoint.name,
-//           url: endpoint.url,
-//           status: error.response?.status,
-//           available: false,
-//           error: error.response?.data?.message || error.message
-//         });
-//       }
-//     }
-    
-//     // console.log('🔍 Endpoint test results:', results);
-    
-//     res.json({
-//       success: true,
-//       message: 'Endpoint discovery completed',
-//       projectKey,
-//       results
-//     });
-
-//   } catch (error) {
-//     console.error('Error testing Zephyr endpoints:', error);
-//     res.status(500).json({ 
-//       error: 'Failed to test endpoints',
-//       details: error.message
-//     });
-//   }
-// });
-
-// Jira Import endpoints
 
 // Test Jira connection
 router.post('/jira/test-connection', async (req, res) => {
