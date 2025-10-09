@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, X, ExternalLink, Edit, Zap } from 'lucide-react';
 // import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap, GitBranch } from 'lucide-react';
 import axios from 'axios';
@@ -8,7 +8,6 @@ import {
   validateTestCoverage, 
   formatFileSize, 
   buildFolderTree, 
-  fetchLoadingImages, 
   formatRequirementsForInsertionWithGeneratedIds, 
   handleDownloadContent, 
   validateComplexityValues 
@@ -34,7 +33,6 @@ import {
   loadPushedStateFromCache,
   loadJiraPushedStates,
   clearPushedStateCache,
-  debugCacheStatus,
   fetchCacheList
 } from '../utils/cacheUtils';
 import {
@@ -74,6 +72,9 @@ import {
 axios.defaults.timeout = 300000; // 5 minutes
 
 const TestGenerator = () => {
+  // API base URL - can be configured via environment variable
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
   // File input reference
   const fileInputRef = useRef(null);
   const [content, setContent] = useState('');
@@ -144,7 +145,7 @@ const TestGenerator = () => {
   const [jiraTicketInfo, setJiraTicketInfo] = useState({});
 
   // Track if cache was loaded on mount
-  const [cacheLoaded, setCacheLoaded] = useState(false);
+  // const [cacheLoaded, setCacheLoaded] = useState(false);
 
   // Cache functions for pushed state persistence using backend cache
   // savePushedStateToCache function moved to utils/cacheUtils.js
@@ -156,7 +157,7 @@ const TestGenerator = () => {
     if (currentDocumentName) {
       loadPushedStateFromCache(currentDocumentName, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
     }
-  }, [currentDocumentName]);
+  }, [currentDocumentName, API_BASE_URL]);
 
   // Load pushed state from cache when Jira issues are imported
   useEffect(() => {
@@ -164,7 +165,7 @@ const TestGenerator = () => {
       // loadJiraPushedStates function moved to utils/cacheUtils.js
       loadJiraPushedStates(featureTabs, jiraTicketInfo, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
     }
-  }, [featureTabs, requirementsSource, jiraTicketInfo]);
+  }, [featureTabs, requirementsSource, jiraTicketInfo, API_BASE_URL]);
 
   // Save pushed state to cache whenever it changes (for uploaded documents only)
   useEffect(() => {
@@ -173,7 +174,7 @@ const TestGenerator = () => {
         requirementsSource !== 'jira') {
       savePushedStateToCache(pushedTabs, zephyrTestCaseIds, currentDocumentName, jiraTicketInfo, API_BASE_URL);
     }
-  }, [pushedTabs, zephyrTestCaseIds, currentDocumentName, requirementsSource, jiraTicketInfo]);
+  }, [pushedTabs, zephyrTestCaseIds, currentDocumentName, requirementsSource, jiraTicketInfo, API_BASE_URL]);
 
   // clearPushedStateCache function moved to utils/cacheUtils.js
   const clearPushedStateCacheWrapper = () => {
@@ -196,7 +197,7 @@ const TestGenerator = () => {
   const [isLoadingJira, setIsLoadingJira] = useState(false);
   const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
   const [jiraConnectionActive, setJiraConnectionActive] = useState(false);
-  const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
+  // const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
   const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
   const [jiraProjectSearch, setJiraProjectSearch] = useState('');
   const [jiraPagination, setJiraPagination] = useState({
@@ -205,16 +206,13 @@ const TestGenerator = () => {
     totalItems: 0
   });
   const [allJiraIssues, setAllJiraIssues] = useState([]);
-  const [fetchAllJiraIssues, setFetchAllJiraIssues] = useState(false);
+  // const [fetchAllJiraIssues, setFetchAllJiraIssues] = useState(false);
   const [jiraCacheInfo, setJiraCacheInfo] = useState({
     isCached: false,
     lastFetched: null,
     projectKey: null,
     issueTypes: []
   });
-
-  // API base URL - can be configured via environment variable
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
   // Function to parse requirements table and extract individual requirements
   // parseRequirementsTable function moved to utils/testGeneratorUtils.js
@@ -443,7 +441,7 @@ const TestGenerator = () => {
       setRequirementsSource,
       setJiraTicketPrefix,
       setJiraTicketInfo,
-      setJiraIssueTypes,
+      // setJiraIssueTypes,
       setShowJiraImport,
       setJiraConfig,
       setJiraProjects,
@@ -510,13 +508,13 @@ const TestGenerator = () => {
   // pushToZephyr function moved to utils/zephyrUtils.js
   
   // Wrapper functions for Zephyr Scale integration functions
-  const fetchZephyrProjectsWrapper = () => {
+  const fetchZephyrProjectsWrapper = useCallback(() => {
     fetchZephyrProjects(setLoadingProjects, setZephyrProjects, setStatus, API_BASE_URL);
-  };
+  }, [API_BASE_URL]);
 
-  const fetchZephyrFoldersWrapper = (projectKey) => {
+  const fetchZephyrFoldersWrapper = useCallback((projectKey) => {
     fetchZephyrFolders(projectKey, setZephyrFolders, setLoadingFolders, setStatus, API_BASE_URL);
-  };
+  }, [API_BASE_URL]);
 
   const fetchAllFoldersWrapper = (projectKey) => {
     fetchAllFolders(projectKey, setZephyrFolders, setLoadingFolders, setFolderNavigation, setSearchMode, setStatus, API_BASE_URL);
@@ -554,14 +552,14 @@ const TestGenerator = () => {
     if (showZephyrConfig && zephyrProjects.length === 0) {
       fetchZephyrProjectsWrapper();
     }
-  }, [showZephyrConfig, zephyrProjects.length]);
+  }, [showZephyrConfig, zephyrProjects.length, fetchZephyrProjectsWrapper]);
 
   // Refresh folders when project key changes
   useEffect(() => {
     if (zephyrConfig.projectKey && zephyrConfig.projectKey.trim() !== '') {
       fetchZephyrFoldersWrapper(zephyrConfig.projectKey);
     }
-  }, [zephyrConfig.projectKey]);
+  }, [zephyrConfig.projectKey, fetchZephyrFoldersWrapper]);
 
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
@@ -598,7 +596,7 @@ const TestGenerator = () => {
     }
     
     let isMounted = true;
-    let intervalId = null;
+    // let intervalId = null;
     
     // Function to safely rotate images
     // rotateImages function moved to utils/renderUtils.js
@@ -613,7 +611,7 @@ const TestGenerator = () => {
         cleanup();
       }
     };
-  }, [isGenerating, loadingImages, imagesLoaded]);
+  }, [isGenerating, loadingImages, imagesLoaded, currentImage]);
   
   useEffect(() => {
     // loadImages function moved to utils/renderUtils.js
@@ -627,7 +625,7 @@ const TestGenerator = () => {
       setEditableRequirements(requirements);
       setHasUnsavedChanges(false);
     }
-  }, [extractedRequirements]);
+  }, [extractedRequirements, jiraTicketInfo, jiraTicketPrefix, requirementsSource]);
   
   // const handleInsertRequirements = () => {
   //   // Format requirements nicely before inserting (remove markdown syntax)
@@ -1345,7 +1343,7 @@ const TestGenerator = () => {
                     if (response.data.success) {
                       const validation = response.data.validation;
                       const score = validation.overallScore;
-                      const color = score >= 90 ? '#10b981' : score >= 80 ? '#f59e0b' : '#ef4444';
+                      // const color = score >= 90 ? '#10b981' : score >= 80 ? '#f59e0b' : '#ef4444';
                       
                       setStatus({ 
                         type: 'success', 
@@ -1744,7 +1742,7 @@ const TestGenerator = () => {
                 <button
                   className="btn btn-primary"
                   onClick={() => {
-                    const currentFeature = featureTabs[activeTab];
+                    // const currentFeature = featureTabs[activeTab];
                     setZephyrConfig({
                       projectKey: '',
                       testCaseName: '',
@@ -2830,11 +2828,11 @@ const TestGenerator = () => {
                     
                     {/* Pagination Controls */}
                     {(() => {
-                      console.log('Pagination check:', {
-                        totalItems: jiraPagination.totalItems,
-                        itemsPerPage: jiraPagination.itemsPerPage,
-                        shouldShow: jiraPagination.totalItems > jiraPagination.itemsPerPage
-                      });
+                      // console.log('Pagination check:', {
+                      //   totalItems: jiraPagination.totalItems,
+                      //   itemsPerPage: jiraPagination.itemsPerPage,
+                      //   shouldShow: jiraPagination.totalItems > jiraPagination.itemsPerPage
+                      // });
                       return jiraPagination.totalItems > jiraPagination.itemsPerPage;
                     })() && (
                       <>

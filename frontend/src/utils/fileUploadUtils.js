@@ -65,9 +65,9 @@ export const processFile = async (
       );
       
       // Automatically extract requirements from the document content
-      let requirementsResponse = null;
+      // let requirementsResponse = null;
       try {
-        console.log('🔍 Frontend: Starting requirements extraction for', fileObj.name);
+        // console.log('🔍 Frontend: Starting requirements extraction for', fileObj.name);
         const requirementsResponse = await fetch(`${API_BASE_URL}/api/extract-requirements`, {
           method: 'POST',
           headers: {
@@ -82,12 +82,12 @@ export const processFile = async (
         
         const requirementsData = await requirementsResponse.json();
         
-        console.log('🔍 Frontend: Requirements API response:', {
-          success: requirementsData.success,
-          hasContent: !!requirementsData.content,
-          contentLength: requirementsData.content?.length || 0,
-          contentPreview: requirementsData.content?.substring(0, 200) || 'No content'
-        });
+        // console.log('🔍 Frontend: Requirements API response:', {
+        //   success: requirementsData.success,
+        //   hasContent: !!requirementsData.content,
+        //   contentLength: requirementsData.content?.length || 0,
+        //   contentPreview: requirementsData.content?.substring(0, 200) || 'No content'
+        // });
         
         if (requirementsData.success) {
           setExtractedRequirements(requirementsData.content);
@@ -101,9 +101,9 @@ export const processFile = async (
           const requirementsContent = requirementsData.content;
           
           // Parse the requirements table to extract individual requirements
-          console.log('🔍 Frontend: Parsing requirements table, content length:', requirementsContent.length);
+          // console.log('🔍 Frontend: Parsing requirements table, content length:', requirementsContent.length);
           const requirements = parseRequirementsTable(requirementsContent, 'upload', '', {}, setJiraTicketPrefix, setJiraTicketInfo);
-          console.log('🔍 Frontend: Parsed requirements count:', requirements.length);
+          // console.log('🔍 Frontend: Parsed requirements count:', requirements.length);
           
           if (requirements.length > 0) {
             const newFeatures = requirements.map((req, index) => ({

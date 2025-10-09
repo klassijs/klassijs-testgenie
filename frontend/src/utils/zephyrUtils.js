@@ -1,7 +1,7 @@
 // Zephyr Scale Integration utility functions for TestGenerator component
 // These functions were extracted from TestGenerator.js to improve code organization
 
-import { savePushedStateToCache } from './cacheUtils';
+// import { savePushedStateToCache } from './cacheUtils';
 
 /**
  * Fetches Zephyr Scale projects
@@ -42,12 +42,12 @@ export const fetchZephyrProjects = async (setLoadingProjects, setZephyrProjects,
  */
 export const fetchZephyrFolders = async (projectKey, setZephyrFolders, setLoadingFolders, setStatus, API_BASE_URL) => {
   if (!projectKey || projectKey.trim() === '') {
-    console.log('fetchZephyrFolders: No projectKey provided, clearing folders');
+    // console.log('fetchZephyrFolders: No projectKey provided, clearing folders');
     setZephyrFolders([]);
     return;
   }
 
-  console.log('fetchZephyrFolders: Fetching folders for project:', projectKey);
+  // console.log('fetchZephyrFolders: Fetching folders for project:', projectKey);
   try {
     setLoadingFolders(true);
     const response = await fetch(`${API_BASE_URL}/api/zephyr-folders/${projectKey}`);
@@ -80,7 +80,7 @@ export const fetchZephyrFolders = async (projectKey, setZephyrFolders, setLoadin
  */
 export const fetchAllFolders = async (projectKey, setZephyrFolders, setLoadingFolders, setFolderNavigation, setSearchMode, setStatus, API_BASE_URL) => {
   if (!projectKey || projectKey.trim() === '') {
-    console.log('fetchAllFolders: No projectKey provided, clearing folders');
+    // console.log('fetchAllFolders: No projectKey provided, clearing folders');
     setZephyrFolders([]);
     return;
   }
@@ -91,7 +91,7 @@ export const fetchAllFolders = async (projectKey, setZephyrFolders, setLoadingFo
     const data = await response.json();
     
     if (data.success) {
-      console.log('All folders fetched:', data.folders);
+      // console.log('All folders fetched:', data.folders);
       setZephyrFolders(data.folders);
       setFolderNavigation({
         currentLevel: 'main',
