@@ -16,3 +16,5 @@ node_modules
 /backend/cache/
 /backend/cache/metadata.json
 /backend/cache/**/*
+
+*.tgx
