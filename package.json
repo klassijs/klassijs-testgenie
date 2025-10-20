@@ -56,14 +56,15 @@
     "start": "pnpm --filter @klassijs-ai/backend run start",
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
     "test": "pnpm --filter @klassijs-ai/frontend run test",
-    "prepublishOnly": "pnpm install-all && pnpm build:all"
+    "prepublishOnly": "pnpm install-all && pnpm build:all",
+    "postinstall": "pnpm install"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
   },
   "devDependencies": {},
   "engines": {
-    "node": ">=16.0.0",
+    "node": ">=20.0.0",
     "pnpm": ">=8.0.0"
   },
   "repository": {
