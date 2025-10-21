@@ -57,8 +57,8 @@
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
     "test": "pnpm --filter @klassijs-ai/frontend run test",
     "prepublishOnly": "pnpm install-all && pnpm build:all",
-    "postinstall1": "node postinstall.js",
-    "postinstall": "node -e \"const {spawn} = require('child_process'); const fs = require('fs'); if (fs.existsSync('pnpm-workspace.yaml')) { console.log('Installing workspace dependencies...'); const pnpm = spawn('pnpm', ['install'], {stdio: 'inherit', shell: false}); pnpm.on('close', (code) => { if (code === 0) console.log('✅ Dependencies installed!'); else console.log('⚠️ Installation failed, continuing...'); }); } else { console.log('No workspace found'); }\""
+    "postinstall": "node postinstall.js",
+    "postinstall1": "node -e \"const {spawn} = require('child_process'); const fs = require('fs'); if (fs.existsSync('pnpm-workspace.yaml')) { console.log('Installing workspace dependencies...'); const pnpm = spawn('pnpm', ['install'], {stdio: 'inherit', shell: false}); pnpm.on('close', (code) => { if (code === 0) console.log('✅ Dependencies installed!'); else console.log('⚠️ Installation failed, continuing...'); }); } else { console.log('No workspace found'); }\""
   },
   "dependencies": {
     "concurrently": "^8.2.2"
