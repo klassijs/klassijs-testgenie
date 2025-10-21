@@ -1,6 +1,6 @@
 const { spawn } = require('child_process');
-const path = require('path');
 const fs = require('fs');
+const path = require('path');
 
 console.log('🔧 Running klassijs-ai postinstall...');
 
@@ -9,11 +9,11 @@ try {
   console.log('Package directory:', packageDir);
 
   if (fs.existsSync(path.join(packageDir, 'pnpm-workspace.yaml'))) {
-    // Check if frontend and backend already have node_modules
-    const frontendHasDeps = fs.existsSync(path.join(packageDir, 'frontend', 'node_modules'));
-    const backendHasDeps = fs.existsSync(path.join(packageDir, 'backend', 'node_modules'));
+    // Check if key dependencies are missing
+    const frontendMissing = !fs.existsSync(path.join(packageDir, 'frontend', 'node_modules', 'react-dev-utils'));
+    const backendMissing = !fs.existsSync(path.join(packageDir, 'backend', 'node_modules', 'chokidar'));
 
-    if (!frontendHasDeps || !backendHasDeps) {
+    if (frontendMissing || backendMissing) {
       console.log('Installing missing workspace dependencies...');
 
       const pnpmProcess = spawn('pnpm', ['install'], {
