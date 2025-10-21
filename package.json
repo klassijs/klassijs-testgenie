@@ -57,7 +57,7 @@
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
     "test": "pnpm --filter @klassijs-ai/frontend run test",
     "prepublishOnly": "pnpm install-all && pnpm build:all",
-    "postinstall": "node -e \"const {spawn} = require('child_process'); const fs = require('fs'); const path = require('path'); if (fs.existsSync('pnpm-workspace.yaml')) { const pnpm = spawn('pnpm', ['install'], {stdio: 'inherit', shell: false}); pnpm.on('close', (code) => process.exit(code)); }\""
+    "postinstall": "node -e \"const {spawn} = require('child_process'); const fs = require('fs'); const path = require('path'); if (fs.existsSync('pnpm-workspace.yaml')) { const frontendMissing = !fs.existsSync(path.join('frontend', 'node_modules', 'react-dev-utils')); const backendMissing = !fs.existsSync(path.join('backend', 'node_modules', 'chokidar')); if (frontendMissing || backendMissing) { console.log('Installing missing workspace dependencies...'); const pnpm = spawn('pnpm', ['install'], {stdio: 'inherit', shell: false}); pnpm.on('close', (code) => process.exit(code)); } else { console.log('Dependencies already installed, skipping...'); } }\""
   },
   "dependencies": {
     "concurrently": "^8.2.2"
