@@ -3,8 +3,29 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-// Load environment variables
-require('dotenv').config({ path: '../.env' });
+// Load environment variables from project root
+const path = require('path');
+const fs = require('fs');
+
+// Find the project root by looking for .env file
+let currentDir = __dirname;
+let envPath = null;
+
+while (currentDir !== path.dirname(currentDir)) {
+  const testPath = path.join(currentDir, '.env');
+  if (fs.existsSync(testPath)) {
+    envPath = testPath;
+    break;
+  }
+  currentDir = path.dirname(currentDir);
+}
+
+const result = require('dotenv').config({ path: envPath });
+console.log('🔍 DEBUG: .env path:', envPath);
+console.log('🔍 DEBUG: .env loaded:', !result.error);
+console.log('🔍 DEBUG: JIRA_BASE_URL:', process.env.JIRA_BASE_URL ? 'SET' : 'NOT SET');
+console.log('🔍 DEBUG: JIRA_EMAIL:', process.env.JIRA_EMAIL ? 'SET' : 'NOT SET');
+console.log('🔍 DEBUG: JIRA_API_TOKEN:', process.env.JIRA_API_TOKEN ? 'SET' : 'NOT SET');
 
 // Import routes
 const apiRoutes = require('./routes/api');
@@ -42,7 +63,7 @@ app.use('/api', apiRoutes);
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal server error',
     details: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
   });
