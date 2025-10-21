@@ -57,7 +57,8 @@
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
     "test": "pnpm --filter @klassijs-ai/frontend run test",
     "prepublishOnly": "pnpm install-all && pnpm build:all",
-    "postinstall": "node postinstall.js"
+    "postinstall1": "node postinstall.js",
+    "postinstall": "echo 'Postinstall completed'"
   },
   "dependencies": {
     "concurrently": "^8.2.2"
