@@ -77,7 +77,6 @@ temp/
 .vscode/*
 !.vscode/extensions.json
 .idea
-.DS_Store
 *.suo
 *.ntvs*
 *.njsproj
@@ -86,7 +85,7 @@ temp/
 
 # OS generated files
 Thumbs.db
-.DS_Store
+
 .DS_Store?
 ._*
 .Spotlight-V100
