@@ -520,7 +520,7 @@ const TestGenerator = () => {
         cleanup();
       }
     };
-  }, [isGenerating, loadingImages, imagesLoaded, currentImage]);
+  }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
     // loadImages function moved to utils/renderUtils.js

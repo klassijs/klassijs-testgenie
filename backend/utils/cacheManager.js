@@ -757,7 +757,13 @@ class CacheManager {
     
     // Remove entries from root metadata.json for successfully deleted documents
     if (results.deletedCount > 0) {
-      await this.removeFromRootMetadata(results.deletedDocuments);
+      try {
+        await this.removeFromRootMetadata(results.deletedDocuments);
+      } catch (error) {
+        console.error('❌ Failed to update metadata after deletion:', error.message);
+        // Don't fail the entire operation if metadata update fails
+        // The files are already deleted, which is the main goal
+      }
     }
     
     return results;

@@ -399,7 +399,10 @@ export const confirmDeleteSelectedCaches = async (
       setIsSelectAllCachesChecked(false);
       setShowCacheDeleteConfirmation(false);
     } else {
-      setStatus({ type: 'error', message: 'Failed to delete selected documents' });
+      // Show more specific error message
+      const errorMessage = data.error || 'Failed to delete selected documents';
+      const details = data.details ? ` Details: ${JSON.stringify(data.details)}` : '';
+      setStatus({ type: 'error', message: `${errorMessage}${details}` });
       setShowCacheDeleteConfirmation(false);
     }
   } catch (error) {

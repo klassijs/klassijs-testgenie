@@ -287,13 +287,13 @@ export const importJiraIssues = async (
       setStatus({ type: 'info', message: 'Processing Jira content through AI requirements extraction...' });
       
       try {
-        // Extract Jira ticket prefix for document naming
+        // Create individual ticket cache entries so we can track which bug/story/epic each test belongs to
         const firstTicket = data.features[0];
-        const jiraDocumentName = firstTicket && firstTicket.title && firstTicket.title.includes(':') 
-          ? `jira-${firstTicket.title.split(':')[0].trim()}`
-          : 'jira-imported-issues';
+        const ticketKey = firstTicket?.ticketKey || (firstTicket?.title?.split(':')[0]?.trim()) || 'UNKNOWN';
+        const issueType = firstTicket?.issueType || 'Bug'; // Default to Bug if not specified
+        const jiraDocumentName = `jira-${ticketKey}-${issueType}`; // Individual ticket cache: jira-QAE-60-Bug
         
-        // Set current document name for Jira issues
+        // Set current document name for individual ticket caching
         setCurrentDocumentName(jiraDocumentName);
         
         const requirementsResponse = await fetch(`${API_BASE_URL}/api/extract-requirements`, {
@@ -304,7 +304,7 @@ export const importJiraIssues = async (
           body: JSON.stringify({ 
             content: combinedJiraContent, 
             context: `Jira tickets: ${data.features.map(f => f.title).join(', ')}`,
-            documentName: jiraDocumentName, // Pass document name for proper cache folder creation
+            documentName: jiraDocumentName, // Create individual ticket cache entries for traceability
             enableLogging: false // Disable logging for Jira imports to reduce console noise
           })
         });
@@ -363,7 +363,7 @@ export const importJiraIssues = async (
             });
             setJiraTicketInfo(jiraTicketInfo);
             
-            // Set the Jira ticket prefix for consistency
+            // Set the Jira ticket prefix for consistency (use full ticket key)
             setJiraTicketPrefix(ticketKey);
             
             // Close the modal after successful import so user can see the requirements

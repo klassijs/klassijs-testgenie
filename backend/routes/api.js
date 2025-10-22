@@ -251,7 +251,9 @@ router.post('/generate-tests', async (req, res) => {
     }
 
     // First check for document-based cache (edited versions)
-    if (documentName) {
+    // Only use document-based cache if this appears to be full document content, not individual requirements
+    // Individual requirements should use hash-based cache to ensure unique content per requirement
+    if (documentName && !content.includes('REQUIREMENT TO TEST:')) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
       
       if (hasDocumentCache) {
@@ -305,7 +307,8 @@ router.post('/generate-tests', async (req, res) => {
 
     // Store test results in cache (both hash-based and document-based)
     await cacheManager.storeCachedTestResults(contentHash, testResults, content, documentName);
-    if (documentName) {
+    // Only store in document-based cache if this is full document content, not individual requirements
+    if (documentName && !content.includes('REQUIREMENT TO TEST:')) {
       await cacheManager.storeDocumentCachedResults(documentName, 'tests', testResults);
     }
 
@@ -1153,6 +1156,16 @@ router.delete('/cache/delete-multiple', async (req, res) => {
     }
 
     const results = await cacheManager.deleteMultipleDocuments(documentNames);
+    
+    // Check if any deletions failed
+    if (results.failedCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Failed to delete ${results.failedCount} document(s)`,
+        details: results.failedDocuments,
+        results: results
+      });
+    }
     
     res.json({
       success: true,

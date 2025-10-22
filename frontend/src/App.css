@@ -1162,7 +1162,7 @@ body {
   align-items: center;
   justify-content: center;
   opacity: 0;
-  transition: all 0.5s ease-in-out;
+  transition: all 2s ease-in-out;
   width: 100%;
   text-align: center;
   z-index: 10;

@@ -63,12 +63,11 @@ export const rotateImages = (currentImage, isMounted, setCurrentImage, isGenerat
     }
   };
   
-  // Start rotation immediately
-  rotate();
-  
   // Set up interval for continuous rotation only if images are found
   if (retryCount === 0) {
-    intervalId = setInterval(rotate, 2000);
+    // Start with first image immediately, then rotate every 4 seconds
+    rotate();
+    intervalId = setInterval(rotate, 6000); // Much slower rotation - 6 seconds per image
   }
   
   // Cleanup function

@@ -100,24 +100,8 @@ async function getJiraIssues(projectKey, issueTypes) {
       };
     }
     
-    // Create document name for Jira issues (same pattern as uploaded files)
-    const documentName = `jira-${projectKey}-${issueTypes.sort().join('-')}`;
-    
-    // Check if we have cached data (same pattern as uploaded files)
-    const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'jira_issues');
-    
-    if (hasDocumentCache) {
-      const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'jira_issues');
-      if (documentCachedResults && documentCachedResults.issues) {
-        return {
-          success: true,
-          issues: documentCachedResults.issues,
-          total: documentCachedResults.issues.length,
-          cached: true,
-          cacheInfo: documentCachedResults._cacheInfo
-        };
-      }
-    }
+    // Don't create project-level cache entries - individual tickets will be cached separately
+    // This prevents duplication between project-level and individual ticket caches
     
     let allIssues = [];
     
@@ -186,17 +170,7 @@ async function getJiraIssues(projectKey, issueTypes) {
       issueTypeCounts[issue.issueType] = (issueTypeCounts[issue.issueType] || 0) + 1;
     });
 
-    // Cache the results (same pattern as uploaded files)
-    try {
-      await cacheManager.storeDocumentCachedResults(documentName, 'jira_issues', {
-        issues: allIssues,
-        projectKey,
-        issueTypes,
-        fetchedAt: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Failed to cache Jira issues:', error.message);
-    }
+    // Don't cache project-level results - individual tickets will be cached when imported
 
     return {
       success: true,
@@ -244,7 +218,9 @@ function convertJiraIssueToGherkin(issue) {
   
   return {
     title: featureName,
-    content: gherkinContent
+    content: gherkinContent,
+    issueType: issue.issueType,
+    ticketKey: issue.key
   };
 }
 
