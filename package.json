@@ -14,7 +14,8 @@
     "pnpm-lock.yaml",
     "pnpm-workspace.yaml",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "postinstall.js"
   ],
   "creator": {
     "name": "Larry Goddard",

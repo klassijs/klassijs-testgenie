@@ -8,13 +8,14 @@ try {
   const packageDir = __dirname;
   console.log('Package directory:', packageDir);
 
+  // Check if we have a workspace configuration
   if (fs.existsSync(path.join(packageDir, 'pnpm-workspace.yaml'))) {
-    // Check if key dependencies are missing
-    const frontendMissing = !fs.existsSync(path.join(packageDir, 'frontend', 'node_modules', 'react-dev-utils'));
-    const backendMissing = !fs.existsSync(path.join(packageDir, 'backend', 'node_modules', 'chokidar'));
+    // Check if frontend and backend node_modules already exist
+    const frontendNodeModules = path.join(packageDir, 'frontend', 'node_modules');
+    const backendNodeModules = path.join(packageDir, 'backend', 'node_modules');
 
-    if (frontendMissing || backendMissing) {
-      console.log('Installing missing workspace dependencies...');
+    if (!fs.existsSync(frontendNodeModules) || !fs.existsSync(backendNodeModules)) {
+      console.log('Installing workspace dependencies...');
 
       const pnpmProcess = spawn('pnpm', ['install'], {
         cwd: packageDir,
@@ -36,7 +37,7 @@ try {
         process.exit(1);
       });
     } else {
-      console.log('✅ Dependencies already installed, skipping installation...');
+      console.log('✅ Workspace dependencies already installed, skipping...');
     }
   } else {
     console.log('No pnpm workspace found, skipping...');
