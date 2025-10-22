@@ -185,4 +185,4 @@ async function generateWordDocument(content, title = 'Business Requirements') {
   }
 }
 
-module.exports = { generateWordDocument }; 
+module.exports = { generateWordDocument };

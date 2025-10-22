@@ -1,9 +1,25 @@
 {
-  "name": "klassijs-ai",
+  "name": "klassi-ai",
   "version": "1.0.0",
   "description": "AI-powered test automation platform for generating Cucumber test cases",
+  "main": "index.js",
+  "bin": {
+    "klassi-ai": "./bin/klassi-ai"
+  },
+  "files": [
+    "bin/",
+    "backend/",
+    "frontend/",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "README.md",
+    "LICENSE",
+    "postinstall.js"
+  ],
   "creator": {
     "name": "Larry Goddard",
+    "github": "https://github.com/klassijs",
     "linkedin": "https://linkedin.com/in/larryg",
     "youtube": "https://youtube.com/@LarryG_01"
   },
@@ -19,6 +35,12 @@
   ],
   "keywords": [
     "test-automation",
+    "test-case-generation",
+    "test-case-generation-ai",
+    "test-case-generation-ai-cucumber",
+    "test-case-generation-ai-gherkin",
+    "test-case-generation-ai-openai",
+    "test-case-generation-ai-monorepo",
     "cucumber",
     "gherkin",
     "ai",
@@ -34,9 +56,24 @@
     "install-all": "pnpm install",
     "start": "pnpm --filter @klassijs-ai/backend run start",
     "build:all": "pnpm --filter @klassijs-ai/frontend run build",
-    "test": "pnpm --filter @klassijs-ai/frontend run test"
+    "test": "pnpm --filter @klassijs-ai/frontend run test",
+    "prepublishOnly": "pnpm install-all && pnpm build:all",
+    "postinstall": "node postinstall.js"
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/klassijs/klassi-ai.git"
+  },
+  "homepage": "https://github.com/klassijs/klassi-ai#readme",
+  "bugs": {
+    "url": "https://github.com/klassijs/klassi-ai/issues"
   }
 }

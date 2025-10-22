@@ -61,9 +61,9 @@ function analyzeWorkflowContent(content) {
     activities: 0,
     events: 0,
     connectors: 0,
-    edges: 0,        // New: count actual transitions/flows
-    nodes: 0,        // New: count all workflow elements
-    components: 1,   // New: assume single workflow component
+    edges: 0,
+    nodes: 0,
+    components: 1,
     totalElements: 0,
     cyclomaticComplexity: 0,
     workflowDetected: false,

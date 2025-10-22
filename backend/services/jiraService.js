@@ -1,10 +1,12 @@
 const axios = require('axios');
+const CacheManager = require('../utils/cacheManager');
 
 const JIRA_BASE_URL = process.env.JIRA_BASE_URL;
 const JIRA_EMAIL = process.env.JIRA_EMAIL;
 const JIRA_API_TOKEN = process.env.JIRA_API_TOKEN;
 
 const isJiraConfigured = JIRA_BASE_URL && JIRA_EMAIL && JIRA_API_TOKEN;
+const cacheManager = new CacheManager();
 
 
 
@@ -88,7 +90,7 @@ async function getJiraProjects() {
   }
 }
 
-// Get Jira issues using environment credentials
+// Get Jira issues using environment credentials - fetches ALL issues
 async function getJiraIssues(projectKey, issueTypes) {
   try {
     if (!isJiraConfigured) {
@@ -97,40 +99,85 @@ async function getJiraIssues(projectKey, issueTypes) {
         error: 'Jira credentials not configured'
       };
     }
-
-    // Build JQL query
-    const jql = `project = "${projectKey}" AND issuetype IN (${issueTypes.map(type => `"${type}"`).join(', ')}) ORDER BY created DESC`;
     
-    const response = await axios.get(`${JIRA_BASE_URL}/rest/api/3/search`, {
-      auth: {
-        username: JIRA_EMAIL,
-        password: JIRA_API_TOKEN
-      },
-      headers: {
-        'Accept': 'application/json'
-      },
-      params: {
-        jql: jql,
-        maxResults: 100,
-        fields: 'summary,description,issuetype,status'
-      },
-      timeout: 15000
+    // Don't create project-level cache entries - individual tickets will be cached separately
+    // This prevents duplication between project-level and individual ticket caches
+    
+    let allIssues = [];
+    
+    // Fetch each issue type individually using multi-approach strategy
+    // This ensures we get the same results as individual queries
+    for (const issueType of issueTypes) {
+      
+      let issueTypeIssues = [];
+      
+      // Use multi-approach strategy for each issue type
+      const approaches = [
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY key ASC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY created ASC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY updated DESC`,
+        `project = ${projectKey} AND issuetype = "${issueType}" ORDER BY priority DESC`
+      ];
+      
+      for (let i = 0; i < approaches.length; i++) {
+        const jql = approaches[i];
+        const url = `${JIRA_BASE_URL}/rest/api/3/search/jql?jql=${encodeURIComponent(jql)}&fields=summary,description,issuetype,status&maxResults=1000`;
+        
+        try {
+          const response = await axios.get(url, {
+            auth: {
+              username: JIRA_EMAIL,
+              password: JIRA_API_TOKEN
+            },
+            headers: {
+              'Accept': 'application/json'
+            },
+            timeout: 30000
+          });
+
+          if (response.data && response.data.issues) {
+            const batchIssues = response.data.issues.map(issue => ({
+              key: issue.key,
+              summary: issue.fields.summary,
+              description: issue.fields.description,
+              issueType: issue.fields.issuetype.name,
+              status: issue.fields.status.name
+            }));
+
+            // Check for new issues
+            const existingKeys = new Set(issueTypeIssues.map(issue => issue.key));
+            const newIssues = batchIssues.filter(issue => !existingKeys.has(issue.key));
+            const duplicates = batchIssues.filter(issue => existingKeys.has(issue.key));
+            
+            if (newIssues.length > 0) {
+              issueTypeIssues = issueTypeIssues.concat(newIssues);
+            } else {
+             
+            }
+          }
+        } catch (error) {
+            console.error(`  ❌ Approach ${i + 1} failed for ${issueType}:`, error.message);
+        }
+      }
+      
+      allIssues = allIssues.concat(issueTypeIssues);
+      
+    }
+
+    // Log breakdown by issue type
+    const issueTypeCounts = {};
+    allIssues.forEach(issue => {
+      issueTypeCounts[issue.issueType] = (issueTypeCounts[issue.issueType] || 0) + 1;
     });
 
-    if (response.data && response.data.issues) {
-      return {
-        success: true,
-        issues: response.data.issues.map(issue => ({
-          key: issue.key,
-          summary: issue.fields.summary,
-          description: issue.fields.description,
-          issueType: issue.fields.issuetype.name,
-          status: issue.fields.status.name
-        }))
-      };
-    } else {
-      throw new Error('Invalid response format from Jira');
-    }
+    // Don't cache project-level results - individual tickets will be cached when imported
+
+    return {
+      success: true,
+      issues: allIssues,
+      total: allIssues.length,
+      cached: false
+    };
   } catch (error) {
     console.error('Failed to fetch Jira issues:', error.message);
     return {
@@ -139,6 +186,7 @@ async function getJiraIssues(projectKey, issueTypes) {
     };
   }
 }
+
 
 // Convert Jira issue to Gherkin feature
 function convertJiraIssueToGherkin(issue) {
@@ -170,59 +218,41 @@ function convertJiraIssueToGherkin(issue) {
   
   return {
     title: featureName,
-    content: gherkinContent
+    content: gherkinContent,
+    issueType: issue.issueType,
+    ticketKey: issue.key
   };
 }
 
 // Create scenarios from Jira ticket content
 function createScenariosFromJiraContent(summary, description, issueKey) {
-  const scenarios = [];
-  
-  console.log(`🔍 Processing Jira ticket: ${issueKey}`);
-  console.log(`🔍 Summary: "${summary}"`);
-  console.log(`🔍 Description type: ${typeof description}, length: ${description ? description.length : 0}`);
-  
+  const scenarios = [];  
   // First, try to extract meaningful scenarios from the description
   if (description && typeof description === 'string' && description.trim()) {
-    console.log(`🔍 Attempting to extract scenarios from description...`);
     const extractedScenarios = extractScenariosFromDescription(description, summary, issueKey);
     if (extractedScenarios.length > 0) {
       scenarios.push(...extractedScenarios);
-      console.log(`✅ Extracted ${extractedScenarios.length} scenarios from description`);
     } else {
-      console.log(`ℹ️  No scenarios extracted from description, trying natural language extraction...`);
+
     }
   } else {
-    console.log(`ℹ️  No description available, will try natural language extraction from summary`);
+    
   }
   
   // If no Gherkin scenarios found, try to extract test steps from natural language
   if (scenarios.length === 0) {
-    console.log(`🔍 Attempting natural language scenario extraction...`);
     const naturalLanguageScenarios = extractNaturalLanguageScenarios(description, summary, issueKey);
     if (naturalLanguageScenarios.length > 0) {
       scenarios.push(...naturalLanguageScenarios);
-      console.log(`✅ Extracted ${naturalLanguageScenarios.length} scenarios from natural language`);
     } else {
-      console.log(`ℹ️  No scenarios extracted from natural language`);
+
     }
   }
   
   // If still no scenarios, create intelligent scenarios from the summary
   if (scenarios.length === 0 && summary) {
-    console.log(`🔍 Creating intelligent scenarios from Jira summary: ${summary}`);
     const intelligentScenarios = createIntelligentScenariosFromSummary(summary, issueKey);
     scenarios.push(...intelligentScenarios);
-    console.log(`✅ Created ${intelligentScenarios.length} intelligent scenarios from summary`);
-  }
-  
-  // Final check and logging
-  if (scenarios.length === 0) {
-    console.log('⚠️  No scenarios found in Jira ticket content. Test cases should only be created from actual business requirements and acceptance criteria.');
-    console.log(`🔍 Jira ticket summary: "${summary}"`);
-    console.log(`🔍 Jira ticket description length: ${description ? description.length : 0} characters`);
-  } else {
-    console.log(`✅ Successfully extracted ${scenarios.length} scenarios from Jira ticket content`);
   }
   
   return scenarios;
@@ -302,9 +332,7 @@ function createIntelligentSteps(summary, description) {
 function createIntelligentScenariosFromSummary(summary, issueKey) {
   const scenarios = [];
   const lowerSummary = summary?.toLowerCase() || '';
-  
-  console.log(`🔍 Creating intelligent scenarios from summary: "${summary}"`);
-  
+
   // Analyze the summary to create meaningful scenarios
   if (lowerSummary.includes('alignment') || lowerSummary.includes('position') || lowerSummary.includes('layout')) {
     // UI/UX alignment changes
@@ -357,7 +385,6 @@ function createIntelligentScenariosFromSummary(summary, issueKey) {
     });
   }
   
-  console.log(`✅ Created ${scenarios.length} intelligent scenarios from summary`);
   return scenarios;
 }
 
@@ -410,19 +437,16 @@ function extractScenariosFromDescription(description, summary, issueKey) {
   
   // If no Gherkin scenarios found, try to extract test steps from natural language
   if (scenarios.length === 0) {
-    console.log(`🔍 Attempting natural language scenario extraction...`);
     const naturalLanguageScenarios = extractNaturalLanguageScenarios(description, summary, issueKey);
     if (naturalLanguageScenarios.length > 0) {
       scenarios.push(...naturalLanguageScenarios);
-      console.log(`✅ Extracted ${naturalLanguageScenarios.length} scenarios from natural language`);
     } else {
-      console.log(`ℹ️  No scenarios extracted from natural language`);
+
     }
   }
   
   // If still no scenarios, create a basic scenario from the summary
   if (scenarios.length === 0 && summary) {
-    console.log(`🔍 Creating basic scenario from Jira summary: ${summary}`);
     const basicScenario = {
       title: `${issueKey}: ${summary}`,
       steps: [
@@ -453,15 +477,12 @@ function extractNaturalLanguageScenarios(description, summary, issueKey) {
     const trimmedLine = line.trim();
     if (!trimmedLine) continue;
     
-    console.log(`🔍 Processing line: "${trimmedLine}"`);
-    
     // Look for action-oriented language that can be converted to test steps
     const lowerLine = trimmedLine.toLowerCase();
     
     // Skip lines that are clearly not test-related
     if (lowerLine.includes('bug') || lowerLine.includes('issue') || lowerLine.includes('problem') || 
         lowerLine.includes('error') || lowerLine.includes('exception') || lowerLine.includes('stack trace')) {
-      console.log(`⏭️  Skipping non-test line: "${trimmedLine}"`);
       continue;
     }
     
@@ -473,8 +494,7 @@ function extractNaturalLanguageScenarios(description, summary, issueKey) {
         lowerLine.includes('should') || lowerLine.includes('must') || lowerLine.includes('will')) {
       
       hasTestContent = true;
-      console.log(`✅ Found test content in line: "${trimmedLine}"`);
-      
+            
       // Convert to Gherkin format
       let step = '';
       if (lowerLine.includes('user') || lowerLine.includes('click') || lowerLine.includes('enter') || 
@@ -494,29 +514,23 @@ function extractNaturalLanguageScenarios(description, summary, issueKey) {
   
   // If we found test content, create a scenario
   if (hasTestContent && currentSteps.length > 0) {
-    console.log(`🔍 Found test content, creating scenario with ${currentSteps.length} steps`);
     
     // Add a Given step if we don't have one
     if (!currentSteps.some(step => step.toLowerCase().startsWith('given'))) {
       currentSteps.unshift('Given I am on the relevant page');
-      console.log(`🔍 Added default Given step`);
     }
     
     // Add a Then step if we don't have one
     if (!currentSteps.some(step => step.toLowerCase().startsWith('then'))) {
       currentSteps.push('Then the action should complete successfully');
-      console.log(`🔍 Added default Then step`);
     }
     
     scenarios.push({
       title: `${issueKey}: ${summary}`,
       steps: currentSteps
     });
-    
-    console.log(`✅ Created scenario: ${issueKey}: ${summary}`);
   } else {
-    console.log(`ℹ️  No test content found in natural language extraction`);
-    console.log(`ℹ️  hasTestContent: ${hasTestContent}, currentSteps.length: ${currentSteps.length}`);
+   
   }
   
   return scenarios;
@@ -552,16 +566,6 @@ async function importJiraIssues(selectedIssues) {
       });
       
       if (response.data) {
-        console.log(`🔍 Jira API response for ${response.data.key}:`, {
-          summary: response.data.fields.summary,
-          descriptionType: typeof response.data.fields.description,
-          descriptionLength: response.data.fields.description ? response.data.fields.description.length : 0,
-          issueType: response.data.fields.issuetype?.name,
-          status: response.data.fields.status?.name,
-          priority: response.data.fields.priority?.name,
-          components: response.data.fields.components?.map(c => c.name),
-          labels: response.data.fields.labels
-        });
         
         const issue = {
           key: response.data.key,
@@ -604,5 +608,5 @@ module.exports = {
   getJiraProjects,
   getJiraIssues,
   importJiraIssues,
-  isJiraConfigured
+  // isJiraConfigured
 }; 

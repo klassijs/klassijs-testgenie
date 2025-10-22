@@ -3,15 +3,17 @@ const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequire
 
 // Retry helper function with exponential backoff for rate limiting
 async function makeOpenAIRequest(apiUrl, requestData, headers, maxRetries = 3) {
+  
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const response = await axios.post(apiUrl, requestData, { headers });
       return response;
     } catch (error) {
+      console.error(`❌ Attempt ${attempt} failed: ${error.message}`);
+      
       // If it's a 429 (rate limit) and we have retries left, wait and retry
       if (error.response?.status === 429 && attempt < maxRetries) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
-        console.log(`⚠️  Rate limited (429). Retrying in ${waitTime/1000}s... (Attempt ${attempt}/${maxRetries})`);
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
@@ -107,8 +109,10 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const isAzureOpenAIConfigured = OPENAI_URL && OPENAI_DEVELOPMENT_ID && OPENAI_API_VERSION && OPENAI_API_KEY;
 
 // Generate test cases using Azure OpenAI
-async function generateTestCases(content, context = '') {
-  
+async function generateTestCases(content, context = '') {  
+  // Log memory usage at start
+  const used = process.memoryUsage();
+    
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
   }
@@ -129,8 +133,6 @@ async function generateTestCases(content, context = '') {
   
   const apiUrl = `${baseUrl}/openai/deployments/${OPENAI_DEVELOPMENT_ID}/chat/completions?api-version=${OPENAI_API_VERSION}`;
   
-
-
   const messages = [
     {
       role: 'system',
@@ -259,7 +261,8 @@ CRITICAL REQUIREMENTS:
     }
   ];
 
-  try {
+  try {    
+    const startTime = Date.now();
     const response = await makeOpenAIRequest(
       apiUrl,
       {
@@ -273,9 +276,8 @@ CRITICAL REQUIREMENTS:
         'Content-Type': 'application/json'
       }
     );
-
-
-
+    
+    const requestTime = Date.now() - startTime;
     if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
       throw new Error(`Invalid response structure from Azure OpenAI: ${JSON.stringify(response.data)}`);
     }
@@ -295,7 +297,6 @@ CRITICAL REQUIREMENTS:
     if (!response.data.choices[0].message.content) {
       throw new Error(`No content received from Azure OpenAI. Response: ${JSON.stringify(response.data.choices[0])}`);
     }
-
     let generatedTests = response.data.choices[0].message.content;
 
     // Clean up any explanations that might have slipped through
@@ -308,13 +309,17 @@ CRITICAL REQUIREMENTS:
       .replace(/```gherkin\\n/gi, '') // Remove leading ```gherkin
       .replace(/```\\n/gi, '') // Remove trailing ```
       .trim(); // Trim any leading/trailing whitespace
-
     // Remove duplicate scenarios
-    const deduplicatedTests = removeDuplicateScenarios(cleanGeneratedTests);
+    const deduplicatedTests = removeDuplicateScenarios(cleanGeneratedTests)
 
     return deduplicatedTests;
   } catch (error) {
-    console.error('Azure OpenAI API Error:', error.response?.data || error.message);
+    console.error('❌ Error details:', {
+      message: error.message,
+      code: error.code,
+      status: error.response?.status,
+      statusText: error.response?.statusText
+    });
     throw new Error(`Azure OpenAI API Error: ${error.response?.status || error.message}`);
   }
 }
@@ -496,13 +501,12 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
       // Add the missing scenario to the refined content
       if (scenarioContent) {
         restoredContent += '\n' + scenarioContent.trim();
-        console.log(`✅ Restored missing scenario: ${missingScenario}`);
       }
     }
     
     return restoredContent;
   } else {
-    console.log('✅ All original scenarios were preserved during refinement');
+    
   }
   
       // Check if new scenarios follow the same naming convention
@@ -511,14 +515,12 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
     );
     
     if (newScenarios.length > 0) {
-      console.log(`✅ Added ${newScenarios.length} new scenarios during refinement`);
       
       // Validate naming convention for new scenarios
       if (originalScenarios.length > 0) {
         const namingPattern = detectNamingPattern(originalScenarios);
         if (namingPattern) {
                    if (namingPattern.type === 'jira-tab') {
-           console.log(`🔍 Detected Jira tab naming pattern: ${namingPattern.prefix}`);
           // For Jira tab patterns, ensure all new scenarios use the exact same prefix
           const invalidNewScenarios = newScenarios.filter(scenario => {
             const match = scenario.match(namingPattern.pattern);
@@ -540,7 +542,6 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
                 `${namingPattern.prefix}: $2`
               );
               correctedContent = correctedContent.replace(invalidScenario, correctedScenario);
-              console.log(`✅ Auto-corrected scenario prefix: ${invalidScenario} → ${correctedScenario}`);
             }
             refinedContent = correctedContent;
           }
@@ -609,8 +610,6 @@ function testNamingPatternDetection() {
   ];
   
   const pattern = detectNamingPattern(testScenarios);
-  console.log('Test pattern detection:', pattern);
-  // Should output: { pattern: /^([A-Z]+-\d+-\d+):\s*.+/, prefix: "QAE-162-003", type: "jira-tab" }
 }
 
 // Refine test cases using Azure OpenAI
@@ -745,7 +744,6 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
     // Log refinement summary
     const originalScenarios = (content.match(/Scenario:/g) || []).length;
     const refinedScenarios = (validatedRefinedTests.match(/Scenario:/g) || []).length;
-    console.log(`✅ Refinement completed: ${originalScenarios} original scenarios, ${refinedScenarios} refined scenarios`);
 
     return validatedRefinedTests;
   } catch (error) {
@@ -771,7 +769,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
       const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
       requirementCount = flexibleMatches ? flexibleMatches.length : 0;
       if (requirementCount > 0) {
-        console.log(`ℹ️  Found ${requirementCount} requirements with flexible pattern matching`);
+        // Debug logging removed
       }
     }
     
@@ -788,7 +786,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
       issues.push(`Table structure inconsistency: Expected ${expectedRows} rows, found ${validRows.length} (difference: ${rowDifference})`);
       consistencyScore -= 10; // Reduced penalty for table structure issues
     } else if (rowDifference > 0) {
-      console.log(`ℹ️  Table structure has minor differences: Expected ${expectedRows} rows, found ${validRows.length} (using deterministic count: ${deterministicCount})`);
+      // Debug logging removed
     }
     
     // Check for sequential numbering - use deterministic count if available
@@ -897,8 +895,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   const requestId = Math.random().toString(36).substring(2, 15);
   
   if (enableLogging) {
-    console.log(`🔍 [${requestId}] Starting requirements extraction...`);
-    console.log(`🔍 [${requestId}] Content length: ${content.length} characters`);
+    // Debug logging removed
   }
 
   // Check if content is sufficient
@@ -916,16 +913,13 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   
   if (isEnhancedVisioAnalysis) {
     // COMPLETELY REPLACE old workflow analysis with enhanced Visio analysis
-    console.log(`🔍 [${requestId}] Enhanced Visio analysis detected - COMPLETELY REPLACING old workflow analysis`);
+    // Enhanced Visio analysis - debug logging removed
     
     // Extract business element count from enhanced analysis
     const businessElementMatch = content.match(/Total Business Elements: (\d+)/);
     const enhancedCount = businessElementMatch ? parseInt(businessElementMatch[1]) : 0;
     
     if (enhancedCount > 0) {
-      console.log(`🔍 [${requestId}] Enhanced Visio Analysis: Found ${enhancedCount} business elements`);
-      console.log(`🔍 [${requestId}] COMPLETELY REPLACING old workflow analysis with enhanced results`);
-      
       // Extract comprehensive metadata from enhanced analysis
       const pagesMatch = content.match(/Total Pages: (\d+)/);
       const shapesMatch = content.match(/Total Shapes: (\d+)/);
@@ -950,8 +944,6 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         enhancedAnalysis: true,
         businessElementCount: enhancedCount
       };
-      
-      console.log(`🔍 [${requestId}] Enhanced Metadata:`, enhancedMetadata);
       
       // COMPLETELY REPLACE old workflow analysis with enhanced results
       workflowAnalysis = {
@@ -981,10 +973,6 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         },
         enhancedMetadata: enhancedMetadata
       };
-      
-      console.log(`🔍 [${requestId}] COMPLETELY REPLACED old workflow analysis with enhanced Visio results`);
-      console.log(`🔍 [${requestId}] Enhanced Workflow Analysis:`, workflowAnalysis);
-      console.log(`🔍 [${requestId}] Enhanced Business Element Count: ${elementCount}`);
     }
   }
 
@@ -1015,7 +1003,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     // Analyze workflow content for complexity calculation with deterministic approach
     workflowAnalysis = analyzeWorkflowContent(processedContent);
     if (enableLogging) {
-      console.log(`🔍 [${requestId}] Workflow Analysis:`, workflowAnalysis);
+      // Debug logging removed
     }
   }
 
@@ -1037,22 +1025,16 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   let elementCount = businessElementCount.businessElements?.count || 0;
   
   if (enableLogging) {
-    console.log(`🔍 [${requestId}] Final Business Element Count: ${elementCount}`);
-    console.log(`🔍 [${requestId}] Breakdown:`, businessElementCount.businessElements?.breakdown || {});
+    // Debug logging removed
     
     // CRITICAL: Check if the count seems reasonable
     const contentLength = processedContent.length;
     const requirementsPerChar = elementCount / contentLength;
     const requirementsPerK = requirementsPerChar * 1000;
     
-    console.log(`🔍 [${requestId}] Content Analysis:`);
-    console.log(`🔍 [${requestId}] - Content length: ${contentLength} characters`);
-    console.log(`🔍 [${requestId}] - Requirements per character: ${requirementsPerChar.toFixed(6)}`);
-    console.log(`🔍 [${requestId}] - Requirements per 1000 chars: ${requirementsPerK.toFixed(2)}`);
-    
     // VSDX-specific safety: Apply quality selection FIRST (before capping)
     if (isVisioFile && elementCount > 100) { // Apply to any VSDX with significant count
-      console.log(`🔍 [${requestId}] VSDX QUALITY SELECTION: Applying quality-based selection to ${elementCount} requirements BEFORE capping`);
+      // VSDX quality selection - debug logging removed
       
       // Calculate quality scores for all elements
       const elementsWithScores = businessElementCount.businessElements.elements.map(element => ({
@@ -1070,30 +1052,19 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, elementCount); // Keep same count, just improve quality
         
-        // Log quality distribution
-        const avgQuality = topQualityElements.reduce((sum, e) => sum + e.qualityScore, 0) / topQualityElements.length;
-        console.log(`🔍 [${requestId}] VSDX QUALITY RESULTS: ${topQualityElements.length} requirements now have average quality score of ${avgQuality.toFixed(1)}/100 (threshold: ${qualityThreshold})`);
-        
         // Update the elements with top quality requirements (keep same count)
         businessElementCount.businessElements.elements = topQualityElements;
         
         // Update count if we have fewer high-quality requirements
         if (topQualityElements.length < elementCount) {
-          console.warn(`⚠️  [${requestId}] VSDX QUALITY: Reduced from ${elementCount} to ${topQualityElements.length} requirements due to quality threshold`);
           businessElementCount.businessElements.count = topQualityElements.length;
           elementCount = topQualityElements.length;
         }
-      } else {
-        // If no requirements meet quality threshold, use original but warn
-        console.warn(`⚠️  [${requestId}] VSDX QUALITY: No requirements meet quality threshold ${qualityThreshold}, using original ${elementCount} requirements`);
       }
     }
     
-    // Warn if the count seems unreasonably high and adjust if needed
+    // Handle high requirement density - debug logging removed
     if (requirementsPerK > 10) {
-      console.warn(`⚠️  [${requestId}] WARNING: Very high requirement density (${requirementsPerK.toFixed(2)} per 1000 chars) - deterministic count may be inflated`);
-      console.warn(`⚠️  [${requestId}] This could explain why AI cannot extract ${elementCount} requirements`);
-      
       // For extremely high densities, cap the count to a realistic number
       // BUT: If we have high-quality requirements, be more lenient
       if (requirementsPerK > 20) {
@@ -1103,11 +1074,9 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         if (isVisioFile && elementCount < 1000) {
           // For VSDX with quality-filtered requirements, allow higher density
           realisticCount = Math.min(elementCount, Math.round(contentLength / 150)); // 1 requirement per 150 chars (more lenient)
-          console.warn(`⚠️  [${requestId}] VSDX QUALITY-AWARE: High density but quality-filtered. Capping from ${elementCount} to ${realisticCount} (quality-aware extraction)`);
         } else {
           // For other files or unfiltered requirements, use stricter cap
           realisticCount = Math.min(elementCount, Math.round(contentLength / 200)); // 1 requirement per 200 chars max
-          console.warn(`⚠️  [${requestId}] CRITICAL: Extremely high density detected. Capping count from ${elementCount} to ${realisticCount} for realistic extraction`);
         }
         
         // Update the count to be more realistic
@@ -1121,10 +1090,8 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     
     // Additional safety: Prevent massive inflation while maintaining improvements
     const maxReasonableImprovement = Math.round(contentLength / 150); // 1 requirement per 150 chars as absolute max (more conservative)
-    console.log(`🔍 [${requestId}] SAFETY CHECK: elementCount=${elementCount}, maxReasonableImprovement=${maxReasonableImprovement}`);
     if (elementCount > maxReasonableImprovement) {
       const cappedCount = maxReasonableImprovement;
-      console.warn(`⚠️  [${requestId}] SAFETY: Count ${elementCount} exceeds reasonable maximum. Capping to ${cappedCount} for realistic extraction`);
       
       // Update the count to be more realistic
       businessElementCount.businessElements.count = cappedCount;
@@ -1143,10 +1110,9 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.3); // Max 30% improvement (more conservative)
     }
     
-    console.log(`🔍 [${requestId}] IMPROVEMENT SAFETY: elementCount=${elementCount}, oldSystemEstimate=${oldSystemEstimate}, maxReasonableImprovementLimit=${maxReasonableImprovementLimit} (${isVisioFile && elementCount < 1000 ? 'VSDX quality-aware' : 'standard'})`);
+    // Improvement safety check - debug logging removed
     if (elementCount > maxReasonableImprovementLimit) {
       const cappedCount = maxReasonableImprovementLimit;
-      console.warn(`⚠️  [${requestId}] FINAL SAFETY: Count ${elementCount} exceeds reasonable improvement limit. Capping to ${cappedCount} (max ${isVisioFile && elementCount < 1000 ? '50%' : '30%'} improvement)`);
       
       // Update the count to be more realistic
       businessElementCount.businessElements.count = cappedCount;
@@ -1154,22 +1120,12 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       elementCount = cappedCount;
     }
     
-    // Log final elementCount after all safety mechanisms
-    console.log(`🔍 [${requestId}] FINAL SAFETY RESULT: elementCount=${elementCount} after all safety mechanisms applied`);
-    
     // Final quality validation: Ensure we're not sending poor requirements to the AI
     if (isVisioFile && elementCount > 0) {
       const finalElements = businessElementCount.businessElements.elements;
       const finalQualityScores = finalElements.map(element => calculateQualityScore(element));
       const avgFinalQuality = finalQualityScores.reduce((sum, score) => sum + score, 0) / finalQualityScores.length;
       const lowQualityCount = finalQualityScores.filter(score => score < 50).length;
-      
-      console.log(`🔍 [${requestId}] FINAL QUALITY CHECK: ${elementCount} requirements with average score ${avgFinalQuality.toFixed(1)}/100`);
-      if (lowQualityCount > 0) {
-        console.warn(`⚠️  [${requestId}] FINAL QUALITY WARNING: ${lowQualityCount} requirements still have quality score < 50`);
-      } else {
-        console.log(`✅ [${requestId}] FINAL QUALITY: All ${elementCount} requirements meet quality threshold (≥50)`);
-      }
     }
   }
 
@@ -1454,7 +1410,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
     const standardMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
     if (standardMatches) {
       requirementCount = standardMatches.length;
-      console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with standard table format`);
+      // Debug logging removed
     }
     
     // Fallback pattern: Just BR- numbers anywhere in the text
@@ -1462,7 +1418,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
       const fallbackMatches = extractedRequirements.match(/BR-\d+/g);
       if (fallbackMatches) {
         requirementCount = fallbackMatches.length;
-        console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with fallback pattern`);
+        // Debug logging removed
       }
     }
     
@@ -1471,7 +1427,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
       const numberedMatches = extractedRequirements.match(/(?:BR-|Requirement\s+)(\d+)/gi);
       if (numberedMatches) {
         requirementCount = numberedMatches.length;
-        console.log(`🔍 [${requestId}] Found ${requirementCount} requirements with numbered pattern`);
+        // Debug logging removed
       }
     }
     
@@ -1479,8 +1435,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
     
     // CRITICAL: If AI didn't extract enough requirements, force a retry with stronger instructions
     if (requirementCount < expectedCount * 0.8) { // If we got less than 80% of expected
-      console.warn(`⚠️  [${requestId}] CRITICAL: AI only extracted ${requirementCount}/${expectedCount} requirements (${Math.round(requirementCount/expectedCount*100)}%)`);
-      console.warn(`⚠️  [${requestId}] Forcing retry with stronger instructions...`);
+      // Debug logging removed
       
       // Add critical warning to user
       extractedRequirements += `\n\n🚨 CRITICAL: AI only extracted ${requirementCount} requirements out of ${expectedCount} expected.`;
@@ -1491,7 +1446,6 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
       extractedRequirements += `\n\n⚠️  RETRY REQUIRED: Content analysis incomplete.`;
       
       // CRITICAL: Force a second attempt with even stronger instructions
-      console.warn(`⚠️  [${requestId}] CRITICAL: Attempting forced retry with maximum strength instructions...`);
       
       try {
         const retryMessages = [
@@ -1547,7 +1501,7 @@ ${processedContent}
           }
         ];
 
-        console.log(`🔄 [${requestId}] Attempting forced retry with maximum strength instructions...`);
+        // Debug logging removed
         
         const retryResponse = await makeOpenAIRequest(
           apiUrl,
@@ -1566,26 +1520,24 @@ ${processedContent}
         if (retryResponse.data && retryResponse.data.choices && retryResponse.data.choices[0] && retryResponse.data.choices[0].message) {
           const retryRequirements = retryResponse.data.choices[0].message.content.trim();
           
-          console.log(`🔄 [${requestId}] Retry response received, length: ${retryRequirements.length} characters`);
-          console.log(`🔄 [${requestId}] Retry response preview: ${retryRequirements.substring(0, 500)}...`);
+                  // Debug logging removed
           
           // Check retry count
           const retryCount = (retryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
-          console.log(`🔄 [${requestId}] Retry extracted ${retryCount} requirements`);
+          // Debug logging removed
           
           if (retryCount > requirementCount) {
-            console.log(`✅ [${requestId}] Retry successful! Got ${retryCount} requirements instead of ${requirementCount}`);
+            // Debug logging removed
             extractedRequirements = retryRequirements;
             requirementCount = retryCount;
             
             // Update the success message
             extractedRequirements += `\n\n✅ RETRY SUCCESSFUL: Extracted ${retryCount} requirements (previous: ${requirementCount})`;
           } else if (retryCount === 0) {
-            console.error(`❌ [${requestId}] Retry failed completely - extracted 0 requirements`);
-            console.error(`❌ [${requestId}] Retry response: ${retryRequirements}`);
+            // Debug logging removed
             
             // Try a simpler retry approach
-            console.log(`🔄 [${requestId}] Attempting simplified retry...`);
+            // Debug logging removed
             
             const simpleRetryMessages = [
               {
@@ -1619,77 +1571,60 @@ Content: ${processedContent.substring(0, 20000)}`
                 const simpleRetryRequirements = simpleRetryResponse.data.choices[0].message.content.trim();
                 const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
                 
-                console.log(`🔄 [${requestId}] Simple retry extracted ${simpleRetryCount} requirements`);
+                // Debug logging removed
                 
                 if (simpleRetryCount > requirementCount) {
-                  console.log(`✅ [${requestId}] Simple retry successful! Got ${simpleRetryCount} requirements`);
+                  // Debug logging removed
                   extractedRequirements = simpleRetryRequirements;
                   requirementCount = simpleRetryCount;
                   extractedRequirements += `\n\n✅ SIMPLE RETRY SUCCESSFUL: Extracted ${simpleRetryCount} requirements`;
                 } else {
-                  console.warn(`⚠️  [${requestId}] Simple retry also failed: ${simpleRetryCount} requirements`);
+                  // Debug logging removed
                   extractedRequirements += `\n\n⚠️  SIMPLE RETRY FAILED: Still only ${simpleRetryCount} requirements extracted.`;
                 }
               }
             } catch (simpleRetryError) {
-              console.error(`❌ [${requestId}] Simple retry also failed:`, simpleRetryError);
+              // Debug logging removed
               extractedRequirements += `\n\n❌ SIMPLE RETRY FAILED: ${simpleRetryError.message}`;
             }
           } else {
-            console.warn(`⚠️  [${requestId}] Retry failed to improve count: ${retryCount} vs ${requirementCount}`);
+            // Debug logging removed
             extractedRequirements += `\n\n⚠️  RETRY ATTEMPTED: Still only ${retryCount} requirements extracted.`;
           }
         } else {
-          console.error(`❌ [${requestId}] Retry response structure invalid:`, retryResponse.data);
+          // Debug logging removed
           extractedRequirements += `\n\n❌ RETRY FAILED: Invalid response structure from AI.`;
         }
       } catch (retryError) {
-        console.error(`❌ [${requestId}] Retry failed:`, retryError);
+        // Debug logging removed
         extractedRequirements += `\n\n❌ RETRY FAILED: ${retryError.message}`;
       }
     }
     
-    // Debug: Let's see exactly what the AI generated
-    console.log(`🔍 [${requestId}] AI Response Preview (first 1000 chars):`);
-    console.log(extractedRequirements.substring(0, 1000));
-    console.log(`🔍 [${requestId}] Looking for BR- pattern in response...`);
-    console.log(`🔍 [${requestId}] Raw regex match result:`, extractedRequirements.match(/\|\s*BR-\d+\s*\|/g));
-    console.log(`🔍 [${requestId}] Alternative pattern (BR-\\d+):`, extractedRequirements.match(/BR-\d+/g));
-    console.log(`🔍 [${requestId}] Lines containing 'BR-':`, extractedRequirements.split('\n').filter(line => line.includes('BR-')).length);
-    console.log(`🔍 [${requestId}] Table structure analysis:`);
-    console.log(`🔍 [${requestId}] - Total lines:`, extractedRequirements.split('\n').length);
-    console.log(`🔍 [${requestId}] - Lines with |:`, extractedRequirements.split('\n').filter(line => line.includes('|')).length);
-    console.log(`🔍 [${requestId}] - First few table lines:`, extractedRequirements.split('\n').filter(line => line.includes('|')).slice(0, 5));
+            // Debug logging removed
     
     // Requirement count check completed
     
     if (requirementCount !== expectedCount) {
-      console.warn(`⚠️  [${requestId}] WARNING: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
-      console.warn(`⚠️  [${requestId}] Content length: ${processedContent.length} characters`);
+      // Debug logging removed
       
       // CRITICAL: Always warn about mismatches and provide guidance
       if (Math.abs(requirementCount - expectedCount) > 2) {
-        console.warn(`⚠️  [${requestId}] CRITICAL MISMATCH: AI extracted ${requirementCount} requirements but expected ${expectedCount}`);
-        console.warn(`⚠️  [${requestId}] This indicates the AI is not following the deterministic count requirement`);
+        // Debug logging removed
         
         // 🚨 IMPLEMENT CHUNKED EXTRACTION SYSTEM
         const extractionRate = (requirementCount / expectedCount) * 100;
-        console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: AI extracted ${extractionRate.toFixed(1)}% of requirements. Implementing 1/3 chunked extraction...`);
         
         // Always do 3 passes of 1/3 each for complete coverage
-        console.log(`🚀 [${requestId}] CHUNKED EXTRACTION: Starting 3-pass extraction (1/3 each) for complete coverage`);
         
         try {
             // Calculate chunk sizes - always 3 equal parts
             const totalRequirements = expectedCount;
             const chunkSize = Math.ceil(totalRequirements / 3);
             
-            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Breaking ${totalRequirements} total requirements into 3 chunks of ~${chunkSize} each`);
-            
             let allExtractedRequirements = [];
             
             // Pass 1: Extract first 1/3 (BR-001 to BR-090 for 270 reqs)
-            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 1 - Extracting first ${chunkSize} requirements (BR-001 to BR-${chunkSize})...`);
             const pass1Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1704,14 +1639,10 @@ Content: ${processedContent.substring(0, 20000)}`
             );
             
             if (pass1Requirements && pass1Requirements.length > 0) {
-              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 1 successful - extracted ${pass1Requirements.length} requirements`);
               allExtractedRequirements = allExtractedRequirements.concat(pass1Requirements);
-            } else {
-              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 1 failed - continuing with other passes`);
             }
             
             // Pass 2: Extract second 1/3 (BR-091 to BR-180 for 270 reqs)
-            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 2 - Extracting second ${chunkSize} requirements (BR-${chunkSize + 1} to BR-${chunkSize * 2})...`);
             const pass2Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1726,16 +1657,12 @@ Content: ${processedContent.substring(0, 20000)}`
             );
             
             if (pass2Requirements && pass2Requirements.length > 0) {
-              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 2 successful - extracted ${pass2Requirements.length} requirements`);
               allExtractedRequirements = allExtractedRequirements.concat(pass2Requirements);
-            } else {
-              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 2 failed - continuing with final pass`);
             }
             
             // Pass 3: Extract final 1/3 (BR-181 to BR-270 for 270 reqs)
             const remainingForPass3 = totalRequirements - allExtractedRequirements.length;
             if (remainingForPass3 > 0) {
-              console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Pass 3 - Extracting final ${remainingForPass3} requirements (BR-${chunkSize * 2 + 1} to BR-${totalRequirements})...`);
               const pass3Requirements = await extractRemainingRequirements(
                 requestId,
                 processedContent,
@@ -1750,22 +1677,15 @@ Content: ${processedContent.substring(0, 20000)}`
               );
               
               if (pass3Requirements && pass3Requirements.length > 0) {
-                console.log(`✅ [${requestId}] CHUNKED EXTRACTION: Pass 3 successful - extracted ${pass3Requirements.length} requirements`);
                 allExtractedRequirements = allExtractedRequirements.concat(pass3Requirements);
-              } else {
-                console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: Pass 3 failed`);
               }
             }
             
             // Combine all passes
             if (allExtractedRequirements.length > 0) {
-              console.log(`✅ [${requestId}] CHUNKED EXTRACTION: All 3 passes completed - extracted ${allExtractedRequirements.length}/${totalRequirements} total requirements`);
-              
               // Create comprehensive final output
               const finalRequirements = createFinalRequirementsTable(allExtractedRequirements, totalRequirements);
               const finalCount = countRequirements(finalRequirements);
-              
-              console.log(`🎯 [${requestId}] CHUNKED EXTRACTION: Final result: ${finalCount}/${totalRequirements} requirements (${((finalCount/totalRequirements)*100).toFixed(1)}%)`);
               
               // Update extractedRequirements with comprehensive result
               extractedRequirements = finalRequirements;
@@ -1773,11 +1693,10 @@ Content: ${processedContent.substring(0, 20000)}`
               // Update requirementCount for validation
               requirementCount = finalCount;
             } else {
-              console.warn(`⚠️  [${requestId}] CHUNKED EXTRACTION: All 3 passes failed - continuing with original ${requirementCount} requirements`);
+              // All 3 passes failed - continuing with original requirements
             }
           } catch (chunkError) {
-            console.error(`❌ [${requestId}] CHUNKED EXTRACTION: Error during chunked extraction:`, chunkError);
-            console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Continuing with original ${requirementCount} requirements`);
+            // Error during chunked extraction - continuing with original requirements
           }
         
         // Add a critical warning to the user about the mismatch
@@ -1788,7 +1707,7 @@ Content: ${processedContent.substring(0, 20000)}`
         extractedRequirements += `\n\nRecommendation: Regenerate requirements to get the full count.`;
       }
     } else {
-      console.log(`✅ [${requestId}] AI correctly extracted ${requirementCount} requirements as expected`);
+      // Debug logging removed
     }
 
     // Post-process to enhance complexity calculations if needed
@@ -1799,15 +1718,13 @@ Content: ${processedContent.substring(0, 20000)}`
     // Validate consistency of extracted requirements
     const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent, businessElementCount);
     if (validationResult.issues.length > 0) {
-      console.warn(`⚠️  [${requestId}] Requirements consistency issues detected:`, validationResult.issues);
+      // Debug logging removed
     }
 
     // No caching - always process fresh for accuracy
 
     if (enableLogging) {
-      console.log(`🔍 [${requestId}] Successfully extracted requirements`);
-      console.log(`🔍 [${requestId}] Requirements count: ${validationResult.requirementCount}`);
-      console.log(`🔍 [${requestId}] Consistency score: ${validationResult.consistencyScore}%`);
+      // Debug logging removed
     }
     
     return {
@@ -1866,7 +1783,7 @@ Content: ${processedContent.substring(0, 20000)}`
  */
 async function extractRemainingRequirements(requestId, content, businessElementCount, remainingCount, alreadyExtracted, enableLogging, apiUrl, apiKey, chunkNumber, chunkPosition) {
   try {
-    console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Extracting Chunk ${chunkNumber} (${chunkPosition}) - ${remainingCount} requirements...`);
+    // Debug logging removed
     
     // Calculate starting BR number for this chunk
     const startBRNumber = businessElementCount.businessElements.count - remainingCount + 1;
@@ -1939,13 +1856,13 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     if (remainingResponse && remainingResponse.data && remainingResponse.data.choices && remainingResponse.data.choices[0] && remainingResponse.data.choices[0].message) {
       // Parse the remaining requirements
       const remainingRequirements = parseRequirementsFromResponse(remainingResponse.data.choices[0].message.content);
-      console.log(`🔍 [${requestId}] CHUNKED EXTRACTION: Chunk ${chunkNumber} parsed ${remainingRequirements.length} requirements`);
+      // Debug logging removed
       return remainingRequirements;
     }
     
     return [];
   } catch (error) {
-    console.error(`❌ [${requestId}] CHUNKED EXTRACTION: Error extracting Chunk ${chunkNumber}:`, error);
+    // Error logging removed
     return [];
   }
 }

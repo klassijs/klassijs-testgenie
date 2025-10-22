@@ -422,14 +422,6 @@ function adjustBusinessElementConfig(adjustments = {}) {
   return newConfig;
 }
 
-
-// const fileCache = new Map();
-// const CACHE_MAX_SIZE = 100;
-
-// function // clearFileCache() {
-//   console.log('🧹 No file cache to clear');
-// }
-
 // File type detection
 const isImageFile = (mimeType, extension) => {
   const imageMimes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/bmp', 'image/tiff', 'image/webp', 'image/svg+xml'];
@@ -493,17 +485,6 @@ function analyzeImageContent(fileName, extension) {
   };
 }
 
-
-// function cleanCache() {
-//   
-// }
-
-// Helper function to create deterministic content hash
-// function createDeterministicHash(buffer, filename) {
-//   
-//   return "no-cache";
-// }
-
 // Extract content from different file types
 async function extractFileContent(file) {
   try {
@@ -511,9 +492,6 @@ async function extractFileContent(file) {
     const mimeType = file.mimetype;
     const originalName = file.originalname;
     const extension = path.extname(originalName);
-
-    
-    
 
     // Handle different file types
     if (mimeType === 'application/pdf') {
@@ -622,7 +600,7 @@ async function extractFileContent(file) {
           
           let extractedContent = '';
           
-                  // Extract main document content with better text extraction
+         // Extract main document content with better text extraction
         if (zipContent.files['word/document.xml']) {
           const documentXml = await zipContent.files['word/document.xml'].async('string');
           
@@ -726,10 +704,6 @@ async function extractFileContent(file) {
         const result = await mammoth.extractRawText({ buffer });
         
         const extractedContent = result.value;
-        
-        
-        
-        
         return extractedContent;
       }
     } else if (isImageFile(mimeType, extension)) {
@@ -737,14 +711,9 @@ async function extractFileContent(file) {
       const imageAnalysis = analyzeImageContent(originalName, extension);
       
       const result = `# Image File Analysis\n\n## File: ${originalName}\n\n### Image Type: ${extension.toUpperCase()}\n\n### Analysis:\n${imageAnalysis.description}\n\n### Universal Business Element Analysis:\n- **Total Business Elements**: ${imageAnalysis.businessElements.count}\n- **Quality Score**: ${imageAnalysis.businessElements.qualityMetrics?.qualityScore || 'N/A'}%\n- **High Confidence Elements**: ${imageAnalysis.businessElements.qualityMetrics?.highConfidenceElements || 'N/A'}\n- **Testable Elements**: ${imageAnalysis.businessElements.qualityMetrics?.testableElements || 'N/A'}\n\n### Element Breakdown:\n- **Business Processes**: ${imageAnalysis.businessElements.breakdown?.byType?.['Business Process'] || 0}\n- **System Requirements**: ${imageAnalysis.businessElements.breakdown?.byType?.['System Requirement'] || 0}\n- **Decision Points**: ${imageAnalysis.businessElements.breakdown?.byType?.['Decision Point'] || 0}\n- **Process Steps**: ${imageAnalysis.businessElements.breakdown?.byType?.['Process Step'] || 0}\n- **Business Rules**: ${imageAnalysis.businessElements.breakdown?.byType?.['Business Rule'] || 0}\n- **User Actions**: ${imageAnalysis.businessElements.breakdown?.byType?.['User Action'] || 0}\n- **Validation Requirements**: ${imageAnalysis.businessElements.breakdown?.byType?.['Validation Requirement'] || 0}\n\n### Universal Analysis:\nThis universal business requirements extractor identified **${imageAnalysis.businessElements.count} business requirements** using consistent patterns across all file types.\n\n### Note:\nThis is an image file that may require manual review or OCR processing for detailed text extraction.`;
-      
-      
-      
-      
       return result;
     } else if (isExcelFile(mimeType, extension)) {
   
-      
       try {
         const zip = new JSZip();
         const zipContent = await zip.loadAsync(buffer);
@@ -771,15 +740,13 @@ async function extractFileContent(file) {
           file.includes('xl/worksheets/sheet') && file.endsWith('.xml')
         );
         
-
-        
         for (const worksheetFile of worksheetFiles) {
           try {
             const worksheetXml = await zipContent.files[worksheetFile].async('string');
             
             extractedContent += `\n\n### Worksheet: ${worksheetFile}\n`;
             
-                    // Extract only meaningful text content (headers, labels, business logic)
+        // Extract only meaningful text content (headers, labels, business logic)
         const textMatches = worksheetXml.match(/<t>(.*?)<\/t>/g);
         if (textMatches) {
           const meaningfulTexts = textMatches
@@ -952,19 +919,12 @@ async function extractFileContent(file) {
           return result;
         } else {
           const result = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that should be reviewed manually to create appropriate test cases based on the data relationships and business logic.`;
-          
-          
-          
           return result;
         }
       } catch (zipError) {
         console.error(`Error processing Excel file ${originalName}:`, zipError);
         
         const errorResult = `# Excel Spreadsheet Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Excel file contains structured data that requires manual analysis to create appropriate test cases.`;
-        
-        
-        
-        
         return errorResult;
       }
     } else if (isPowerPointFile(mimeType, extension)) {
@@ -990,8 +950,6 @@ async function extractFileContent(file) {
         const slideFiles = Object.keys(zipContent.files).filter(file => 
           file.includes('ppt/slides/slide') && file.endsWith('.xml')
         );
-        
-
         
         for (let i = 0; i < slideFiles.length; i++) {
           const slideFile = slideFiles[i];
@@ -1140,19 +1098,12 @@ async function extractFileContent(file) {
           return result;
         } else {
           const result = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that should be reviewed manually to create appropriate test cases based on the presentation content and flow.`;
-          
-          
-          
           return result;
         }
       } catch (zipError) {
         console.error(`Error processing PowerPoint file ${originalName}:`, zipError);
         
         const errorResult = `# PowerPoint Presentation Analysis\n\n## File: ${originalName}\n\n### Note:\nThis PowerPoint presentation contains visual elements that require manual analysis to create appropriate test cases.`;
-        
-        
-        
-        
         return errorResult;
       }
     } else if (isVisioFile(mimeType, extension)) {
@@ -1464,19 +1415,12 @@ async function extractFileContent(file) {
         } else {
           const result = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file contains visual elements that require manual analysis. The diagram structure and relationships should be reviewed manually to create appropriate test cases.`;
           
-          
-          
-          
           return result;
         }
       } catch (zipError) {
         console.error(`Error processing Visio file ${originalName}:`, zipError);
         
         const errorResult = `# Visio Diagram Analysis\n\n## File: ${originalName}\n\n### Note:\nThis Visio diagram file requires manual analysis. Please review the diagram structure and create test cases based on the visual elements and relationships shown.`;
-        
-        
-        
-        
         return errorResult;
       }
     } else {
@@ -1806,7 +1750,5 @@ module.exports = {
   isExcelFile,
   isPowerPointFile,
   isVisioFile,
-  
-  // Enhanced Visio analysis
   analyzeVisioFlowchart
 }; 

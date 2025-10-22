@@ -8,9 +8,13 @@ const { convertToZephyrFormat, pushToZephyr, getProjects, getTestFolders, getMai
 const { testJiraConnection, getJiraProjects, getJiraIssues, importJiraIssues, isJiraConfigured } = require('../services/jiraService');
 const { generateWordDocument } = require('../utils/docxGenerator');
 const { validateRequirementsQuality } = require('../utils/workflowAnalyzer');
+const CacheManager = require('../utils/cacheManager');
 const axios = require('axios'); // Added axios for the debug endpoint
 
 const router = express.Router();
+
+// Initialize cache manager
+const cacheManager = new CacheManager();
 
 // Configure multer for file uploads
 const storage = multer.memoryStorage();
@@ -129,9 +133,46 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
-    const content = await extractFileContent(req.file);
+    // First check for document-based cache (edited versions)
+    const hasDocumentCache = await cacheManager.hasDocumentCachedResults(req.file.originalname, 'analysis');
     
+    if (hasDocumentCache) {
+      const startTime = Date.now();
+      const documentCachedResults = await cacheManager.getDocumentCachedResults(req.file.originalname, 'analysis');
+      if (documentCachedResults) {
+        const cacheHitTime = Date.now() - startTime;
+        return res.json({
+          success: true,
+          content: documentCachedResults.content,
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          message: 'Document analyzed successfully (from edited cache)',
+          cacheInfo: documentCachedResults._cacheInfo
+        });
+      }
+    }
 
+    // Fallback to hash-based cache
+    const fileHash = cacheManager.generateFileHash(req.file.buffer);
+
+    // Check if we have cached results
+    const hasCached = await cacheManager.hasCachedResults(fileHash, req.file.originalname);
+    
+    const startTime = Date.now();
+    const cachedResults = await cacheManager.getCachedResults(fileHash, req.file.originalname);
+    if (cachedResults) {
+      const cacheHitTime = Date.now() - startTime;
+      return res.json({
+        success: true,
+        content: cachedResults.content,
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        message: 'Document analyzed successfully (from cache)',
+        cacheInfo: cachedResults._cacheInfo
+      });
+    }
+
+    const content = await extractFileContent(req.file);
     
     if (!content || content.trim().length < 10) {
       return res.status(400).json({
@@ -141,12 +182,29 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
       });
     }
 
+    // Prepare results for caching
+    const analysisResults = {
+      content: content,
+      fileName: req.file.originalname,
+      fileSize: req.file.size,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store results in cache (both hash-based and document-based)
+    await cacheManager.storeCachedResults(fileHash, analysisResults, req.file.originalname);
+    await cacheManager.storeDocumentCachedResults(req.file.originalname, 'analysis', analysisResults);
+
     res.json({
       success: true,
       content: content,
       fileName: req.file.originalname,
       fileSize: req.file.size,
-      message: 'Document analyzed successfully'
+      message: 'Document analyzed successfully',
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: fileHash.substring(0, 8) + '...'
+      }
     });
 
   } catch (error) {
@@ -174,7 +232,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 // Test generation endpoint
 router.post('/generate-tests', async (req, res) => {
   try {
-    const { content, context = '' } = req.body;
+    const { content, context = '', documentName = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -192,7 +250,67 @@ router.post('/generate-tests', async (req, res) => {
       });
     }
 
+    // First check for document-based cache (edited versions)
+    // Only use document-based cache if this appears to be full document content, not individual requirements
+    // Individual requirements should use hash-based cache to ensure unique content per requirement
+    if (documentName && !content.includes('REQUIREMENT TO TEST:')) {
+      const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
+      
+      if (hasDocumentCache) {
+        const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'tests');
+        if (documentCachedResults) {
+          return res.json({
+            success: true,
+            content: documentCachedResults.content,
+            metadata: {
+              originalContentLength: content.length,
+              generatedContentLength: documentCachedResults.content.length,
+              timestamp: new Date().toISOString(),
+              fromCache: true,
+              cacheType: 'document-based'
+            },
+            cacheInfo: documentCachedResults._cacheInfo
+          });
+        }
+      }
+    }
+
+    // Fallback to hash-based cache
+    const contentHash = cacheManager.generateContentHash(content, context);
+
+    // Check if we have cached test results
+    const cachedTestResults = await cacheManager.getCachedTestResults(contentHash, documentName);
+    if (cachedTestResults) {
+      return res.json({
+        success: true,
+        content: cachedTestResults.content,
+        metadata: {
+          originalContentLength: content.length,
+          generatedContentLength: cachedTestResults.content.length,
+          timestamp: new Date().toISOString(),
+          fromCache: true
+        },
+        cacheInfo: cachedTestResults._cacheInfo
+      });
+    }
+ 
     const generatedTests = await generateTestCases(content, context);
+
+    // Prepare test results for caching
+    const testResults = {
+      content: generatedTests,
+      originalContentLength: content.length,
+      generatedContentLength: generatedTests.length,
+      context: context,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store test results in cache (both hash-based and document-based)
+    await cacheManager.storeCachedTestResults(contentHash, testResults, content, documentName);
+    // Only store in document-based cache if this is full document content, not individual requirements
+    if (documentName && !content.includes('REQUIREMENT TO TEST:')) {
+      await cacheManager.storeDocumentCachedResults(documentName, 'tests', testResults);
+    }
 
     res.json({
       success: true,
@@ -200,7 +318,13 @@ router.post('/generate-tests', async (req, res) => {
       metadata: {
         originalContentLength: content.length,
         generatedContentLength: generatedTests.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        fromCache: false
+      },
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: contentHash.substring(0, 8) + '...'
       }
     });
 
@@ -299,7 +423,7 @@ router.post('/refine-tests', async (req, res) => {
 // Requirements extraction endpoint
 router.post('/extract-requirements', async (req, res) => {
   try {
-    const { content, context = '' } = req.body;
+    const { content, context = '', documentName = null } = req.body;
 
     if (!content || !content.trim()) {
       return res.status(400).json({
@@ -317,8 +441,70 @@ router.post('/extract-requirements', async (req, res) => {
       });
     }
 
+    // First check for document-based cache (edited versions)
+    if (documentName) {
+      const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'requirements');
+      
+      if (hasDocumentCache) {
+        const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'requirements');
+        if (documentCachedResults) {
+          return res.json({
+            success: true,
+            content: documentCachedResults.content,
+            message: 'Requirements extracted successfully (from edited cache)',
+            metadata: {
+              originalContentLength: content.length,
+              extractedContentLength: documentCachedResults.content.length,
+              timestamp: new Date().toISOString(),
+              fromCache: true,
+              cacheType: 'document-based'
+            },
+            cacheInfo: documentCachedResults._cacheInfo
+          });
+        }
+      }
+    }
+
+    // Fallback to hash-based cache
+    const contentHash = cacheManager.generateContentHash(content, context);
+
+    // Check if we have cached requirements results
+    const cachedRequirements = await cacheManager.getCachedTestResults(contentHash, documentName);
+    if (cachedRequirements) {
+      return res.json({
+        success: true,
+        content: cachedRequirements.content,
+        message: cachedRequirements.message || 'Requirements extracted successfully (from cache)',
+        metadata: {
+          originalContentLength: content.length,
+          extractedContentLength: cachedRequirements.content.length,
+          timestamp: new Date().toISOString(),
+          fromCache: true,
+          cacheType: 'hash-based'
+        },
+        cacheInfo: cachedRequirements._cacheInfo
+      });
+    }
+
     const { enableLogging = true } = req.body;
     const extractedRequirements = await extractBusinessRequirements(content, context, enableLogging);
+
+    // Prepare requirements results for caching
+    const requirementsResults = {
+      content: extractedRequirements.content,
+      message: extractedRequirements.message,
+      originalContentLength: content.length,
+      extractedContentLength: extractedRequirements.content.length,
+      context: context,
+      enableLogging: enableLogging,
+      processedAt: new Date().toISOString()
+    };
+
+    // Store requirements results in cache (both hash-based and document-based)
+    await cacheManager.storeCachedTestResults(contentHash, requirementsResults, content, documentName);
+    if (documentName) {
+      await cacheManager.storeDocumentCachedResults(documentName, 'requirements', requirementsResults);
+    }
 
     res.json({
       success: true,
@@ -327,7 +513,13 @@ router.post('/extract-requirements', async (req, res) => {
       metadata: {
         originalContentLength: content.length,
         extractedContentLength: extractedRequirements.content.length,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        fromCache: false
+      },
+      cacheInfo: {
+        hit: false,
+        cached: true,
+        hash: contentHash.substring(0, 8) + '...'
       }
     });
 
@@ -400,44 +592,6 @@ router.post('/generate-word-doc', async (req, res) => {
   }
 });
 
-// Zephyr Scale Export endpoint
-router.post('/export-zephyr', async (req, res) => {
-  try {
-    const { content, featureName = 'Test Feature' } = req.body;
-
-    if (!content || !content.trim()) {
-      return res.status(400).json({
-        error: 'Missing content',
-        details: 'No test content provided for export',
-        suggestion: 'Please provide valid test content to export'
-      });
-    }
-
-    const zephyrContent = convertToZephyrFormat(content, featureName);
-
-    res.json({
-      success: true,
-      zephyrContent: zephyrContent,
-      metadata: {
-        originalContentLength: content.length,
-        zephyrContentLength: zephyrContent.length,
-        featureName: featureName,
-        exportFormat: 'Zephyr Scale BDD-Gherkin Script',
-        timestamp: new Date().toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('Error exporting to Zephyr Scale:', error);
-    
-    res.status(500).json({ 
-      error: 'Failed to export to Zephyr Scale format',
-      details: error.message,
-      suggestion: 'Please try again with valid test content'
-    });
-  }
-});
-
 // Get Zephyr Scale projects
 router.get('/zephyr-projects', async (req, res) => {
   try {
@@ -484,8 +638,6 @@ router.get('/zephyr-projects', async (req, res) => {
   }
 });
 
-
-
 // Get Zephyr Scale test folders for a project
 router.get('/zephyr-folders/:projectKey', async (req, res) => {
   try {
@@ -531,125 +683,6 @@ router.get('/zephyr-folders/:projectKey', async (req, res) => {
       suggestion = 'Please check your Zephyr Scale credentials and project configuration';
     } else if (error.request) {
       // Network error
-      errorMessage = 'Network error connecting to Zephyr Scale';
-      suggestion = 'Please check your Zephyr Scale URL and network connection';
-    }
-    
-    res.status(500).json({ 
-      error: errorMessage,
-      details: error.message,
-      suggestion: suggestion
-    });
-  }
-});
-
-// Get main folders (top-level folders) for a project
-router.get('/zephyr-main-folders/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
-
-    if (!isZephyrConfigured) {
-      return res.status(503).json({
-        error: 'Zephyr Scale integration not configured',
-        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-      });
-    }
-
-    if (!projectKey) {
-      return res.status(400).json({
-        error: 'Missing project key',
-        details: 'Project key is required to fetch main folders',
-        suggestion: 'Please provide a valid project key'
-      });
-    }
-
-    const mainFolders = await getMainFolders(projectKey);
-
-    res.json({
-      success: true,
-      folders: mainFolders,
-      projectKey: projectKey,
-      metadata: {
-        count: mainFolders.length,
-        timestamp: new Date().toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('Error fetching Zephyr Scale main folders:', error);
-    
-    let errorMessage = 'Failed to fetch main folders from Zephyr Scale';
-    let suggestion = 'Please check your Zephyr Scale credentials and try again';
-    
-    if (error.response) {
-      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-    } else if (error.request) {
-      errorMessage = 'Network error connecting to Zephyr Scale';
-      suggestion = 'Please check your Zephyr Scale URL and network connection';
-    }
-    
-    res.status(500).json({ 
-      error: errorMessage,
-      details: error.message,
-      suggestion: suggestion
-    });
-  }
-});
-
-// Get subfolders for a specific parent folder
-router.get('/zephyr-subfolders/:projectKey/:parentFolderId', async (req, res) => {
-  try {
-    const { projectKey, parentFolderId } = req.params;
-
-    if (!isZephyrConfigured) {
-      return res.status(503).json({
-        error: 'Zephyr Scale integration not configured',
-        details: 'Missing Zephyr Scale credentials. Please configure ZEPHYR_BASE_URL, ZEPHYR_API_TOKEN, and ZEPHYR_PROJECT_KEY in your .env file.',
-        suggestion: 'Set up Zephyr Scale credentials to enable folder listing'
-      });
-    }
-
-    if (!projectKey) {
-      return res.status(400).json({
-        error: 'Missing project key',
-        details: 'Project key is required to fetch subfolders',
-        suggestion: 'Please provide a valid project key'
-      });
-    }
-
-    if (!parentFolderId) {
-      return res.status(400).json({
-        error: 'Missing parent folder ID',
-        details: 'Parent folder ID is required to fetch subfolders',
-        suggestion: 'Please provide a valid parent folder ID'
-      });
-    }
-
-    const subfolders = await getSubfolders(projectKey, parentFolderId);
-
-    res.json({
-      success: true,
-      folders: subfolders,
-      projectKey: projectKey,
-      parentFolderId: parentFolderId,
-      metadata: {
-        count: subfolders.length,
-        timestamp: new Date().toISOString()
-      }
-    });
-
-  } catch (error) {
-    console.error('Error fetching Zephyr Scale subfolders:', error);
-    
-    let errorMessage = 'Failed to fetch subfolders from Zephyr Scale';
-    let suggestion = 'Please check your Zephyr Scale credentials and try again';
-    
-    if (error.response) {
-      errorMessage = `Zephyr Scale API Error: ${error.response.status}`;
-      suggestion = 'Please check your Zephyr Scale credentials and project configuration';
-    } else if (error.request) {
       errorMessage = 'Network error connecting to Zephyr Scale';
       suggestion = 'Please check your Zephyr Scale URL and network connection';
     }
@@ -818,116 +851,6 @@ router.post('/push-to-zephyr', async (req, res) => {
   }
 });
 
-// Discover available Zephyr Scale traceability endpoints
-router.get('/zephyr/discover-endpoints/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
-    
-    if (!projectKey) {
-      return res.status(400).json({ error: 'Project key is required' });
-    }
-
-    const result = await discoverTraceabilityEndpoints(projectKey);
-    
-    if (result.success) {
-      res.json({
-        success: true,
-        message: 'Endpoint discovery completed',
-        projectKey,
-        endpoints: result.endpoints
-      });
-    } else {
-      res.status(500).json({
-        error: 'Failed to discover endpoints',
-        details: result.error
-      });
-    }
-
-  } catch (error) {
-    console.error('Error discovering Zephyr endpoints:', error);
-    res.status(500).json({ 
-      error: 'Failed to discover endpoints',
-      details: error.message
-    });
-  }
-});
-
-// Test Zephyr Scale traceability endpoints
-router.get('/zephyr/test-endpoints/:projectKey', async (req, res) => {
-  try {
-    const { projectKey } = req.params;
-    
-    if (!projectKey) {
-      return res.status(400).json({ error: 'Project key is required' });
-    }
-
-    // console.log('🔍 Testing available endpoints for project:', projectKey);
-    
-    // Test common endpoint patterns
-    const testEndpoints = [
-      { name: 'testcases', url: `${process.env.ZEPHYR_BASE_URL}/testcases`, method: 'GET' },
-      { name: 'folders', url: `${process.env.ZEPHYR_BASE_URL}/folders`, method: 'GET' },
-      { name: 'coverage', url: `${process.env.ZEPHYR_BASE_URL}/coverage`, method: 'GET' },
-      { name: 'traceability', url: `${process.env.ZEPHYR_BASE_URL}/traceability`, method: 'GET' },
-      { name: 'issues', url: `${process.env.ZEPHYR_BASE_URL}/issues`, method: 'GET' },
-      { name: 'links', url: `${process.env.ZEPHYR_BASE_URL}/links`, method: 'GET' },
-      { name: 'weblinks', url: `${process.env.ZEPHYR_BASE_URL}/weblinks`, method: 'GET' },
-      { name: 'comments', url: `${process.env.ZEPHYR_BASE_URL}/comments`, method: 'GET' }
-    ];
-    
-    const results = [];
-    
-    for (const endpoint of testEndpoints) {
-      try {
-        const response = await axios({
-          method: endpoint.method,
-          url: endpoint.url,
-          headers: {
-            'Authorization': `Bearer ${process.env.ZEPHYR_API_TOKEN}`,
-            'Content-Type': 'application/json'
-          },
-          params: { projectKey, maxResults: 1 }
-        });
-        
-        results.push({
-          name: endpoint.name,
-          url: endpoint.url,
-          status: response.status,
-          available: true,
-          data: response.data
-        });
-        
-      } catch (error) {
-        results.push({
-          name: endpoint.name,
-          url: endpoint.url,
-          status: error.response?.status,
-          available: false,
-          error: error.response?.data?.message || error.message
-        });
-      }
-    }
-    
-    // console.log('🔍 Endpoint test results:', results);
-    
-    res.json({
-      success: true,
-      message: 'Endpoint discovery completed',
-      projectKey,
-      results
-    });
-
-  } catch (error) {
-    console.error('Error testing Zephyr endpoints:', error);
-    res.status(500).json({ 
-      error: 'Failed to test endpoints',
-      details: error.message
-    });
-  }
-});
-
-// Jira Import endpoints
-
 // Test Jira connection
 router.post('/jira/test-connection', async (req, res) => {
   try {
@@ -981,6 +904,7 @@ router.post('/jira/fetch-issues', async (req, res) => {
       res.json({
         success: true,
         issues: result.issues,
+        total: result.total,
         message: `Found ${result.issues.length} issues in project ${projectKey}`
       });
     } else {
@@ -997,6 +921,50 @@ router.post('/jira/fetch-issues', async (req, res) => {
       error: 'Failed to fetch Jira issues',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
+    });
+  }
+});
+
+// Clear Jira issues cache
+router.delete('/jira/clear-cache', async (req, res) => {
+  try {
+    const { projectKey, issueTypes } = req.body;
+    
+    if (!projectKey || !issueTypes || issueTypes.length === 0) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Project key and issue types are required',
+        suggestion: 'Please provide project key and issue types to clear specific cache'
+      });
+    }
+
+    const documentName = `jira-${projectKey}-${issueTypes.sort().join('-')}`;
+    
+    try {
+      const results = await cacheManager.deleteMultipleDocuments([documentName]);
+      if (results.deletedCount > 0) {
+        res.json({
+          success: true,
+          message: `Cleared cache for project ${projectKey} with issue types: ${issueTypes.join(', ')}`
+        });
+      } else {
+        res.json({
+          success: true,
+          message: `No cache found for project ${projectKey} with issue types: ${issueTypes.join(', ')}`
+        });
+      }
+    } catch (error) {
+      res.status(500).json({
+        error: 'Failed to clear cache',
+        details: error.message
+      });
+    }
+
+  } catch (error) {
+    console.error('Error clearing Jira cache:', error);
+    res.status(500).json({ 
+      error: 'Failed to clear Jira cache',
+      details: error.message
     });
   }
 });
@@ -1039,6 +1007,7 @@ router.post('/jira/import-issues', async (req, res) => {
     });
   }
 });
+
 
 // Requirements validation endpoint
 router.post('/validate-requirements', async (req, res) => {
@@ -1111,6 +1080,319 @@ router.post('/analyze-business-elements', async (req, res) => {
   }
 });
 
-// No caching - always process fresh for accuracy
+// Cache management endpoints
+router.get('/cache/stats', async (req, res) => {
+  try {
+    const stats = await cacheManager.getCacheStats();
+    res.json({
+      success: true,
+      stats: stats
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to get cache statistics',
+      details: error.message
+    });
+  }
+});
+
+router.delete('/cache/clear', async (req, res) => {
+  try {
+    await cacheManager.clearCache();
+    res.json({
+      success: true,
+      message: 'Cache cleared successfully'
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to clear cache',
+      details: error.message
+    });
+  }
+});
+
+router.delete('/cache/remove/:hash', async (req, res) => {
+  try {
+    const { hash } = req.params;
+    await cacheManager.removeCachedFile(hash);
+    res.json({
+      success: true,
+      message: `Cached file ${hash.substring(0, 8)}... removed successfully`
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to remove cached file',
+      details: error.message
+    });
+  }
+});
+
+// List all cached documents endpoint
+router.get('/cache/list', async (req, res) => {
+  try {
+    const documents = await cacheManager.listCachedDocuments();
+    res.json({
+      success: true,
+      documents: documents
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to list cached documents',
+      details: error.message
+    });
+  }
+});
+
+// Delete multiple cached documents endpoint
+router.delete('/cache/delete-multiple', async (req, res) => {
+  try {
+    const { documentNames } = req.body;
+    
+    if (!documentNames || !Array.isArray(documentNames) || documentNames.length === 0) {
+      return res.status(400).json({
+        error: 'Missing or invalid document names',
+        details: 'Document names array is required'
+      });
+    }
+
+    const results = await cacheManager.deleteMultipleDocuments(documentNames);
+    
+    // Check if any deletions failed
+    if (results.failedCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `Failed to delete ${results.failedCount} document(s)`,
+        details: results.failedDocuments,
+        results: results
+      });
+    }
+    
+    res.json({
+      success: true,
+      message: `Successfully deleted ${results.deletedCount} document(s)`,
+      results: results
+    });
+  } catch (error) {
+    res.status(500).json({
+      error: 'Failed to delete documents',
+      details: error.message
+    });
+  }
+});
+
+// Save edited requirements endpoint
+router.post('/save-edited-requirements', async (req, res) => {
+  try {
+    const { documentName, requirements } = req.body;
+
+    if (!documentName || !requirements) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Document name and requirements content are required'
+      });
+    }
+
+    // Store edited requirements in document-based cache
+    await cacheManager.storeDocumentCachedResults(documentName, 'requirements', {
+      content: requirements,
+      originalContentLength: requirements.length,
+      extractedContentLength: requirements.length,
+      context: 'edited_by_user',
+      processedAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Edited requirements saved successfully',
+      metadata: {
+        documentName,
+        contentLength: requirements.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error saving edited requirements:', error);
+    res.status(500).json({
+      error: 'Failed to save edited requirements',
+      details: error.message
+    });
+  }
+});
+
+// Save edited tests endpoint
+router.post('/save-edited-tests', async (req, res) => {
+  try {
+    const { documentName, tests } = req.body;
+
+    if (!documentName || !tests) {
+      return res.status(400).json({
+        error: 'Missing required fields',
+        details: 'Document name and tests content are required'
+      });
+    }
+
+    // Store edited tests in document-based cache
+    await cacheManager.storeDocumentCachedResults(documentName, 'tests', {
+      content: tests,
+      originalContentLength: tests.length,
+      generatedContentLength: tests.length,
+      context: 'edited_by_user',
+      processedAt: new Date().toISOString()
+    });
+
+    res.json({
+      success: true,
+      message: 'Edited tests saved successfully',
+      metadata: {
+        documentName,
+        contentLength: tests.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+  } catch (error) {
+    console.error('Error saving edited tests:', error);
+    res.status(500).json({
+      error: 'Failed to save edited tests',
+      details: error.message
+    });
+  }
+});
+
+// Pushed state cache endpoints
+
+// Get pushed state for a document
+router.get('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    const pushedState = await cacheManager.getPushedState(documentName);
+
+    if (pushedState) {
+      res.json({
+        success: true,
+        pushedState: pushedState,
+        message: 'Pushed state retrieved successfully'
+      });
+    } else {
+      res.json({
+        success: true,
+        pushedState: null,
+        message: 'No pushed state found for this document'
+      });
+    }
+
+  } catch (error) {
+    console.error('Error getting pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to get pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Save pushed state for a document
+router.post('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+    const { pushedTabs, zephyrTestCaseIds, jiraTicketInfo } = req.body;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    const pushedState = {
+      pushedTabs: pushedTabs || [],
+      zephyrTestCaseIds: zephyrTestCaseIds || {},
+      jiraTicketInfo: jiraTicketInfo || {},
+      timestamp: new Date().toISOString()
+    };
+
+    await cacheManager.storePushedState(documentName, pushedState);
+
+    res.json({
+      success: true,
+      message: 'Pushed state saved successfully',
+      metadata: {
+        documentName,
+        pushedTabsCount: pushedTabs?.length || 0,
+        testCaseIdsCount: Object.keys(zephyrTestCaseIds || {}).length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error saving pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to save pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Clear pushed state for a document
+router.delete('/pushed-state/:documentName', async (req, res) => {
+  try {
+    const { documentName } = req.params;
+
+    if (!documentName) {
+      return res.status(400).json({
+        error: 'Missing document name',
+        details: 'Document name is required'
+      });
+    }
+
+    await cacheManager.clearPushedState(documentName);
+
+    res.json({
+      success: true,
+      message: 'Pushed state cleared successfully',
+      metadata: {
+        documentName,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error clearing pushed state:', error);
+    res.status(500).json({
+      error: 'Failed to clear pushed state',
+      details: error.message
+    });
+  }
+});
+
+// Get all pushed states
+router.get('/pushed-states', async (req, res) => {
+  try {
+    const allPushedStates = await cacheManager.getAllPushedStates();
+
+    res.json({
+      success: true,
+      pushedStates: allPushedStates,
+      message: `Found ${allPushedStates.length} documents with pushed state`,
+      metadata: {
+        count: allPushedStates.length,
+        timestamp: new Date().toISOString()
+      }
+    });
+
+  } catch (error) {
+    console.error('Error getting all pushed states:', error);
+    res.status(500).json({
+      error: 'Failed to get pushed states',
+      details: error.message
+    });
+  }
+});
 
 module.exports = router; 
