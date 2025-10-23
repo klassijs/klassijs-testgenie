@@ -1,9 +1,25 @@
 {
-  "name": "klassijs-ai",
+  "name": "klassijs-testgenie",
   "version": "1.0.0",
   "description": "AI-powered test automation platform for generating Cucumber test cases",
+  "main": "index.js",
+  "bin": {
+    "klassijs-testgenie": "./bin/klassijs-testgenie"
+  },
+  "files": [
+    "bin/",
+    "backend/",
+    "frontend/",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+    "README.md",
+    "LICENSE",
+    "postinstall.js"
+  ],
   "creator": {
     "name": "Larry Goddard",
+    "github": "https://github.com/klassijs",
     "linkedin": "https://linkedin.com/in/larryg",
     "youtube": "https://youtube.com/@LarryG_01"
   },
@@ -19,6 +35,10 @@
   ],
   "keywords": [
     "test-automation",
+    "test-case-generation",
+    "ai-test-case-generation",
+    "ai-test-case-generation-cucumber",
+    "ai-test-case-generation-gherkin",
     "cucumber",
     "gherkin",
     "ai",
@@ -28,15 +48,30 @@
   "license": "MIT",
   "scripts": {
     "dev": "concurrently \"pnpm run server\" \"pnpm run client\"",
-    "server": "pnpm --filter @klassijs-ai/backend run dev",
-    "client": "pnpm --filter @klassijs-ai/frontend run start",
-    "build": "pnpm --filter @klassijs-ai/frontend run build",
+    "server": "pnpm --filter @klassijs-testgenie/backend run dev",
+    "client": "pnpm --filter @klassijs-testgenie/frontend run start",
+    "build": "pnpm --filter @klassijs-testgenie/frontend run build",
     "install-all": "pnpm install",
-    "start": "pnpm --filter @klassijs-ai/backend run start",
-    "build:all": "pnpm --filter @klassijs-ai/frontend run build",
-    "test": "pnpm --filter @klassijs-ai/frontend run test"
+    "start": "pnpm --filter @klassijs-testgenie/backend run start",
+    "build:all": "pnpm --filter @klassijs-testgenie/frontend run build",
+    "test": "pnpm --filter @klassijs-testgenie/frontend run test",
+    "prepublishOnly": "pnpm install-all && pnpm build:all",
+    "postinstall": "node postinstall.js"
   },
-  "devDependencies": {
+  "dependencies": {
     "concurrently": "^8.2.2"
+  },
+  "devDependencies": {},
+  "engines": {
+    "node": ">=20.0.0",
+    "pnpm": ">=8.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/klassijs/klassijs-testgenie.git"
+  },
+  "homepage": "https://github.com/klassijs/klassijs-testgenie#readme",
+  "bugs": {
+    "url": "https://github.com/klassijs/klassijs-testgenie/issues"
   }
 }

@@ -3,8 +3,24 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
-// Load environment variables
-require('dotenv').config({ path: '../.env' });
+// Load environment variables from project root
+const path = require('path');
+const fs = require('fs');
+
+// Find the project root by looking for .env file
+let currentDir = __dirname;
+let envPath = null;
+
+while (currentDir !== path.dirname(currentDir)) {
+  const testPath = path.join(currentDir, '.env');
+  if (fs.existsSync(testPath)) {
+    envPath = testPath;
+    break;
+  }
+  currentDir = path.dirname(currentDir);
+}
+
+const result = require('dotenv').config({ path: envPath });
 
 // Import routes
 const apiRoutes = require('./routes/api');
@@ -21,11 +37,12 @@ app.use(cors({
 // Security middleware
 app.use(helmet());
 
-// Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 15 * 60 * 1000,
-  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 100,
-  message: 'Too many requests from this IP, please try again later.'
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000, // 5 minutes
+  max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // 1000 requests per 5 minutes (very generous)
+  message: 'Too many requests from this IP, please try again later.',
+  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
+  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
 });
 
 app.use(limiter);
@@ -40,7 +57,7 @@ app.use('/api', apiRoutes);
 // Error handling middleware
 app.use((error, req, res, next) => {
   console.error('Unhandled error:', error);
-  res.status(500).json({ 
+  res.status(500).json({
     error: 'Internal server error',
     details: process.env.NODE_ENV === 'development' ? error.message : 'Something went wrong'
   });
@@ -51,13 +68,43 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
 
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Test Automation Platform server running on port ${PORT}`);
-  console.log(`📊 Health check: http://localhost:${PORT}/api/health`);
-  console.log(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
-  console.log(`🤖 Azure OpenAI: ${require('./services/openaiService').isAzureOpenAIConfigured ? 'configured' : 'not configured'}`);
-  console.log(`📄 Document analysis endpoint: /api/analyze-document`);
-  console.log(`🧪 Test generation endpoint: /api/generate-tests`);
-  console.log(`🔄 Test refinement endpoint: /api/refine-tests`);
+// Add memory monitoring
+function logMemoryUsage() {
+  const used = process.memoryUsage();
+}
+
+// Log memory usage every 30 seconds
+setInterval(logMemoryUsage, 30000);
+
+// Add uncaught exception handlers
+process.on('uncaughtException', (error) => {
+  console.error('💥 Uncaught Exception:', error);
+  console.error('💥 Stack:', error.stack);
+  logMemoryUsage();
+  process.exit(1);
 });
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('💥 Unhandled Rejection at:', promise, 'reason:', reason);
+  logMemoryUsage();
+  process.exit(1);
+});
+
+// Start server with increased timeout
+const server = app.listen(PORT, () => {
+  console.info(`🚀 Test Automation Platform server running on port ${PORT}`);
+  console.info(`📊 Health check: http://localhost:${PORT}/api/health`);
+  console.info(`🌐 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}`);
+  console.info(`🤖 Azure OpenAI: ${require('./services/openaiService').isAzureOpenAIConfigured ? 'configured' : 'not configured'}`);
+  console.info(`📄 Document analysis endpoint: /api/analyze-document`);
+  console.info(`🧪 Test generation endpoint: /api/generate-tests`);
+  console.info(`🔄 Test refinement endpoint: /api/refine-tests`);
+  logMemoryUsage();
+});
+
+// Increase server timeout for long-running operations
+server.timeout = 300000; // 5 minutes
+server.keepAliveTimeout = 300000; // 5 minutes
+server.headersTimeout = 300000; // 5 minutes
+
+console.info(`⏱️  Server timeout set to 5 minutes for long-running operations`);

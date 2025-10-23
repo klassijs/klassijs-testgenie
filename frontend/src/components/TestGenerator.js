@@ -1,10 +1,80 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, X, ExternalLink, Edit, Zap } from 'lucide-react';
-// import { Sparkles, Copy, Download, RefreshCw, AlertCircle, CheckCircle, TestTube, Upload, FileText, X, ExternalLink, XCircle, Trash2, Edit, Zap, GitBranch } from 'lucide-react';
+
 import axios from 'axios';
 import TestOutput from './TestOutput';
+import { 
+  parseRequirementsTable, 
+  validateTestCoverage, 
+  formatFileSize, 
+  buildFolderTree, 
+  formatRequirementsForInsertionWithGeneratedIds, 
+  handleDownloadContent, 
+  validateComplexityValues 
+} from '../utils/testGeneratorUtils';
+import {
+  handleClickOutside,
+  clearAll,
+  toggleFolderExpansion,
+  handleProjectChange,
+  handleSelectRequirement,
+  handleSelectAll,
+  handleDeleteSelected,
+  confirmDeleteSelected,
+  clearSelection,
+  handleSelectCache,
+  handleSelectAllCaches,
+  handleDeleteSelectedCaches,
+  confirmDeleteSelectedCaches,
+  openCacheModal
+} from '../utils/uiStateUtils';
+import {
+  savePushedStateToCache,
+  loadPushedStateFromCache,
+  loadJiraPushedStates,
+  clearPushedStateCache,
+  fetchCacheList
+} from '../utils/cacheUtils';
+import {
+  processFile,
+  handleFileUpload,
+  removeFile,
+  handleDragOver,
+  handleDragLeave,
+  handleDrop
+} from '../utils/fileUploadUtils';
+import {
+  generateTests,
+  refineTests
+} from '../utils/requirementsTestUtils';
+import {
+  testJiraConnection,
+  fetchJiraIssues,
+  updateDisplayedIssues,
+  goToPage,
+  clearJiraCache,
+  shouldRefetch,
+  importJiraIssues
+} from '../utils/jiraUtils';
+import {
+  fetchZephyrProjects,
+  fetchZephyrFolders,
+  fetchAllFolders,
+  searchFolders,
+  pushToZephyr
+} from '../utils/zephyrUtils';
+import {
+  rotateImages,
+  loadImages
+} from '../utils/renderUtils';
+
+// Configure axios with longer timeout for long-running operations
+axios.defaults.timeout = 300000; // 5 minutes
 
 const TestGenerator = () => {
+  // API base URL - can be configured via environment variable
+  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+
   // File input reference
   const fileInputRef = useRef(null);
   const [content, setContent] = useState('');
@@ -14,6 +84,7 @@ const TestGenerator = () => {
   const [isGenerating, setIsGenerating] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingFile, setProcessingFile] = useState(null);
+  const [currentDocumentName, setCurrentDocumentName] = useState(null);
   const [status, setStatus] = useState(null);
   const [uploadedFiles, setUploadedFiles] = useState([]);
 
@@ -67,11 +138,45 @@ const TestGenerator = () => {
   // Track which tabs have been pushed to Zephyr
   const [pushedTabs, setPushedTabs] = useState(new Set());
   
+  // Debug pushedTabs state changes
+  useEffect(() => {
+  }, [pushedTabs]);
+  
   // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
   const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
 
   // Track Jira ticket information for imported features
   const [jiraTicketInfo, setJiraTicketInfo] = useState({});
+
+  
+  // Load pushed state from cache when document changes
+  useEffect(() => {
+    if (currentDocumentName) {
+      loadPushedStateFromCache(currentDocumentName, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
+    }
+  }, [currentDocumentName, API_BASE_URL]);
+
+  // Load pushed state from cache when Jira issues are imported
+  useEffect(() => {
+    if (featureTabs.length > 0 && requirementsSource === 'jira') {
+      // loadJiraPushedStates function moved to utils/cacheUtils.js
+      loadJiraPushedStates(featureTabs, jiraTicketInfo, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
+    }
+  }, [featureTabs, requirementsSource, jiraTicketInfo, API_BASE_URL]);
+
+  // Save pushed state to cache whenever it changes (for uploaded documents only)
+  useEffect(() => {
+    if ((pushedTabs.size > 0 || Object.keys(zephyrTestCaseIds).length > 0) && 
+        currentDocumentName && 
+        requirementsSource !== 'jira') {
+      savePushedStateToCache(pushedTabs, zephyrTestCaseIds, currentDocumentName, jiraTicketInfo, API_BASE_URL);
+    }
+  }, [pushedTabs, zephyrTestCaseIds, currentDocumentName, requirementsSource, jiraTicketInfo, API_BASE_URL]);
+
+  // clearPushedStateCache function moved to utils/cacheUtils.js
+  const clearPushedStateCacheWrapper = () => {
+    clearPushedStateCache(requirementsSource, featureTabs, jiraTicketInfo, currentDocumentName, setPushedTabs, setZephyrTestCaseIds, setJiraTicketInfo, API_BASE_URL);
+  };
 
   // Jira import state
   const [showJiraImport, setShowJiraImport] = useState(false);
@@ -85,1307 +190,323 @@ const TestGenerator = () => {
   const [jiraIssues, setJiraIssues] = useState([]);
   const [isLoadingJira, setIsLoadingJira] = useState(false);
   const [jiraStep, setJiraStep] = useState('connect'); // connect, select, import
+  const [jiraConnectionActive, setJiraConnectionActive] = useState(false);
+  // const [jiraIssueTypes, setJiraIssueTypes] = useState([]);
   const [showJiraProjectDropdown, setShowJiraProjectDropdown] = useState(false);
   const [jiraProjectSearch, setJiraProjectSearch] = useState('');
+  const [jiraPagination, setJiraPagination] = useState({
+    currentPage: 1,
+    itemsPerPage: 100,
+    totalItems: 0
+  });
+  const [allJiraIssues, setAllJiraIssues] = useState([]);
+  // const [fetchAllJiraIssues, setFetchAllJiraIssues] = useState(false);
+  const [jiraCacheInfo, setJiraCacheInfo] = useState({
+    isCached: false,
+    lastFetched: null,
+    projectKey: null,
+    issueTypes: []
+  });
 
-  // API base URL - can be configured via environment variable
-  const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
-
-  // Function to parse requirements table and extract individual requirements
-  const parseRequirementsTable = (requirementsContent) => {
-    // console.log('🔍 parseRequirementsTable called with:', requirementsContent);
-    // console.log('🔍 Content length:', requirementsContent.length);
-    // console.log('🔍 Content preview (first 500 chars):', requirementsContent.substring(0, 500));
-    
-    // Validate requirements source consistency
-    if (requirementsSource === 'upload' && (jiraTicketPrefix || Object.keys(jiraTicketInfo).length > 0)) {
-      console.log('⚠️  Requirements source is "upload" but Jira ticket info exists. Cleaning up...');
-      setJiraTicketPrefix('');
-      setJiraTicketInfo({});
-    }
-    
-    const requirements = [];
-    const lines = requirementsContent.split('\n');
-    // console.log('🔍 Split lines:', lines);
-    // console.log('🔍 Number of lines:', lines.length);
-    
-    let inTable = false;
-    let tableLines = [];
-    
-    // Find the table section - look for the header (more flexible detection)
-    for (let i = 0; i < lines.length; i++) {
-      const line = lines[i];
-      
-      // More flexible header detection - check for key words in the right order
-      if (line.includes('|') && 
-          line.toLowerCase().includes('requirement id') && 
-          line.toLowerCase().includes('business requirement') && 
-          line.toLowerCase().includes('acceptance criteria')) {
-        inTable = true;
-        // console.log('🔍 Found table header at line:', i, 'Content:', line);
-        continue;
-      }
-      
-      if (inTable) {
-        // Skip separator lines (lines with just dashes and pipes)
-        if (line.trim().match(/^[\s\-|]+$/)) {
-          // console.log('🔍 Skipping separator line:', line);
-          continue;
-        }
-        
-        // If we hit a completely empty line, check if there are more requirements below
-        if (line.trim() === '') {
-          // console.log('🔍 Found empty line at line:', i);
-          // Look ahead a few lines to see if there are more requirements
-          let hasMoreRequirements = false;
-          for (let j = i + 1; j < Math.min(i + 5, lines.length); j++) {
-            const nextLine = lines[j];
-            if (nextLine.includes('|') && nextLine.split('|').filter(col => col.trim()).length >= 3) {
-              hasMoreRequirements = true;
-              // console.log('🔍 Found more requirements ahead at line:', j);
-              break;
-            }
-          }
-          
-          if (!hasMoreRequirements) {
-            // console.log('🔍 No more requirements found, ending table parsing');
-            break; // End of table
-          }
-        }
-        
-        // Add any line that contains table data
-        if (line.includes('|')) {
-          tableLines.push(line);
-          // console.log('🔍 Added table line:', line);
-        }
-      }
-    }
-    
-    // console.log('🔍 Total table lines found:', tableLines.length);
-    // console.log('🔍 ALL table lines:', tableLines);
-    
-    // Parse table rows
-    let requirementCounter = 0; // Use a separate counter for requirement IDs
-    
-    for (let i = 0; i < tableLines.length; i++) {
-      const line = tableLines[i];
-      const columns = line.split('|').map(col => col.trim()).filter(col => col);
-      // console.log(`🔍 [ROW ${i}] Parsing line:`, line);
-      // console.log(`🔍 [ROW ${i}] Columns:`, columns);
-      
-      if (columns.length >= 3) {
-        const [id, requirement, acceptanceCriteria] = columns;
-        
-        // Skip header row and separator rows (more flexible detection)
-        if (id.toLowerCase().includes('requirement id') || 
-            id.toLowerCase().includes('business requirement') ||
-            id.toLowerCase().includes('acceptance criteria') ||
-            id === '---' ||
-            id.includes('---') ||
-            requirement.includes('---') ||
-            acceptanceCriteria.includes('---') ||
-            id === '' ||
-            requirement === '' ||
-            acceptanceCriteria === '') {
-          console.log(`🔍 [ROW ${i}] SKIPPING invalid row:`, { id, requirement, acceptanceCriteria });
-          continue;
-        }
-        
-        // Generate requirement ID based on source
-        let generatedId;
-        if (requirementsSource === 'jira' && jiraTicketPrefix) {
-          // For Jira: use ticket prefix + sequential number
-          requirementCounter++; // Increment counter for each valid requirement
-          generatedId = `${jiraTicketPrefix}-${String(requirementCounter).padStart(3, '0')}`;
-        } else {
-          // For uploaded documents: use BR prefix
-          requirementCounter++; // Increment counter for each valid requirement
-          generatedId = `BR-${String(requirementCounter).padStart(3, '0')}`;
-        }
-        
-        console.log(`🔍 [ROW ${i}] ADDING requirement:`, { 
-          originalId: id, 
-          generatedId: generatedId, 
-          requirement: requirement.substring(0, 50) + '...', 
-          acceptanceCriteria: acceptanceCriteria.substring(0, 50) + '...',
-          source: requirementsSource,
-          rowIndex: i,
-          requirementCounter: requirementCounter
-        });
-        
-        requirements.push({
-          id: generatedId,
-          requirement: requirement,
-          acceptanceCriteria: acceptanceCriteria,
-          complexity: columns[3] || 'CC: 1, Paths: 1'
-        });
-      } else {
-        console.log(`🔍 [ROW ${i}] SKIPPING - insufficient columns:`, columns);
-      }
-    }
-    
-    console.log('🔍 Final requirements parsed:', requirements.map(r => ({ id: r.id, req: r.requirement.substring(0, 30) + '...' })));
-    return requirements;
+  // Wrapper functions for Jira integration functions
+  const testJiraConnectionWrapper = () => {
+    testJiraConnection(
+      setIsLoadingJira,
+      setJiraConfig,
+      setJiraProjects,
+      setJiraConnectionActive,
+      setJiraStep,
+      setStatus,
+      API_BASE_URL
+    );
   };
 
-
-
-
-
-  // Jira import functions
-  const testJiraConnection = async () => {
-    setIsLoadingJira(true);
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/jira/test-connection`);
-
-      if (response.data.success) {
-        // Store the Jira base URL from backend response
-        if (response.data.jiraBaseUrl) {
-          setJiraConfig(prev => ({ ...prev, baseUrl: response.data.jiraBaseUrl }));
-        }
-        
-        setJiraProjects(response.data.projects || []);
-        setJiraStep('select');
-        setStatus({ type: 'success', message: 'Successfully connected to Jira!' });
-      } else {
-        setStatus({ type: 'error', message: response.data.error || 'Failed to connect to Jira' });
-      }
-    } catch (error) {
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to connect to Jira. Please check your environment configuration.' 
-      });
-    } finally {
-      setIsLoadingJira(false);
-    }
+  const fetchJiraIssuesWrapper = () => {
+    fetchJiraIssues(
+      setIsLoadingJira,
+      setAllJiraIssues,
+      setJiraPagination,
+      (allIssues, page) => updateDisplayedIssues(allIssues, page, jiraPagination, setJiraIssues),
+      setJiraCacheInfo,
+      setJiraStep,
+      setStatus,
+      jiraConfig,
+      jiraPagination,
+      API_BASE_URL
+    );
   };
 
-  const fetchJiraIssues = async () => {
-    setIsLoadingJira(true);
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/jira/fetch-issues`, {
-        projectKey: jiraConfig.projectKey,
-        issueTypes: jiraConfig.issueTypes
-      });
-
-      if (response.data.success) {
-        setJiraIssues(response.data.issues || []);
-        setJiraStep('import');
-        setStatus({ type: 'success', message: `Found ${response.data.issues.length} issues in Jira` });
-      } else {
-        setStatus({ type: 'error', message: response.data.error || 'Failed to fetch Jira issues' });
-      }
-    } catch (error) {
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to fetch Jira issues' 
-      });
-    } finally {
-      setIsLoadingJira(false);
-    }
+  const updateDisplayedIssuesWrapper = (allIssues, page) => {
+    updateDisplayedIssues(allIssues, page, jiraPagination, setJiraIssues);
   };
 
-  const importJiraIssues = async () => {
-    setIsLoadingJira(true);
-    setStatus({ type: 'info', message: 'Importing Jira tickets and processing through AI requirements extraction...' });
-    
-    try {
-      const response = await axios.post(`${API_BASE_URL}/api/jira/import-issues`, {
-        selectedIssues: jiraConfig.selectedIssues
-      });
+  const goToPageWrapper = (page) => {
+    goToPage(page, jiraPagination, setJiraPagination, updateDisplayedIssuesWrapper, allJiraIssues);
+  };
 
-      if (response.data.success) {
-        // Combine all Jira content into one document for requirements extraction
-        const combinedJiraContent = response.data.features.map(feature => 
-          `Jira Ticket: ${feature.title}\n\n${feature.content}`
-        ).join('\n\n---\n\n');
-        
-        // Extract requirements from the combined Jira content using the same AI processing
-        setStatus({ type: 'info', message: 'Processing Jira content through AI requirements extraction...' });
-        
-        try {
-          const requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
-            content: combinedJiraContent, 
-            context: `Jira tickets: ${response.data.features.map(f => f.title).join(', ')}`,
-            enableLogging: false // Disable logging for Jira imports to reduce console noise
-          });
-          
-          if (requirementsResponse.data.success) {
-            // Set the extracted requirements table (same as uploaded documents)
-            setExtractedRequirements(requirementsResponse.data.content);
-            
-            // Set requirements source and extract Jira ticket prefix
-            setRequirementsSource('jira');
-            
-            // Extract Jira ticket prefix from the first ticket
-            const firstTicket = response.data.features[0];
-            if (firstTicket && firstTicket.title && firstTicket.title.includes(':')) {
-              const ticketKey = firstTicket.title.split(':')[0].trim();
-              setJiraTicketPrefix(ticketKey);
-              console.log('🔍 Set Jira ticket prefix:', ticketKey);
-            }
-            
-            // Parse the requirements table to extract individual requirements
-            const requirementsContent = requirementsResponse.data.content;
-            const requirements = parseRequirementsTable(requirementsContent);
-            
-            if (requirements.length > 0) {
-              // Create feature tabs from extracted requirements (same as uploaded documents)
-              const newFeatures = requirements.map((req, index) => ({
-                title: req.id || `JIRA-${String(index + 1).padStart(3, '0')}`,
-                content: `Requirement: ${req.requirement}\n\nAcceptance Criteria: ${req.acceptanceCriteria}`,
-                originalContent: req.requirement
-              }));
-              
-              // Add new features to existing tabs
-              setFeatureTabs(prev => {
-                const updatedTabs = [...prev, ...newFeatures];
-                return updatedTabs;
-              });
-              
-              // Initialize editable features for new sections
-              setEditableFeatures(prev => {
-                const editableFeaturesObj = {};
-                newFeatures.forEach((feature, index) => {
-                  const globalIndex = (prev?.length || 0) + index;
-                  editableFeaturesObj[globalIndex] = feature.content;
-                });
-                return { ...prev, ...editableFeaturesObj };
-              });
-              
-              // Store Jira ticket info for traceability - set for ALL new feature tabs
-              const jiraTicketInfo = {};
-              const ticketKey = response.data.features[0]?.title?.split(':')[0]?.trim() || 'JIRA';
-              
-              // Get the current length of existing feature tabs
-              const currentTabsLength = featureTabs.length;
-              
-              // Set Jira ticket info for all the new feature tabs we just created
-              newFeatures.forEach((feature, index) => {
-                const globalIndex = currentTabsLength + index;
-                jiraTicketInfo[globalIndex] = {
-                  ticketKey: ticketKey,
-                  jiraBaseUrl: jiraConfig.baseUrl
-                };
-              });
-              setJiraTicketInfo(jiraTicketInfo);
-              
-              console.log('🔍 Closing Jira import modal...');
-              console.log('🔍 Current showJiraImport state:', showJiraImport);
-              
-              // Force close the modal by resetting all related state
-              setShowJiraImport(false);
-              setJiraStep('connect'); // Reset Jira import flow
-              setJiraConfig(prev => ({ ...prev, selectedIssues: [] })); // Clear selected issues
-              
-              console.log('🔍 After setShowJiraImport(false), state should be:', false);
-              
-              // Force a complete state reset to ensure modal closes
-              setTimeout(() => {
-                console.log('🔍 Forcing complete modal state reset...');
-                console.log('🔍 Number of modal overlays found:', document.querySelectorAll('.modal-overlay').length);
-                
-                setShowJiraImport(false);
-                setJiraStep('connect');
-                
-                // Force close any remaining modal elements via DOM manipulation
-                const modalOverlays = document.querySelectorAll('.modal-overlay');
-                modalOverlays.forEach((overlay, index) => {
-                  console.log(`🔍 Modal overlay ${index}:`, overlay);
-                  if (overlay.closest('[data-modal="jira-import"]')) {
-                    console.log('🔍 Hiding modal overlay via DOM manipulation');
-                    overlay.style.display = 'none';
-                  }
-                });
-                
-                // Additional check - force the modal to close
-                console.log('🔍 Final check - showJiraImport should be false');
-              }, 50);
-              
-              // Additional aggressive approach - multiple attempts
-              setTimeout(() => {
-                console.log('🔍 Second attempt to close modal...');
-                setShowJiraImport(false);
-                
-                // Force hide all modal overlays
-                document.querySelectorAll('.modal-overlay').forEach(overlay => {
-                  overlay.style.display = 'none';
-                });
-              }, 200);
-              
-              setTimeout(() => {
-                console.log('🔍 Third attempt to close modal...');
-                setShowJiraImport(false);
-                
-                // Last resort - remove modal from DOM
-                const jiraModal = document.querySelector('[data-modal="jira-import"]');
-                if (jiraModal) {
-                  console.log('🔍 Removing modal from DOM as last resort');
-                  jiraModal.remove();
-                }
-              }, 500);
-              
-              setStatus({ type: 'success', message: `Successfully imported ${response.data.features.length} Jira tickets, extracted ${requirements.length} requirements, and created feature tabs! You can now edit the requirements if needed, then click "Insert Requirements" to add them to the test generator.` });
-              
-              // Ensure the requirements table is visible
-              if (requirements.length > 0) {
-                // Scroll to the requirements section to make it visible
-                setTimeout(() => {
-                  const requirementsSection = document.querySelector('.requirements-section');
-                  if (requirementsSection) {
-                    requirementsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }
-                }, 200);
-              }
-            } else {
-              setStatus({ type: 'success', message: `Successfully imported ${response.data.features.length} Jira tickets and extracted requirements!` });
-            }
-          } else {
-            setStatus({ type: 'error', message: 'Failed to extract requirements from Jira tickets' });
-          }
-        } catch (requirementsError) {
-          console.error('Error extracting requirements from Jira tickets:', requirementsError);
-          setStatus({ type: 'error', message: 'Failed to process Jira tickets through AI requirements extraction' });
-        }
-      } else {
-        setStatus({ type: 'error', message: response.data.error || 'Failed to import Jira issues' });
-      }
-    } catch (error) {
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to import Jira issues' 
-      });
-    } finally {
-      setIsLoadingJira(false);
-    }
+  const clearJiraCacheWrapper = () => {
+    clearJiraCache(setStatus, setJiraCacheInfo, jiraConfig, API_BASE_URL);
+  };
+
+  const shouldRefetchWrapper = () => {
+    return shouldRefetch(jiraCacheInfo, jiraConfig);
+  };
+
+  const importJiraIssuesWrapper = () => {
+    importJiraIssues(
+      setIsLoadingJira,
+      setStatus,
+      setCurrentDocumentName,
+      setExtractedRequirements,
+      setRequirementsSource,
+      parseRequirementsTable,
+      setFeatureTabs,
+      setEditableFeatures,
+      setJiraTicketInfo,
+      setJiraTicketPrefix,
+      setShowJiraImport,
+      setJiraStep,
+      setJiraConfig,
+      jiraConfig,
+      requirementsSource,
+      jiraTicketPrefix,
+      jiraTicketInfo,
+      featureTabs,
+      API_BASE_URL
+    );
   };
 
   // Close dropdown when clicking outside
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (showFolderDropdown && !event.target.closest('.folder-dropdown-container')) {
-        setShowFolderDropdown(false);
-      }
-      if (showProjectDropdown && !event.target.closest('.project-dropdown-container')) {
-        setShowProjectDropdown(false);
-      }
-    };
+    const handleClick = (event) => handleClickOutside(event, showFolderDropdown, showProjectDropdown, setShowFolderDropdown, setShowProjectDropdown);
 
-    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('mousedown', handleClick);
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('mousedown', handleClick);
     };
-  }, [showFolderDropdown, showProjectDropdown]);
+  }, [showFolderDropdown, showProjectDropdown, setShowFolderDropdown, setShowProjectDropdown]);
 
-  // Process uploaded file content
-  const processFile = useCallback(async (fileObj) => {
-    setIsProcessing(true);
-    setProcessingFile(fileObj.name);
-    setStatus({ type: 'info', message: `Processing ${fileObj.name}...` });
-
-    try {
-      const formData = new FormData();
-      // Handle both file and file.file cases
-      const fileToUpload = fileObj.file || fileObj;
-      formData.append('file', fileToUpload);
-
-      const response = await axios.post(`${API_BASE_URL}/api/analyze-document`, formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-        },
-      });
-
-      if (response.data.success) {
-
-        setUploadedFiles(prev => 
-          prev.map(f => 
-            f.id === fileObj.id 
-              ? { ...f, status: 'completed', content: response.data.content }
-              : f
-          )
-        );
-        
-        // Automatically extract requirements from the document content
-        let requirementsResponse = null;
-        try {
-          requirementsResponse = await axios.post(`${API_BASE_URL}/api/extract-requirements`, { 
-            content: response.data.content, 
-            context: context 
-          });
-          
-          if (requirementsResponse.data.success) {
-            setExtractedRequirements(requirementsResponse.data.content);
-            
-            // Set requirements source for uploaded documents
-            setRequirementsSource('upload');
-            setJiraTicketPrefix(''); // Clear any Jira ticket prefix
-            setJiraTicketInfo({}); // Clear any Jira ticket info
-            
-            // Create feature tabs from extracted requirements
-            const requirementsContent = requirementsResponse.data.content;
-            
-            // Parse the requirements table to extract individual requirements
-            const requirements = parseRequirementsTable(requirementsContent);
-            
-            if (requirements.length > 0) {
-              const newFeatures = requirements.map((req, index) => ({
-                title: req.id || `REQ-${String(index + 1).padStart(3, '0')}`,
-                content: `Requirement: ${req.requirement}\n\nAcceptance Criteria: ${req.acceptanceCriteria}`,
-                originalContent: req.requirement
-              }));
-              
-              // Add new features to existing tabs
-              setFeatureTabs(prev => {
-                const updatedTabs = [...prev, ...newFeatures];
-                return updatedTabs;
-              });
-              
-              // Initialize editable features for new sections
-              setEditableFeatures(prev => {
-                const editableFeaturesObj = {};
-                newFeatures.forEach((feature, index) => {
-                  const globalIndex = (prev?.length || 0) + index;
-                  editableFeaturesObj[globalIndex] = feature.content;
-                });
-                return { ...prev, ...editableFeaturesObj };
-              });
-              
-              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name}, extracted ${requirements.length} requirements, and created feature tabs! You can now edit the requirements if needed.` });
-            } else {
-              setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
-            }
-          } else {
-            setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
-          }
-        } catch (requirementsError) {
-          setStatus({ type: 'success', message: `Successfully processed ${fileObj.name} and extracted requirements!` });
-        }
-      } else {
-        setUploadedFiles(prev => 
-          prev.map(f => 
-            f.id === fileObj.id 
-              ? { ...f, status: 'failed', error: response.data.error }
-              : f
-          )
-        );
-        setStatus({ type: 'error', message: `Failed to process ${fileObj.name}: ${response.data.error}` });
-      }
-    } catch (error) {
-      console.error('Error processing file:', error);
-      setUploadedFiles(prev => 
-        prev.map(f => 
-          f.id === fileObj.id 
-            ? { ...f, status: 'failed', error: error.message }
-            : f
-        )
-      );
-      setStatus({ type: 'error', message: `Failed to process ${fileObj.name}: ${error.message}` });
-    } finally {
-      setIsProcessing(false);
-      setProcessingFile(null);
-    }
-  }, [API_BASE_URL, context, parseRequirementsTable]);
-
-  const handleFileUpload = useCallback((event) => {
-    // Extract files from the event
-    const files = event.target.files;
-    
-    if (!files || files.length === 0) return;
-
-    // Handle both FileList and single file cases
-    const fileArray = files instanceof FileList ? Array.from(files) : [files];
-
-
-
-    // Process each file
-    const newFiles = fileArray.map(file => ({
-      id: Date.now() + Math.random(),
-      name: file.name,
-      size: file.size,
-      file: file,
-      status: 'uploading'
-    }));
-    setUploadedFiles(prev => [...prev, ...newFiles]);
-
-    // Process each file
-    newFiles.forEach(fileObj => {
-      // Set status to processing
-      setUploadedFiles(prev => 
-        prev.map(f => 
-          f.id === fileObj.id 
-            ? { ...f, status: 'processing' }
-            : f
-        )
-      );
-      
-      // Process the file - pass the file object directly
-      processFile(fileObj);
-    });
-  }, [processFile]);
-
-  const removeFile = (fileId) => {
-    setUploadedFiles(prev => prev.filter(f => f.id !== fileId));
+  // Wrapper functions for requirements and test generation functions
+  const processFileWrapper = (fileObj) => {
+    processFile(
+      fileObj,
+      setIsProcessing,
+      setProcessingFile,
+      setCurrentDocumentName,
+      setStatus,
+      setUploadedFiles,
+      setExtractedRequirements,
+      setRequirementsSource,
+      setJiraTicketPrefix,
+      setJiraTicketInfo,
+      setFeatureTabs,
+      setEditableFeatures,
+      API_BASE_URL,
+      context,
+      parseRequirementsTable
+    );
   };
 
-  // Drag and drop handlers
-  const handleDragOver = useCallback((e) => {
-    e.preventDefault();
-    setIsDragOver(true);
-  }, []);
-
-  const handleDragLeave = useCallback((e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-  }, []);
-
-  const handleDrop = useCallback((e) => {
-    e.preventDefault();
-    setIsDragOver(false);
-    const files = e.dataTransfer.files;
-    // Create a mock event object for handleFileUpload
-    const mockEvent = { target: { files: files } };
-    handleFileUpload(mockEvent);
-  }, [handleFileUpload]);
-
-  // Remove the separate extractRequirements function - it will be integrated into document processing
-
-  // Validate test coverage for generated tests
-  const validateTestCoverage = (testContent, requirement, acceptanceCriteria) => {
-    try {
-      const lines = testContent.split('\n');
-      let scenarioCount = 0;
-      let featureName = '';
-      let complexityInfo = null;
-      
-      // Parse the test content
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        
-        // Count scenarios
-        if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
-          scenarioCount++;
-        }
-        
-        // Extract feature name
-        if (trimmedLine.startsWith('Feature:')) {
-          featureName = trimmedLine.replace('Feature:', '').trim();
-        }
-        
-        // Extract complexity information
-        if (trimmedLine.includes('CC:') || trimmedLine.includes('Paths:')) {
-          complexityInfo = trimmedLine;
-        }
-      }
-      
-      // Analyze requirement complexity if not provided
-      let expectedPaths = 1; // Default minimum
-      if (complexityInfo) {
-        const pathsMatch = complexityInfo.match(/Paths:\s*(\d+)/i);
-        if (pathsMatch) {
-          expectedPaths = parseInt(pathsMatch[1]);
-        }
-      } else {
-        // Estimate complexity based on requirement content
-        const hasDecisionPoints = requirement.toLowerCase().includes('if') || 
-                                requirement.toLowerCase().includes('when') || 
-                                requirement.toLowerCase().includes('else') ||
-                                acceptanceCriteria.toLowerCase().includes('if') ||
-                                acceptanceCriteria.toLowerCase().includes('when') ||
-                                acceptanceCriteria.toLowerCase().includes('else');
-        
-        const hasMultipleConditions = (requirement.match(/and|or|but/gi) || []).length > 0 ||
-                                   (acceptanceCriteria.match(/and|or|but/gi) || []).length > 0;
-        
-        if (hasDecisionPoints || hasMultipleConditions) {
-          expectedPaths = Math.max(2, Math.min(5, scenarioCount)); // Estimate 2-5 paths
-        }
-      }
-      
-      // Calculate coverage metrics
-      const coveragePercentage = expectedPaths > 0 ? Math.round((scenarioCount / expectedPaths) * 100) : 100;
-      const isAdequateCoverage = scenarioCount >= expectedPaths;
-      
-      // Identify missing test types
-      const missingTestTypes = [];
-      if (scenarioCount < 3) missingTestTypes.push('negative test cases');
-      if (scenarioCount < 2) missingTestTypes.push('edge cases');
-      if (scenarioCount < expectedPaths) missingTestTypes.push('path coverage');
-      
-      return {
-        scenarioCount,
-        expectedPaths,
-        coveragePercentage,
-        isAdequateCoverage,
-        missingTestTypes,
-        featureName,
-        complexityInfo
-      };
-    } catch (error) {
-      console.error('Error validating test coverage:', error);
-      return {
-        scenarioCount: 0,
-        expectedPaths: 1,
-        coveragePercentage: 0,
-        isAdequateCoverage: false,
-        missingTestTypes: ['validation failed'],
-        featureName: '',
-        complexityInfo: null
-      };
-    }
+  const handleFileUploadWrapper = (event) => {
+    handleFileUpload(event, setUploadedFiles, processFileWrapper);
   };
 
-  const generateTests = async () => {
-    // Check if we have content to generate tests from
-    if (!content.trim()) {
-      setStatus({ type: 'error', message: 'No content in the text area. Please insert requirements or enter content first.' });
-      return;
-    }
-    
-    setIsLoading(true);
-    setIsGenerating(true);
-    setStatus(null);
-    
-    try {
-      // Parse requirements from the content
-      const requirements = parseRequirementsTable(content);
-      
-      if (requirements.length === 0) {
-        setStatus({ type: 'error', message: 'No requirements found in the content. Please ensure you have a requirements table with Requirement ID, Business Requirement, and Acceptance Criteria columns.' });
-        return;
-      }
-      
-      // Generate tests for each requirement
-      const generatedFeatures = [];
-      
-      for (const req of requirements) {
-        const testContent = `REQUIREMENT TO TEST:
-Requirement ID: ${req.id}
-Business Requirement: ${req.requirement}
-Acceptance Criteria: ${req.acceptanceCriteria}
-
-GENERATE COMPREHENSIVE TEST SCENARIOS FOR THIS SPECIFIC REQUIREMENT.
-
-CRITICAL REQUIREMENTS:
-1. Feature line must start with # in this format:
-   # Feature: [Feature Name Based on Requirement]
-
-2. Each scenario title must include the requirement ID in this format:
-   Scenario: ${req.id}: [Specific Scenario Description]
-
-3. COMPREHENSIVE PATH COVERAGE:
-   - Analyze the complexity information (CC, Decision Points, Paths) from the requirement
-   - Generate test scenarios that cover EVERY identified execution path
-   - The number of test scenarios MUST match or exceed the "Paths" count from complexity analysis
-   - Each decision point should have separate test scenarios for each branch
-   - Ensure complete coverage of all conditional logic and workflow branches
-
-4. TEST SCENARIO TYPES REQUIRED:
-
-   POSITIVE TEST SCENARIOS:
-   - Happy path scenarios (main success flow)
-   - Valid data variations and combinations
-   - Different user roles/permissions if applicable
-   - Successful edge cases and boundary conditions
-   - Various valid input combinations
-
-   NEGATIVE TEST SCENARIOS:
-   - Invalid input scenarios (empty fields, special characters, very long text)
-   - Error conditions and exception handling
-   - Boundary value testing (minimum/maximum values, limits)
-   - Invalid data formats and malformed inputs
-   - Business rule violations
-   - Invalid state transitions
-   - Security-related negative scenarios
-
-   WORKFLOW PATH SCENARIOS:
-   - Test each decision branch separately
-   - Cover all gateway conditions (exclusive, parallel, inclusive)
-   - Test all possible workflow paths
-   - Include error paths and exception handling
-   - Test parallel execution paths if applicable
-
-   DATA-DRIVEN SCENARIOS:
-   - Use Scenario Outline with Examples for multiple data combinations
-   - Test various test conditions and data variations
-   - Cover different business scenarios
-
-5. COMPLEXITY ANALYSIS INTEGRATION:
-   - If complexity information exists: Use it to determine the minimum number of scenarios
-   - If no complexity info: Analyze the requirement to identify decision points and paths
-   - Ensure the number of scenarios covers all identified paths
-   - Add complexity analysis as comments if not present
-
-6. SCENARIO QUALITY REQUIREMENTS:
-   - Each scenario must test a different execution path or decision branch
-   - Scenarios must be specific to the provided business requirement
-   - Do NOT generate generic test scenarios
-   - Use natural, business-focused scenario names that describe the specific business case being tested
-   - Do NOT use technical labels like "Positive Test", "Negative Test", "Edge Case", etc.
-   - Instead, use descriptive names like "User successfully logs in with valid credentials", "System displays error for invalid email format", "Application handles maximum input length"
-   - Include both success and failure scenarios naturally
-   - Ensure edge cases and boundary conditions are covered with business-focused names
-
-EXAMPLE STRUCTURE:
-# Feature: [Specific Feature Based on Requirement]
-# Complexity: CC: X, Decision Points: Y, Paths: Z
-
-Scenario: ${req.id}: [Specific business scenario description]
-Given [precondition]
-When [action]
-Then [expected result]
-
-Scenario: ${req.id}: [Another specific business scenario]
-Given [precondition]
-When [action]
-Then [expected result]
-
-Scenario: ${req.id}: [Different business scenario variation]
-Given [precondition]
-When [action]
-Then [expected result]
-
-# Continue with more scenarios to cover ALL identified paths
-
-CRITICAL: Generate ENOUGH test scenarios to cover ALL identified paths from the complexity analysis. The number of scenarios should match or exceed the "Paths" count.
-
-SCENARIO NAMING GUIDELINES:
-- Use natural, business-focused language in scenario names
-- Avoid technical terms like "Positive Test", "Negative Test", "Edge Case", "Data-Driven Test"
-- Instead, describe the specific business scenario being tested
-- Examples of good names: "User successfully completes order", "System validates required fields", "Application handles network timeout"
-- Examples of names to avoid: "Positive Test - Happy Path", "Negative Test - Invalid Input", "Edge Case - Boundary Condition"`;
-        
-        const response = await axios.post(`${API_BASE_URL}/api/generate-tests`, { 
-          content: testContent, 
-          context: context 
-        });
-        
-        if (response.data.success) {
-          // Create a descriptive title that includes requirement ID and summary
-          const requirementSummary = req.requirement.length > 50 
-            ? req.requirement.substring(0, 50) + '...' 
-            : req.requirement;
-          
-          const scenarioTitle = `${req.id}: ${requirementSummary}`;
-          
-          generatedFeatures.push({
-            title: scenarioTitle,
-            content: response.data.content,
-            requirement: req.requirement,
-            acceptanceCriteria: req.acceptanceCriteria,
-            requirementId: req.id // Store the requirement ID separately for reference
-          });
-        } else {
-          console.error(`Failed to generate tests for ${req.id}`);
-        }
-      }
-      
-      if (generatedFeatures.length > 0) {
-        // Validate test coverage for each requirement
-        const validationResults = generatedFeatures.map(feature => {
-          const coverage = validateTestCoverage(feature.content, feature.requirement, feature.acceptanceCriteria);
-          return {
-            ...feature,
-            coverage: coverage
-          };
-        });
-        
-        // Set requirements source for generated tests
-        setRequirementsSource('upload');
-        setJiraTicketPrefix(''); // Clear any Jira ticket prefix
-        setJiraTicketInfo({}); // Clear any Jira ticket info
-        
-        // Set the feature tabs
-        setFeatureTabs(validationResults);
-        setActiveTab(0);
-        
-        // Set editable features
-        const editableFeaturesObj = {};
-        validationResults.forEach((feature, index) => {
-          editableFeaturesObj[index] = feature.content;
-        });
-        setEditableFeatures(editableFeaturesObj);
-        
-        // Set overall generated tests (combined)
-        const allTests = validationResults.map(f => f.content).join('\n\n');
-        setGeneratedTests(allTests);
-        
-        // Show coverage summary
-        const totalScenarios = validationResults.reduce((sum, f) => sum + f.coverage.scenarioCount, 0);
-        const totalPaths = validationResults.reduce((sum, f) => sum + f.coverage.expectedPaths, 0);
-        const coveragePercentage = totalPaths > 0 ? Math.round((totalScenarios / totalPaths) * 100) : 0;
-        
-        setShowModal(true);
-        setStatus({ 
-          type: 'success', 
-          message: `Generated ${totalScenarios} test scenarios for ${generatedFeatures.length} requirements! Coverage: ${coveragePercentage}% of expected paths.` 
-        });
-      } else {
-        setStatus({ type: 'error', message: 'Failed to generate test cases for any requirements' });
-      }
-    } catch (error) {
-      let errorMessage = 'Failed to generate test cases';
-      let suggestion = 'Please try again';
-      
-      if (error.response) {
-        const errorData = error.response.data;
-        errorMessage = errorData.error || errorMessage;
-        suggestion = errorData.suggestion || suggestion;
-      } else if (error.request) {
-        errorMessage = 'Network error - unable to connect to server';
-        suggestion = 'Please check your connection and try again';
-      } else {
-        errorMessage = error.message || errorMessage;
-      }
-      
-      setStatus({ type: 'error', message: `${errorMessage}. ${suggestion}` });
-    } finally { 
-      setIsLoading(false);
-      setIsGenerating(false);
-    }
+  const removeFileWrapper = (fileId) => {
+    removeFile(fileId, setUploadedFiles);
   };
 
-  const refineTests = async () => {
-    if (!generatedTests || !generatedTests.trim()) {
-      setStatus({ type: 'error', message: 'No test cases available to refine' });
-      return;
-    }
-
-    setIsLoading(true);
-    setStatus({ type: 'info', message: 'Refining test cases...' });
-
-    try {
-      const currentFeature = featureTabs[activeTab];
-      const currentContent = editableFeatures[activeTab] || currentFeature.content;
-      
-      const response = await axios.post(`${API_BASE_URL}/api/refine-tests`, {
-        content: currentContent,
-        feedback: 'Please improve the test cases based on best practices',
-        context: context
-      });
-
-      if (response.data.success) {
-        // Update the specific feature
-        const updatedFeatures = [...featureTabs];
-        updatedFeatures[activeTab] = {
-          ...updatedFeatures[activeTab],
-          content: response.data.content
-        };
-        setFeatureTabs(updatedFeatures);
-        
-        // Update editable features
-        setEditableFeatures(prev => ({
-          ...prev,
-          [activeTab]: response.data.content
-        }));
-        
-        // Update overall generated tests
-        const allTests = updatedFeatures.map(f => f.content).join('\n\n');
-        setGeneratedTests(allTests);
-        
-        setStatus({ type: 'success', message: `Refined test cases for "${currentFeature.title}"!` });
-      } else {
-        setStatus({ type: 'error', message: response.data.error || 'Failed to refine test cases' });
-      }
-    } catch (error) {
-      setStatus({ type: 'error', message: 'Failed to refine test cases. Please try again.' });
-    } finally {
-      setIsLoading(false);
-    }
+  const handleDragOverWrapper = (e) => {
+    handleDragOver(e, setIsDragOver);
   };
 
-  const clearAll = () => {
-    // Clear main content and state
-    setContent('');
-    setContext('');
-    setGeneratedTests('');
-    setExtractedRequirements('');
-    setUploadedFiles([]);
-    setShowModal(false);
-    setActiveTab(0);
-    setFeatureTabs([]);
-    setEditableFeatures({});
-    setEditingFeatures({});
-    setStatus(null);
-    
-    // Clear Jira-related state completely
-    setRequirementsSource('');
-    setJiraTicketPrefix('');
-    setJiraTicketInfo({});
-    setShowJiraImport(false);
-    setJiraConfig({
-      baseUrl: '',
-      projectKey: '',
-      issueTypes: [],
-      selectedIssues: []
-    });
-    setJiraProjects([]);
-    setJiraIssues([]);
-    setIsLoadingJira(false);
-    setJiraStep('connect');
-    setShowJiraProjectDropdown(false);
-    setJiraProjectSearch('');
-    
-    // Clear Zephyr-related state
-    setShowZephyrConfig(false);
-    setZephyrConfig({
-      projectKey: '',
-      folderId: null,
-      testCaseName: '',
-      status: 'Draft',
-      isAutomatable: 'None'
-    });
-    setZephyrProjects([]);
-    setZephyrFolders([]);
-    setLoadingProjects(false);
-    setLoadingFolders(false);
-    setShowFolderDropdown(false);
-    setFolderSearch('');
-    setShowProjectDropdown(false);
-    setProjectSearch('');
-    setFolderNavigation({
-      currentLevel: 'main',
-      parentFolderId: null,
-      parentFolderName: '',
-      breadcrumb: []
-    });
-    setSearchMode(false);
-    setExpandedFolders(new Set());
-    setShowZephyrProgress(false);
-    setZephyrProgress({
-      current: 0,
-      total: 0,
-      message: '',
-      isComplete: false
-    });
-    setPushedTabs(new Set());
-    setZephyrTestCaseIds({});
-    
-    // Clear processing states
-    setIsLoading(false);
-    setIsGenerating(false);
-    setIsProcessing(false);
-    setProcessingFile(null);
-    
-    // Clear any other state that might hold residue
-    setLoadingImages([]);
-    setImagesLoaded(false);
-    
-    console.log('🧹 Clear All: All state has been completely reset');
+  const handleDragLeaveWrapper = (e) => {
+    handleDragLeave(e, setIsDragOver);
   };
 
-  const formatFileSize = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+  const handleDropWrapper = (e) => {
+    handleDrop(e, setIsDragOver, handleFileUploadWrapper);
   };
 
-
-
-  // Helper function to get current content (edited or original)
-
-
-
-
-  // Fetch Zephyr Scale projects
-  const fetchZephyrProjects = async () => {
-    try {
-      setLoadingProjects(true);
-      const response = await axios.get(`${API_BASE_URL}/api/zephyr-projects`);
-      if (response.data.success) {
-        setZephyrProjects(response.data.projects);
-      }
-    } catch (error) {
-      console.error('Error fetching Zephyr projects:', error);
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to fetch Zephyr Scale projects' 
-      });
-    } finally {
-      setLoadingProjects(false);
-    }
+  const generateTestsWrapper = () => {
+    generateTests(
+      content,
+      setStatus,
+      setIsLoading,
+      setIsGenerating,
+      parseRequirementsTable,
+      validateTestCoverage,
+      setRequirementsSource,
+      setJiraTicketPrefix,
+      setJiraTicketInfo,
+      setFeatureTabs,
+      setActiveTab,
+      setEditableFeatures,
+      setGeneratedTests,
+      setExtractedRequirements,
+      setContent,
+      setShowModal,
+      requirementsSource,
+      jiraTicketPrefix,
+      jiraTicketInfo,
+      context,
+      currentDocumentName,
+      API_BASE_URL
+    );
   };
 
-  // Fetch Zephyr Scale folders for selected project
-  const fetchZephyrFolders = async (projectKey) => {
-    if (!projectKey) {
-      setZephyrFolders([]);
-      return;
-    }
-
-    try {
-      setLoadingFolders(true);
-      const response = await axios.get(`${API_BASE_URL}/api/zephyr-folders/${projectKey}`);
-      if (response.data.success) {
-        setZephyrFolders(response.data.folders);
-      }
-    } catch (error) {
-      console.error('Error fetching Zephyr folders:', error);
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to fetch Zephyr Scale folders' 
-      });
-    } finally {
-      setLoadingFolders(false);
-    }
+  const refineTestsWrapper = () => {
+    refineTests(
+      generatedTests,
+      setStatus,
+      setIsLoading,
+      featureTabs,
+      activeTab,
+      editableFeatures,
+      setFeatureTabs,
+      setEditableFeatures,
+      setGeneratedTests,
+      context,
+      API_BASE_URL
+    );
   };
 
-  // Fetch all folders and organize them hierarchically
-  const fetchAllFolders = async (projectKey) => {
-    if (!projectKey) {
-      setZephyrFolders([]);
-      return;
-    }
-
-    try {
-      setLoadingFolders(true);
-      const response = await axios.get(`${API_BASE_URL}/api/zephyr-folders/${projectKey}`);
-      if (response.data.success) {
-        console.log('All folders fetched:', response.data.folders);
-        setZephyrFolders(response.data.folders);
-        setFolderNavigation({
-          currentLevel: 'main',
-          parentFolderId: null,
-          parentFolderName: '',
-          breadcrumb: []
-        });
-        setSearchMode(false);
-      }
-    } catch (error) {
-      console.error('Error fetching all folders:', error);
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to fetch folders' 
-      });
-    } finally {
-      setLoadingFolders(false);
-    }
+  // clearAll function moved to utils/uiStateUtils.js
+  const clearAllWrapper = () => {
+    const setters = {
+      setContent,
+      setContext,
+      setGeneratedTests,
+      setExtractedRequirements,
+      setUploadedFiles,
+      setCurrentDocumentName,
+      setShowModal,
+      setActiveTab,
+      setFeatureTabs,
+      setEditableFeatures,
+      setEditingFeatures,
+      setStatus,
+      setSelectedRequirements,
+      setIsSelectAllChecked,
+      setShowDeleteConfirmation,
+      setSelectedCaches,
+      setIsSelectAllCachesChecked,
+      setShowCacheModal,
+      setShowCacheDeleteConfirmation,
+      setRequirementsSource,
+      setJiraTicketPrefix,
+      setJiraTicketInfo,
+      // setJiraIssueTypes,
+      setShowJiraImport,
+      setJiraConfig,
+      setJiraProjects,
+      setJiraIssues,
+      setIsLoadingJira,
+      setJiraStep,
+      setShowJiraProjectDropdown,
+      setJiraProjectSearch,
+      setShowZephyrConfig,
+      setZephyrConfig,
+      setZephyrProjects,
+      setZephyrFolders,
+      setLoadingProjects,
+      setLoadingFolders,
+      setShowFolderDropdown,
+      setFolderSearch,
+      setShowProjectDropdown,
+      setProjectSearch,
+      setFolderNavigation,
+      setSearchMode,
+      setExpandedFolders,
+      setShowZephyrProgress,
+      setZephyrProgress,
+      setIsLoading,
+      setIsGenerating,
+      setIsProcessing,
+      setProcessingFile,
+      setLoadingImages,
+      setImagesLoaded,
+      jiraConnectionActive
+    };
+    clearAll(setters, clearPushedStateCacheWrapper);
   };
 
+  
+  // Wrapper functions for Zephyr Scale integration functions
+  const fetchZephyrProjectsWrapper = useCallback(() => {
+    fetchZephyrProjects(setLoadingProjects, setZephyrProjects, setStatus, API_BASE_URL);
+  }, [API_BASE_URL]);
 
+  const fetchZephyrFoldersWrapper = useCallback((projectKey) => {
+    fetchZephyrFolders(projectKey, setZephyrFolders, setLoadingFolders, setStatus, API_BASE_URL);
+  }, [API_BASE_URL]);
 
-  // Build folder tree structure
-  const buildFolderTree = (folders) => {
-    const folderMap = new Map();
-    const rootFolders = [];
-    
-    // Create a map of all folders
-    folders.forEach(folder => {
-      folderMap.set(folder.id, { ...folder, children: [] });
-    });
-    
-    // Build the tree structure
-    folders.forEach(folder => {
-      if (folder.parentId && folderMap.has(folder.parentId)) {
-        folderMap.get(folder.parentId).children.push(folderMap.get(folder.id));
-      } else {
-        rootFolders.push(folderMap.get(folder.id));
-      }
-    });
-    
-    return rootFolders;
+  const fetchAllFoldersWrapper = (projectKey) => {
+    fetchAllFolders(projectKey, setZephyrFolders, setLoadingFolders, setFolderNavigation, setSearchMode, setStatus, API_BASE_URL);
   };
 
-  // Toggle folder expansion
-  const toggleFolderExpansion = (folderId) => {
-    setExpandedFolders(prev => {
-      const newSet = new Set(prev);
-      if (newSet.has(folderId)) {
-        newSet.delete(folderId);
-      } else {
-        newSet.add(folderId);
-      }
-      return newSet;
-    });
+  const searchFoldersWrapper = (projectKey, searchTerm) => {
+    searchFolders(projectKey, searchTerm, setZephyrFolders, setLoadingFolders, setFolderNavigation, setSearchMode, setStatus, API_BASE_URL);
   };
 
-  // Search folders across all levels
-  const searchFolders = async (projectKey, searchTerm) => {
-    if (!projectKey || !searchTerm.trim()) return;
-    
-    try {
-      setLoadingFolders(true);
-      const response = await axios.get(`${API_BASE_URL}/api/zephyr-search-folders/${projectKey}?searchTerm=${encodeURIComponent(searchTerm.trim())}`);
-      if (response.data.success) {
-        setZephyrFolders(response.data.folders);
-        setFolderNavigation(prev => ({
-          ...prev,
-          currentLevel: 'search'
-        }));
-        setSearchMode(true);
-      }
-    } catch (error) {
-      console.error('Error searching folders:', error);
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to search folders' 
-      });
-    } finally {
-      setLoadingFolders(false);
-    }
+  const pushToZephyrWrapper = (content, featureName, projectKey, testCaseName, folderId, status, isAutomatable, testCaseId) => {
+    return pushToZephyr(
+      content,
+      featureName,
+      projectKey,
+      testCaseName,
+      folderId,
+      status,
+      isAutomatable,
+      testCaseId,
+      setZephyrProgress,
+      setShowZephyrProgress,
+      setStatus,
+      setPushedTabs,
+      setZephyrTestCaseIds,
+      savePushedStateToCache,
+      jiraTicketInfo,
+      activeTab,
+      currentDocumentName,
+      API_BASE_URL
+    );
   };
 
-  // Handle project selection
-  const handleProjectChange = (projectKey) => {
-    setZephyrConfig(prev => ({
-      ...prev,
-      projectKey: projectKey,
-      folderId: '' // Reset folder when project changes
-    }));
-    fetchAllFolders(projectKey); // Fetch all folders to show hierarchy
-  };
-
-  // Updated pushToZephyr function
-  const pushToZephyr = async (content, featureName = 'Test Feature', projectKey = '', testCaseName = '', folderId = '', status = 'Draft', isAutomatable = 'None', testCaseId = null) => {
-    try {
-      // Parse content to count scenarios
-      const lines = content.split('\n');
-      const scenarios = [];
-      let currentScenario = null;
-      
-      for (let i = 0; i < lines.length; i++) {
-        const line = lines[i].trim();
-        if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
-          if (currentScenario) {
-            scenarios.push(currentScenario);
-          }
-          currentScenario = line.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
-        }
-      }
-      if (currentScenario) {
-        scenarios.push(currentScenario);
-      }
-      
-      const totalScenarios = Math.max(scenarios.length, 1);
-      
-      // Initialize progress
-      setZephyrProgress({
-        current: 0,
-        total: totalScenarios,
-        message: 'Preparing to push test cases...',
-        status: 'pushing'
-      });
-      setShowZephyrProgress(true);
-      
-      // Real-time progress updates
-      const updateProgress = (current, message) => {
-        setZephyrProgress(prev => ({
-          ...prev,
-          current,
-          message
-        }));
-      };
-      
-      // Start with connection phase
-      updateProgress(0, 'Connecting to Zephyr Scale...');
-      await new Promise(resolve => setTimeout(resolve, 300));
-      
-      // Parse and prepare phase
-      updateProgress(0, 'Preparing test cases...');
-      await new Promise(resolve => setTimeout(resolve, 400));
-      
-      // Start the actual push
-      updateProgress(0, 'Creating test cases in Zephyr Scale...');
-      
-      // Create a progress interval to show activity during the API call
-      const progressInterval = setInterval(() => {
-        setZephyrProgress(prev => {
-          if (prev.current < totalScenarios) {
-            return {
-              ...prev,
-              current: Math.min(prev.current + 1, totalScenarios - 1),
-              message: `Creating test case ${Math.min(prev.current + 1, totalScenarios)} of ${totalScenarios}...`
-            };
-          }
-          return prev;
-        });
-      }, 800); // Update every 800ms
-      
-      const response = await axios.post(`${API_BASE_URL}/api/push-to-zephyr`, {
-        content: content,
-        featureName: featureName,
-        projectKey: projectKey,
-        testCaseName: testCaseName,
-        folderId: folderId || null,
-        status: status,
-        isAutomatable: isAutomatable,
-        testCaseId: testCaseId,
-        // Add Jira ticket information for traceability if this feature came from Jira
-        jiraTicketKey: jiraTicketInfo[activeTab]?.ticketKey || null,
-        jiraBaseUrl: jiraTicketInfo[activeTab]?.jiraBaseUrl || null
-      });
-
-      // Clear the progress interval
-      clearInterval(progressInterval);
-
-      if (response.data.success) {
-        updateProgress(totalScenarios, 'Successfully pushed all test cases!');
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        
-        setZephyrProgress(prev => ({
-          ...prev,
-          status: 'success'
-        }));
-        
-        await new Promise(resolve => setTimeout(resolve, 1500));
-        setShowZephyrProgress(false);
-        
-        // Show success message
-        setStatus({ 
-          type: 'success', 
-          message: `Test case "${activeTab}" pushed to Zephyr Scale successfully!${
-            response.data.jiraTraceability && response.data.jiraTraceability.success ? 
-              ` Jira ticket linked for traceability.` : 
-              ''
-          }` 
-        });
-        return response.data;
-      } else {
-        throw new Error('Push failed');
-      }
-    } catch (error) {
-      console.error('Error pushing to Zephyr Scale:', error);
-      
-      setZephyrProgress(prev => ({
-        ...prev,
-        status: 'error',
-        message: error.response?.data?.error || 'Failed to push to Zephyr Scale'
-      }));
-      
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      setShowZephyrProgress(false);
-      
-      setStatus({ 
-        type: 'error', 
-        message: error.response?.data?.error || 'Failed to push to Zephyr Scale. Please try again.' 
-      });
-      return null;
-    }
-  };
-
-  // Load projects and refresh folders when Zephyr config modal opens
+  // Load projects when Zephyr config modal opens
   useEffect(() => {
-    if (showZephyrConfig) {
-      // Reset test case name to empty when modal opens
-      setZephyrConfig(prev => ({ ...prev, testCaseName: '' }));
-      
-      if (zephyrProjects.length === 0) {
-        fetchZephyrProjects();
-      }
-      // Refresh folders if a project is already selected
-      if (zephyrConfig.projectKey) {
-        fetchZephyrFolders(zephyrConfig.projectKey);
-      }
+    if (showZephyrConfig && zephyrProjects.length === 0) {
+      fetchZephyrProjectsWrapper();
     }
-  }, [showZephyrConfig, fetchZephyrProjects, fetchZephyrFolders, zephyrConfig.projectKey, zephyrProjects.length]);
+  }, [showZephyrConfig, zephyrProjects.length, fetchZephyrProjectsWrapper]);
+
+  // Refresh folders when project key changes
+  useEffect(() => {
+    if (zephyrConfig.projectKey && zephyrConfig.projectKey.trim() !== '') {
+      fetchZephyrFoldersWrapper(zephyrConfig.projectKey);
+    }
+  }, [zephyrConfig.projectKey, fetchZephyrFoldersWrapper]);
 
   // Auto-generate image elements based on available images
   const [loadingImages, setLoadingImages] = useState([]);
   const [imagesLoaded, setImagesLoaded] = useState(false);
+  const [currentImage, setCurrentImage] = useState(0);
+  const [editableRequirements, setEditableRequirements] = useState([]);
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [selectedRequirements, setSelectedRequirements] = useState(new Set());
+  const [isSelectAllChecked, setIsSelectAllChecked] = useState(false);
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false);
+  const [showClearAllConfirmation, setShowClearAllConfirmation] = useState(false);
+  const [showCacheModal, setShowCacheModal] = useState(false);
+  const [cacheList, setCacheList] = useState([]);
+  const [selectedCaches, setSelectedCaches] = useState(new Set());
+  const [isLoadingCache, setIsLoadingCache] = useState(false);
+  const [isSelectAllCachesChecked, setIsSelectAllCachesChecked] = useState(false);
+  const [showCacheDeleteConfirmation, setShowCacheDeleteConfirmation] = useState(false);
   
-  // Rotate through test generation images
+  const fetchCacheListWrapper = () => {
+    fetchCacheList(setIsLoadingCache, setCacheList, setStatus, API_BASE_URL);
+  };
+
+  // Rotate through test generation images with improved reliability
   useEffect(() => {
     // Only proceed if we're generating, have images, and images are loaded
     if (!isGenerating || !loadingImages || loadingImages.length === 0 || !imagesLoaded) {
@@ -1393,257 +514,32 @@ SCENARIO NAMING GUIDELINES:
     }
     
     let isMounted = true;
-    let intervalId = null;
-    
-    // Wait for next tick to ensure DOM elements are rendered
-    const timeoutId = setTimeout(() => {
-      try {
-        // Check if component is still mounted
-        if (!isMounted) return;
-        
-        const images = document.querySelectorAll('.test-image');
-        
-        // Only proceed if images exist
-        if (!images || images.length === 0) {
-          console.log('⚠️  No test-image elements found, skipping image rotation');
-          return;
-        }
-        
-        let currentImage = 0;
-        
-        const rotateImages = () => {
-          try {
-            // Check if component is still mounted
-            if (!isMounted) return;
-            
-            // Safety check - ensure images still exist
-            const currentImages = document.querySelectorAll('.test-image');
-            if (!currentImages || currentImages.length === 0) {
-              console.log('⚠️  Test-image elements no longer exist, stopping rotation');
-              return;
-            }
-            
-            // Remove active class from all images
-            currentImages.forEach(img => {
-              try {
-                if (img && img.classList && typeof img.classList.remove === 'function') {
-                  img.classList.remove('active');
-                }
-              } catch (error) {
-                console.warn('⚠️  Error removing active class from image:', error);
-              }
-            });
-            
-            // Add active class to current image
-            if (currentImages[currentImage] && 
-                currentImages[currentImage].classList && 
-                typeof currentImages[currentImage].classList.add === 'function') {
-              currentImages[currentImage].classList.add('active');
-            }
-            
-            // Move to next image
-            currentImage = (currentImage + 1) % currentImages.length;
-          } catch (error) {
-            console.error('❌ Error in rotateImages function:', error);
-          }
-        };
-        
-        // Rotate images every 2 seconds (matching progress bar animation)
-        intervalId = setInterval(rotateImages, 2000);
-        
-        // Start with first image
-        rotateImages();
-        
-      } catch (error) {
-        console.error('❌ Error setting up image rotation:', error);
-      }
-    }, 100); // Small delay to ensure DOM is ready
+    // Start rotation immediately
+    const cleanup = rotateImages(currentImage, isMounted, setCurrentImage, isGenerating, 5);
     
     // Cleanup function
     return () => {
       isMounted = false;
-      clearTimeout(timeoutId);
-      if (intervalId) {
-        clearInterval(intervalId);
+      if (cleanup) {
+        cleanup();
       }
     };
   }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
-    const fetchLoadingImages = async () => {
-      try {
-        const response = await axios.get(`${API_BASE_URL}/api/loading-images`);
-        if (response.data.success) {
-          setLoadingImages(response.data.images);
-        } else {
-          // Fallback to static images if API fails
-          const fallbackImages = [
-            { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
-            { image: "Google's Updated Spam Policy - Repeated_.jpeg", title: "Creating Test Scenarios" },
-            { image: "Paperwork Robot Stock Illustrations_.png", title: "Adding Edge Cases" },
-            { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
-          ];
-          setLoadingImages(fallbackImages);
-        }
-      } catch (error) {
-        console.warn('⚠️  Failed to fetch loading images, using fallback:', error);
-        // Fallback to static images if API fails
-        const fallbackImages = [
-          { image: "the-documentation-that-shapes-them.png", title: "Analyzing Requirements" },
-          { image: "Google's Updated Spam Policy - Repeated_.jpeg", title: "Creating Test Scenarios" },
-          { image: "Paperwork Robot Stock Illustrations_.png", title: "Adding Edge Cases" },
-          { image: "A robot eating a stack of pancakes with_.png", title: "Generating Negative Tests" }
-        ];
-        setLoadingImages(fallbackImages);
-      }
-    };
-    
-    fetchLoadingImages();
+    // loadImages function moved to utils/renderUtils.js
+    loadImages(setImagesLoaded, setLoadingImages, API_BASE_URL);
   }, [API_BASE_URL]);
-
-  // const handleInsertRequirements = () => {
-  //   // Format requirements nicely before inserting (remove markdown syntax)
-  //   const formattedRequirements = formatRequirementsForInsertion(extractedRequirements);
-  //   setContent(formattedRequirements);
-  //   setStatus({ type: 'info', message: 'Requirements loaded for test generation. Click "Generate Tests" to create test cases.' });
-  // };
-
-  // Helper function to format requirements for insertion (remove markdown, format nicely)
-  // const formatRequirementsForInsertion = (markdownContent) => {
-  //   const lines = markdownContent.split('\n');
-  //   let formattedContent = 'Business Requirements:\n\n';
-  //
-  //   // First, find and include the header row
-  //   let headerRow = '';
-  //   for (let i = 0; i < lines.length; i++) {
-  //     const line = lines[i].trim();
-  //     if (line.startsWith('|') && line.endsWith('|')) {
-  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
-  //       if (parts.length >= 3 && parts[0].toLowerCase().includes('requirement id')) {
-  //         headerRow = line;
-  //         break;
-  //       }
-  //     }
-  //   }
-  //
-  //   // Add header row if found
-  //   if (headerRow) {
-  //     formattedContent += headerRow + '\n';
-  //     // Add separator line
-  //     const headerParts = headerRow.split('|').map(p => p.trim()).filter(p => p);
-  //     const separatorLine = '|' + headerParts.map(() => '---').join('|') + '|';
-  //     formattedContent += separatorLine + '\n';
-  //   }
-  //
-  //   // Add data rows
-  //   for (let i = 0; i < lines.length; i++) {
-  //     const line = lines[i].trim();
-  //     if (line.startsWith('|') && line.endsWith('|')) {
-  //       const parts = line.split('|').map(p => p.trim()).filter(p => p);
-  //       if (parts.length >= 3 && !parts[0].includes('---') && !parts[0].toLowerCase().includes('requirement id')) {
-  //         formattedContent += line + '\n';
-  //       }
-  //     }
-  //   }
-  //
-  //   return formattedContent.trim();
-  // };
-
-  // New function to format requirements with generated IDs for insertion
-  const formatRequirementsForInsertionWithGeneratedIds = (requirements) => {
-    let formattedContent = 'Business Requirements:\n\n';
-    
-    // Add header row
-    formattedContent += '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n';
-    formattedContent += '|---|---|---|---|\n';
-    
-    // Add data rows with generated IDs
-    requirements.forEach(req => {
-      formattedContent += `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity || 'CC: 1, Paths: 1'} |\n`;
-    });
-    
-    return formattedContent.trim();
-  };
-
-  // const handleCopyContent = () => {
-  //   navigator.clipboard.writeText(extractedRequirements);
-  //   setStatus({ type: 'success', message: 'Requirements copied to clipboard!' });
-  // };
-
-  const handleDownloadContent = async () => {
-    try {
-      // Generate Word document using backend API
-      const response = await axios.post(`${API_BASE_URL}/api/generate-word-doc`, {
-        content: extractedRequirements,
-        title: 'Business Requirements'
-      }, {
-        responseType: 'blob'
-      });
-      
-      const blob = new Blob([response.data], { 
-        type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' 
-      });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'business-requirements.docx';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      setStatus({ type: 'success', message: 'Requirements downloaded as Word document!' });
-    } catch (error) {
-      console.error('Error generating Word document:', error);
-      setStatus({ type: 'error', message: 'Failed to generate Word document. Please try again.' });
+  
+  // Initialize editable requirements when extractedRequirements changes
+  useEffect(() => {
+    if (extractedRequirements) {
+      const requirements = parseRequirementsTable(extractedRequirements, requirementsSource, jiraTicketPrefix, jiraTicketInfo, setJiraTicketPrefix, setJiraTicketInfo);
+      setEditableRequirements(requirements);
+      setHasUnsavedChanges(false);
     }
-  };
-
-  // Function to validate complexity values and show warnings
-  const validateComplexityValues = (requirements) => {
-    const warnings = [];
-    
-    requirements.forEach((req, index) => {
-      const complexity = req.complexity || '';
-      
-      // Check if complexity follows the expected format
-      const complexityMatch = complexity.match(/CC:\s*(\d+),\s*Decision Points:\s*(\d+),\s*Activities:\s*(\d+),\s*Paths:\s*(\d+)/);
-      
-      if (!complexityMatch) {
-        warnings.push(`Requirement ${req.id}: Invalid complexity format. Expected: "CC: X, Decision Points: Y, Activities: Z, Paths: W"`);
-        return;
-      }
-      
-      const [, cc, decisionPoints, activities, paths] = complexityMatch.map(Number);
-      
-      // Validate the formula: CC = E - N + 2P (where E=edges, N=nodes, P=components)
-      // For individual requirements, estimate edges and nodes
-      const estimatedEdges = decisionPoints + 1; // At least one flow per decision point
-      const estimatedNodes = decisionPoints + activities + 1; // Include start/end events
-      const estimatedComponents = 1; // Single workflow component
-      const calculatedCC = estimatedEdges - estimatedNodes + (2 * estimatedComponents);
-      
-      if (Math.abs(cc - calculatedCC) > 2) { // Allow some variance for estimation
-        warnings.push(`Requirement ${req.id}: Complexity may be inaccurate. Estimated CC: ${calculatedCC} (E:${estimatedEdges} - N:${estimatedNodes} + 2P:${estimatedComponents}), got: ${cc}`);
-      }
-      
-      // Check for reasonable values
-      if (cc > 50) {
-        warnings.push(`Requirement ${req.id}: Extremely high complexity (${cc}). Consider breaking down this requirement.`);
-      }
-      
-      if (decisionPoints > 100) {
-        warnings.push(`Requirement ${req.id}: Very high decision points (${decisionPoints}). Consider simplifying the logic.`);
-      }
-      
-      // Check if paths make sense
-      if (paths < cc) {
-        warnings.push(`Requirement ${req.id}: Number of paths (${paths}) should typically be >= cyclomatic complexity (${cc})`);
-      }
-    });
-    
-    return warnings;
-  };
-
+  }, [extractedRequirements, jiraTicketInfo, jiraTicketPrefix, requirementsSource]);
+  
   return (
     <div className="container">
       {/* Status Message */}
@@ -1669,20 +565,28 @@ SCENARIO NAMING GUIDELINES:
               <div className="test-generation-images">
                 <div className="image-container">
                   {loadingImages && loadingImages.length > 0 ? (
-                    loadingImages.map((imageStep, index) => (
-                      <div 
-                        key={index}
-                        className={`test-image ${index === 0 ? 'active' : ''}`} 
-                        data-image={index + 1}
-                      >
-                        <img 
-                          src={`/images/loading/${imageStep.image}`} 
-                          alt={imageStep.title} 
-                          className="loading-image" 
-                        />
-                        <span>{imageStep.title}</span>
-                      </div>
-                    ))
+                    <>
+                      {loadingImages.map((imageStep, index) => (
+                        <div 
+                          key={index}
+                          className={`test-image ${index === 0 ? 'active' : ''}`} 
+                          data-image={index + 1}
+                        >
+                          <img 
+                            src={`/images/loading/${imageStep.image}`} 
+                            alt={imageStep.title} 
+                            className="loading-image" 
+                            onLoad={() => {
+                              // Image loaded successfully
+                            }}
+                            onError={(e) => {
+                              // Image failed to load
+                            }}
+                          />
+                          <span>{imageStep.title}</span>
+                        </div>
+                      ))}
+                    </>
                   ) : (
                     <div className="test-image active">
                       <div className="loading-placeholder">
@@ -1716,14 +620,14 @@ SCENARIO NAMING GUIDELINES:
         
         <div 
           className={`upload-area ${isDragOver ? 'drag-over' : ''}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
+          onDragOver={handleDragOverWrapper}
+          onDragLeave={handleDragLeaveWrapper}
+          onDrop={handleDropWrapper}
         >
           <input
             type="file"
             ref={fileInputRef}
-            onChange={handleFileUpload}
+            onChange={handleFileUploadWrapper}
             multiple
             accept=".pdf,.docx,.doc,.txt,.md,.rtf,.odt,.jpg,.jpeg,.png,.gif,.bmp,.tiff,.webp,.svg,.xls,.xlsx,.ods,.ppt,.pptx,.odp,.vsd,.vsdx"
             style={{ display: 'none' }}
@@ -1823,7 +727,7 @@ SCENARIO NAMING GUIDELINES:
                     )}
                   </div>
                   <button
-                    onClick={() => removeFile(file.id)}
+                    onClick={() => removeFileWrapper(file.id)}
                     style={{
                       background: 'none',
                       border: 'none',
@@ -1856,13 +760,34 @@ SCENARIO NAMING GUIDELINES:
             className="btn btn-primary"
             onClick={() => {
               setShowJiraImport(true);
-              setJiraStep('connect');
-              setJiraConfig({
-                projectKey: '',
-                issueTypes: [],
-                selectedIssues: [],
-                baseUrl: '' // Will be set from backend response
-              });
+              // If connection is active, go directly to project selection
+              if (jiraConnectionActive) {
+                setJiraStep('select');
+                // If projects are empty, refetch them
+                if (jiraProjects.length === 0) {
+                  axios.get(`${API_BASE_URL}/api/jira/projects`)
+                    .then(response => {
+                      if (response.data.success) {
+                        setJiraProjects(response.data.projects || []);
+                        if (response.data.jiraBaseUrl) {
+                          setJiraConfig(prev => ({ ...prev, baseUrl: response.data.jiraBaseUrl }));
+                        }
+                      }
+                    })
+                    .catch(error => {
+                      console.error('Error fetching Jira projects:', error);
+                      setStatus({ type: 'error', message: 'Failed to fetch Jira projects' });
+                    });
+                }
+              } else {
+                setJiraStep('connect');
+                setJiraConfig({
+                  projectKey: '',
+                  issueTypes: [],
+                  selectedIssues: [],
+                  baseUrl: '' // Will be set from backend response
+                });
+              }
             }}
             title="Import test cases from Jira"
             style={{
@@ -1881,6 +806,20 @@ SCENARIO NAMING GUIDELINES:
           <div style={{ marginTop: '1.5rem', paddingTop: '1.5rem', borderTop: '1px solid #e2e8f0' }}>
             <h3 style={{ marginBottom: '1rem', fontSize: '1.1rem', color: '#2d3748' }}>
               Extracted Business Requirements
+              {hasUnsavedChanges && (
+                <span style={{ 
+                  marginLeft: '10px', 
+                  fontSize: '0.8rem', 
+                  color: '#f59e0b', 
+                  fontWeight: 'normal',
+                  backgroundColor: '#fef3c7',
+                  padding: '2px 8px',
+                  borderRadius: '12px',
+                  border: '1px solid #fbbf24'
+                }}>
+                  ⚠️ Unsaved Changes
+                </span>
+              )}
             </h3>
             
             {/* Proper table display - not markdown */}
@@ -1900,6 +839,15 @@ SCENARIO NAMING GUIDELINES:
               }}>
                 <thead>
                   <tr style={{ backgroundColor: '#f8f9fa' }}>
+                    <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center', fontWeight: 'bold', width: '50px' }}>
+                      <input
+                        type="checkbox"
+                        checked={isSelectAllChecked}
+                        onChange={() => handleSelectAll(isSelectAllChecked, editableRequirements, setSelectedRequirements, setIsSelectAllChecked)}
+                        style={{ transform: 'scale(1.2)' }}
+                        title="Select All"
+                      />
+                    </th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Requirement ID</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Business Requirement</th>
                     <th style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'left', fontWeight: 'bold' }}>Acceptance Criteria</th>
@@ -1907,118 +855,203 @@ SCENARIO NAMING GUIDELINES:
                   </tr>
                 </thead>
                 <tbody>
-                  {(() => {
-                    // Parse markdown table into proper table rows with generated IDs
-                    const requirements = parseRequirementsTable(extractedRequirements);
-                    
-                    return requirements.map((req, index) => (
-                      <tr key={index} style={{ backgroundColor: index % 2 === 0 ? '#ffffff' : '#f8f9fa' }}>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
-                          <textarea
-                            defaultValue={req.id}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].id = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontWeight: 'bold'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.requirement}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].requirement = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.acceptanceCriteria}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].acceptanceCriteria = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '80px',
-                              fontFamily: 'inherit'
-                            }}
-                          />
-                        </td>
-                        <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
-                          <textarea
-                            defaultValue={req.complexity || 'CC: 1, Paths: 1'}
-                            onBlur={(e) => {
-                              // Only update when user finishes editing (onBlur)
-                              const newReqs = [...requirements];
-                              newReqs[index].complexity = e.target.value;
-                              const newContent = newReqs.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
-                              setExtractedRequirements(newContent);
-                            }}
-                            style={{ 
-                              width: '100%', 
-                              border: 'none', 
-                              outline: 'none', 
-                              background: 'transparent',
-                              resize: 'vertical',
-                              minHeight: '40px',
-                              fontFamily: 'inherit',
-                              fontSize: '12px'
-                            }}
-                            placeholder="CC: 1, Paths: 1"
-                          />
-                        </td>
-                      </tr>
-                    ));
-                  })()}
+                  {editableRequirements && editableRequirements.length > 0 ? (
+                    editableRequirements.map((req, index) => (
+                    <tr key={index} style={{ 
+                      backgroundColor: selectedRequirements.has(req.id) 
+                        ? '#e3f2fd' 
+                        : index % 2 === 0 ? '#ffffff' : '#f8f9fa',
+                      border: selectedRequirements.has(req.id) ? '2px solid #2196f3' : 'none'
+                    }}>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', textAlign: 'center' }}>
+                        <input
+                          type="checkbox"
+                          checked={selectedRequirements.has(req.id)}
+                          onChange={() => handleSelectRequirement(req.id, selectedRequirements, setSelectedRequirements)}
+                          style={{ transform: 'scale(1.2)' }}
+                          title="Select this requirement"
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6', fontWeight: 'bold' }}>
+                        <textarea
+                          value={req.id}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].id = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontWeight: 'bold'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.requirement}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].requirement = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.acceptanceCriteria}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].acceptanceCriteria = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '80px',
+                            fontFamily: 'inherit'
+                          }}
+                        />
+                      </td>
+                      <td style={{ padding: '12px', border: '1px solid #dee2e6' }}>
+                        <textarea
+                          value={req.complexity || 'CC: 1, Paths: 1'}
+                          onChange={(e) => {
+                            const newReqs = [...editableRequirements];
+                            newReqs[index].complexity = e.target.value;
+                            setEditableRequirements(newReqs);
+                            setHasUnsavedChanges(true);
+                          }}
+                          style={{ 
+                            width: '100%', 
+                            border: 'none', 
+                            outline: 'none', 
+                            background: 'transparent',
+                            resize: 'vertical',
+                            minHeight: '40px',
+                            fontFamily: 'inherit',
+                            fontSize: '12px'
+                          }}
+                          placeholder="CC: 1, Paths: 1"
+                        />
+                      </td>
+                    </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="5" style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                        {editableRequirements === null ? 'Loading requirements...' : 'No requirements found'}
+                      </td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
             </div>
+            
+            {/* Selection controls */}
+            {editableRequirements && editableRequirements.length > 0 && (
+              <div style={{ 
+                marginTop: '1rem', 
+                padding: '12px', 
+                backgroundColor: '#f8f9fa', 
+                border: '1px solid #dee2e6', 
+                borderRadius: '6px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center'
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                  <span style={{ fontWeight: 'bold', color: '#495057' }}>
+                    {selectedRequirements.size} of {editableRequirements.length} selected
+                  </span>
+                  {selectedRequirements.size > 0 && (
+                    <button
+                      onClick={() => clearSelection(setSelectedRequirements, setIsSelectAllChecked)}
+                      style={{
+                        padding: '6px 12px',
+                        backgroundColor: '#6c757d',
+                        color: 'white',
+                        border: 'none',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '12px'
+                      }}
+                    >
+                      Clear Selection
+                    </button>
+                  )}
+                </div>
+                <div style={{ display: 'flex', gap: '8px' }}>
+                  <button
+                    onClick={() => handleDeleteSelected(setShowDeleteConfirmation)}
+                    disabled={selectedRequirements.size === 0}
+                    style={{
+                      padding: '8px 16px',
+                      backgroundColor: selectedRequirements.size === 0 ? '#6c757d' : '#dc3545',
+                      color: 'white',
+                      border: 'none',
+                      borderRadius: '4px',
+                      cursor: selectedRequirements.size === 0 ? 'not-allowed' : 'pointer',
+                      fontSize: '14px',
+                      fontWeight: 'bold',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px'
+                    }}
+                    title={selectedRequirements.size === 0 ? 'Select requirements to delete' : `Delete ${selectedRequirements.size} selected requirement(s)`}
+                  >
+                    🗑️ Delete Selected
+                  </button>
+                </div>
+              </div>
+            )}
             
             {/* Simple action buttons */}
             <div style={{ marginTop: '1rem', display: 'flex', gap: '10px' }}>
               <button 
                 className="btn btn-primary"
+                style={{
+                  backgroundColor: '#3b82f6',
+                  borderColor: '#3b82f6',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(59, 130, 246, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#2563eb';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(59, 130, 246, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#3b82f6';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(59, 130, 246, 0.2)';
+                }}
                 onClick={() => {
-                  // Get the parsed requirements with generated IDs
-                  console.log('🔍 Insert Requirements clicked - extractedRequirements:', extractedRequirements.substring(0, 200));
-                  const requirements = parseRequirementsTable(extractedRequirements);
-                  console.log('🔍 Parsed requirements count:', requirements.length);
-                  
+                 
                   // Validate complexity values and show warnings
-                  const complexityWarnings = validateComplexityValues(requirements);
+                  const complexityWarnings = validateComplexityValues(editableRequirements);
                   if (complexityWarnings.length > 0) {
                     console.warn('⚠️ Complexity Validation Warnings:', complexityWarnings);
                     setStatus({ 
@@ -2030,7 +1063,7 @@ SCENARIO NAMING GUIDELINES:
                   }
                   
                   // Format requirements properly with headers and generated IDs for insertion
-                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(requirements);
+                  const formattedContent = formatRequirementsForInsertionWithGeneratedIds(editableRequirements);
                   setContent(formattedContent);
                 }}
               >
@@ -2038,13 +1071,178 @@ SCENARIO NAMING GUIDELINES:
               </button>
               <button 
                 className="btn btn-secondary"
+                disabled={!hasUnsavedChanges}
+                style={{
+                  backgroundColor: hasUnsavedChanges ? '#10b981' : '#9ca3af',
+                  borderColor: hasUnsavedChanges ? '#10b981' : '#9ca3af',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: hasUnsavedChanges ? '0 2px 4px rgba(16, 185, 129, 0.2)' : 'none',
+                  cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed',
+                  opacity: hasUnsavedChanges ? 1 : 0.6
+                }}
+                onMouseEnter={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#059669';
+                    e.target.style.transform = 'translateY(-1px)';
+                    e.target.style.boxShadow = '0 4px 8px rgba(16, 185, 129, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#10b981';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 2px 4px rgba(16, 185, 129, 0.2)';
+                  }
+                }}
+                onClick={async () => {
+                  try {
+                    // Sync editable requirements back to extractedRequirements with proper markdown table format
+                    const tableHeader = '| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |';
+                    const tableSeparator = '|---|---|---|---|';
+                    const tableRows = editableRequirements.map(r => `| ${r.id} | ${r.requirement} | ${r.acceptanceCriteria} | ${r.complexity || 'CC: 1, Paths: 1'} |`).join('\n');
+                    const newContent = `${tableHeader}\n${tableSeparator}\n${tableRows}`;
+                    
+                    setExtractedRequirements(newContent);
+                    setHasUnsavedChanges(false);
+                    
+                    // Save edited requirements to cache if we have a current document
+                    if (currentDocumentName) {
+                      try {
+                        await axios.post(`${API_BASE_URL}/api/save-edited-requirements`, {
+                          documentName: currentDocumentName,
+                          requirements: newContent
+                        });
+                        setStatus({ type: 'success', message: 'Changes saved successfully and cached!' });
+                      } catch (error) {
+                        console.error('Failed to save to cache:', error);
+                        setStatus({ type: 'success', message: 'Changes saved locally!' });
+                      }
+                    } else {
+                      setStatus({ type: 'success', message: 'Changes saved successfully!' });
+                    }
+                  } catch (error) {
+                    console.error('Error saving changes:', error);
+                    setStatus({ type: 'error', message: 'Failed to save changes!' });
+                  }
+                }}
+              >
+                Save Changes
+              </button>
+              <button 
+                className="btn btn-secondary"
+                disabled={!hasUnsavedChanges}
+                style={{
+                  backgroundColor: hasUnsavedChanges ? '#f59e0b' : '#9ca3af',
+                  borderColor: hasUnsavedChanges ? '#f59e0b' : '#9ca3af',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: hasUnsavedChanges ? '0 2px 4px rgba(245, 158, 11, 0.2)' : 'none',
+                  cursor: hasUnsavedChanges ? 'pointer' : 'not-allowed',
+                  opacity: hasUnsavedChanges ? 1 : 0.6
+                }}
+                onMouseEnter={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#d97706';
+                    e.target.style.transform = 'translateY(-1px)';
+                    e.target.style.boxShadow = '0 4px 8px rgba(245, 158, 11, 0.3)';
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  if (hasUnsavedChanges) {
+                    e.target.style.backgroundColor = '#f59e0b';
+                    e.target.style.transform = 'translateY(0)';
+                    e.target.style.boxShadow = '0 2px 4px rgba(245, 158, 11, 0.2)';
+                  }
+                }}
+                onClick={() => {
+                  // Reset to original requirements
+                  const requirements = parseRequirementsTable(extractedRequirements, requirementsSource, jiraTicketPrefix, jiraTicketInfo, setJiraTicketPrefix, setJiraTicketInfo);
+                  setEditableRequirements(requirements);
+                  setHasUnsavedChanges(false);
+                  setStatus({ type: 'info', message: 'Changes reset to original requirements.' });
+                }}
+              >
+                Reset Changes
+              </button>
+              
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#06b6d4',
+                  borderColor: '#06b6d4',
+                  color: 'white',
+                  fontWeight: '600',
+                  transition: 'all 0.2s ease-in-out',
+                  boxShadow: '0 2px 4px rgba(6, 182, 212, 0.2)'
+                }}
+                onMouseEnter={(e) => {
+                  e.target.style.backgroundColor = '#0891b2';
+                  e.target.style.transform = 'translateY(-1px)';
+                  e.target.style.boxShadow = '0 4px 8px rgba(6, 182, 212, 0.3)';
+                }}
+                onMouseLeave={(e) => {
+                  e.target.style.backgroundColor = '#06b6d4';
+                  e.target.style.transform = 'translateY(0)';
+                  e.target.style.boxShadow = '0 2px 4px rgba(6, 182, 212, 0.2)';
+                }}
+                onClick={async () => {
+                  if (editableRequirements.length === 0) {
+                    setStatus({ type: 'warning', message: 'No requirements to validate. Please extract requirements first.' });
+                    return;
+                  }
+                  
+                  try {
+                    const response = await axios.post(`${API_BASE_URL}/api/validate-requirements`, {
+                      requirements: editableRequirements
+                    });
+                    
+                    if (response.data.success) {
+                      const validation = response.data.validation;
+                      const score = validation.overallScore;
+                      // const color = score >= 90 ? '#10b981' : score >= 80 ? '#f59e0b' : '#ef4444';
+                      
+                      setStatus({ 
+                        type: 'success', 
+                        message: `Requirements Quality Score: ${score}% - ${validation.recommendations[0]}` 
+                      });
+                      
+                      // Show detailed validation results
+                    }
+                  } catch (error) {
+                    console.error('Error validating requirements:', error);
+                    setStatus({ 
+                      type: 'error', 
+                      message: 'Failed to validate requirements. Please try again.' 
+                    });
+                  }
+                }}
+              >
+                Validate Quality
+              </button>
+              <button 
+                className="btn btn-secondary"
+                style={{
+                  backgroundColor: '#6b7280',
+                  borderColor: '#6b7280',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
                 onClick={() => navigator.clipboard.writeText(extractedRequirements)}
               >
                 Copy
               </button>
               <button 
                 className="btn btn-secondary"
-                onClick={handleDownloadContent}
+                style={{
+                  backgroundColor: '#059669',
+                  borderColor: '#059669',
+                  color: 'white',
+                  fontWeight: '600'
+                }}
+                onClick={() => handleDownloadContent(extractedRequirements, API_BASE_URL)}
               >
                 Download
               </button>
@@ -2086,55 +1284,72 @@ SCENARIO NAMING GUIDELINES:
           />
         </div>
 
-        <div className="flex gap-4">
-          <button
-            className="btn btn-primary"
-            onClick={generateTests}
-            disabled={isLoading || !content.trim()}
-          >
-            {isLoading ? (
-              <>
-                <div className="loading"></div>
-                Generating...
-              </>
-            ) : (
-              <>
-                <Sparkles size={20} />
-                Generate Tests
-              </>
-            )}
-          </button>
+        <div className="flex gap-4" style={{ justifyContent: 'space-between' }}>
+          <div style={{ display: 'flex', gap: '16px' }}>
+            <button
+              className="btn btn-primary"
+              onClick={generateTestsWrapper}
+              disabled={isLoading || !content.trim()}
+            >
+              {isLoading ? (
+                <>
+                  <div className="loading"></div>
+                  Generating...
+                </>
+              ) : (
+                <>
+                  <Sparkles size={20} />
+                  Generate Tests
+                </>
+              )}
+            </button>
+            
+            <button
+              className="btn btn-danger"
+              onClick={() => setShowClearAllConfirmation(true)}
+              disabled={isLoading}
+            >
+              Clear All
+            </button>
+            
+            <button
+              className="btn btn-primary"
+              onClick={() => {
+                if (featureTabs.length > 0) {
+                  // Clear requirements, generated test content, and the test generation textarea content
+                  setExtractedRequirements('');
+                  setGeneratedTests('');
+                  setContent('');
+                  setShowModal(true);
+                } else {
+                  setStatus({ type: 'error', message: 'No test cases available to display. Please generate tests first.' });
+                }
+              }}
+              disabled={isLoading || featureTabs.length === 0}
+            >
+              View Generated Test
+            </button>
+          </div>
           
-
-          
           <button
-            className="btn btn-danger"
-            onClick={clearAll}
-            disabled={isLoading}
-          >
-            Clear All
-          </button>
-          
-          {/* Temporary test button */}
-          <button
-            className="btn btn-primary"
-            onClick={() => {
-              if (generatedTests && generatedTests.trim()) {
-                setShowModal(true);
-              } else {
-                setStatus({ type: 'error', message: 'No test cases available to display. Please generate tests first.' });
-              }
+            className="btn btn-secondary"
+            style={{
+              backgroundColor: '#dc3545',
+              borderColor: '#dc3545',
+              color: 'white',
+              fontWeight: '600'
             }}
-            disabled={isLoading || !generatedTests || !generatedTests.trim()}
+            onClick={() => openCacheModal(setShowCacheModal, fetchCacheListWrapper)}
+            title="Manage cached documents"
           >
-            View Generated Test
+            🗑️ Delete Cache
           </button>
         </div>
       </div>
 
 
 
-      {/* Instructions */}
+      
       {/* Empty State */}
       {!generatedTests && !extractedRequirements && (
         <div className="card">
@@ -2180,7 +1395,7 @@ SCENARIO NAMING GUIDELINES:
               <div className="modal-actions">
                 <button 
                   className="btn btn-info"
-                  onClick={() => {
+                  onClick={async () => {
                     const currentFeature = featureTabs[activeTab];
                     const isCurrentlyEditing = editingFeatures[activeTab];
                     
@@ -2193,7 +1408,24 @@ SCENARIO NAMING GUIDELINES:
                       };
                       setFeatureTabs(updatedFeatures);
                       setEditingFeatures(prev => ({ ...prev, [activeTab]: false }));
-                      setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                      
+                      // Save edited tests to cache if we have a current document
+                      if (currentDocumentName) {
+                        try {
+                          // Combine all test content
+                          const allTestContent = updatedFeatures.map(f => f.content).join('\n\n');
+                          await axios.post(`${API_BASE_URL}/api/save-edited-tests`, {
+                            documentName: currentDocumentName,
+                            tests: allTestContent
+                          });
+                          setStatus({ type: 'success', message: `Updated "${currentFeature.title}" and saved to cache!` });
+                        } catch (error) {
+                          console.error('Failed to save tests to cache:', error);
+                          setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                        }
+                      } else {
+                        setStatus({ type: 'success', message: `Updated "${currentFeature.title}"!` });
+                      }
                     } else {
                       // Start editing current feature
                       setEditingFeatures(prev => ({ ...prev, [activeTab]: true }));
@@ -2216,7 +1448,7 @@ SCENARIO NAMING GUIDELINES:
                 </button>
                 <button 
                   className="btn btn-warning"
-                  onClick={refineTests}
+                  onClick={refineTestsWrapper}
                   disabled={isLoading || pushedTabs.has(activeTab)}
                   title={pushedTabs.has(activeTab) ? "Cannot refine after pushing to Zephyr" : "Refine and improve the current feature"}
                 >
@@ -2296,15 +1528,6 @@ SCENARIO NAMING GUIDELINES:
             {/* Feature Content */}
             {featureTabs.length > 0 && (
               <div className="feature-content">
-                {/* Debug info for imported features */}
-                {console.log('🔍 Feature Tabs Debug:', {
-                  featureTabsLength: featureTabs.length,
-                  activeTab: activeTab,
-                  currentFeature: featureTabs[activeTab],
-                  editableFeatures: editableFeatures,
-                  currentEditableContent: editableFeatures[activeTab]
-                })}
-                
                 {editingFeatures[activeTab] && !pushedTabs.has(activeTab) ? (
                   <textarea
                     value={editableFeatures[activeTab] || ''}
@@ -2332,13 +1555,7 @@ SCENARIO NAMING GUIDELINES:
                     )}
                     <TestOutput content={editableFeatures[activeTab] || featureTabs[activeTab]?.content || ''} />
                     
-                    {/* Debug info for TestOutput */}
-                    {console.log('🔍 TestOutput Debug:', {
-                      editableContent: editableFeatures[activeTab],
-                      featureContent: featureTabs[activeTab]?.content,
-                      finalContent: editableFeatures[activeTab] || featureTabs[activeTab]?.content || '',
-                      hasContent: !!(editableFeatures[activeTab] || featureTabs[activeTab]?.content)
-                    })}
+
                   </>
                 )}
               </div>
@@ -2384,10 +1601,10 @@ SCENARIO NAMING GUIDELINES:
                 <button
                   className="btn btn-primary"
                   onClick={() => {
-                    const currentFeature = featureTabs[activeTab];
+                    // const currentFeature = featureTabs[activeTab];
                     setZephyrConfig({
                       projectKey: '',
-                      testCaseName: currentFeature?.title || 'Test Feature',
+                      testCaseName: '',
                       folderId: '',
                       status: 'Draft',
                       isAutomatable: 'None'
@@ -2502,7 +1719,7 @@ SCENARIO NAMING GUIDELINES:
                             backgroundColor: zephyrConfig.projectKey === '' ? '#e3f2fd' : 'transparent'
                           }}
                           onClick={() => {
-                            handleProjectChange('');
+                            handleProjectChange('', setZephyrConfig, fetchAllFoldersWrapper);
                             setShowProjectDropdown(false);
                             setProjectSearch(''); // Clear search when option is selected
                           }}
@@ -2524,7 +1741,7 @@ SCENARIO NAMING GUIDELINES:
                                 backgroundColor: zephyrConfig.projectKey === project.key ? '#e3f2fd' : 'transparent'
                               }}
                               onClick={() => {
-                                handleProjectChange(project.key);
+                                handleProjectChange(project.key, setZephyrConfig, fetchAllFoldersWrapper);
                                 setShowProjectDropdown(false);
                                 setProjectSearch(''); // Clear search when project is selected
                               }}
@@ -2588,7 +1805,7 @@ SCENARIO NAMING GUIDELINES:
                               <span
                                 style={{ cursor: 'pointer', textDecoration: 'underline' }}
                                 onClick={() => {
-                                  fetchAllFolders(zephyrConfig.projectKey);
+                                  fetchAllFoldersWrapper(zephyrConfig.projectKey);
                                   setFolderSearch('');
                                 }}
                               >
@@ -2667,7 +1884,7 @@ SCENARIO NAMING GUIDELINES:
                             onChange={(e) => {
                               setFolderSearch(e.target.value);
                               if (e.target.value.trim()) {
-                                searchFolders(zephyrConfig.projectKey, e.target.value);
+                                searchFoldersWrapper(zephyrConfig.projectKey, e.target.value);
                               } else if (folderNavigation.currentLevel === 'search') {
                                 // Return to previous level when search is cleared
                                 if (folderNavigation.currentLevel === 'subfolder') {
@@ -2677,7 +1894,7 @@ SCENARIO NAMING GUIDELINES:
                                   );
                                   setZephyrFolders(subfolders);
                                 } else {
-                                  fetchAllFolders(zephyrConfig.projectKey);
+                                  fetchAllFoldersWrapper(zephyrConfig.projectKey);
                                 }
                               }
                             }}
@@ -2695,7 +1912,7 @@ SCENARIO NAMING GUIDELINES:
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
-                                fetchAllFolders(zephyrConfig.projectKey);
+                                fetchAllFoldersWrapper(zephyrConfig.projectKey);
                                 setFolderSearch('');
                               }}
                               style={{
@@ -2781,7 +1998,7 @@ SCENARIO NAMING GUIDELINES:
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
-                                              toggleFolderExpansion(folder.id);
+                                              toggleFolderExpansion(folder.id, expandedFolders, setExpandedFolders);
                                             }}
                                             style={{
                                               background: 'none',
@@ -2852,7 +2069,7 @@ SCENARIO NAMING GUIDELINES:
                               ));
                             } else {
                               const folderTree = buildFolderTree(zephyrFolders);
-                              return renderFolderTree(folderTree);
+                              return renderFolderTree(folderTree, 0);
                             }
                           })()}
                         </div>
@@ -2861,7 +2078,7 @@ SCENARIO NAMING GUIDELINES:
                   </div>
                   <button
                     type="button"
-                    onClick={() => zephyrConfig.projectKey && fetchZephyrFolders(zephyrConfig.projectKey)}
+                    onClick={() => zephyrConfig.projectKey && fetchZephyrFoldersWrapper(zephyrConfig.projectKey)}
                     disabled={!zephyrConfig.projectKey || loadingFolders}
                     style={{
                       padding: '8px 12px',
@@ -2951,7 +2168,7 @@ SCENARIO NAMING GUIDELINES:
                     const currentContent = editableFeatures[activeTab] || featureTabs[activeTab]?.content || '';
                     const currentFeature = featureTabs[activeTab];
                     
-                    const result = await pushToZephyr(
+                    const result = await pushToZephyrWrapper(
                       currentContent,
                       currentFeature?.title || 'Test Feature',
                       zephyrConfig.projectKey,
@@ -2964,11 +2181,27 @@ SCENARIO NAMING GUIDELINES:
                     
                     if (result) {
                       // Add current tab to pushed tabs and store test case IDs
-                      setPushedTabs(prev => new Set([...prev, activeTab]));
-                      setZephyrTestCaseIds(prev => ({
-                        ...prev,
+                      const newPushedTabs = new Set([...pushedTabs, activeTab]);
+                      const newTestCaseIds = {
+                        ...zephyrTestCaseIds,
                         [activeTab]: result.zephyrTestCaseIds || [result.zephyrTestCaseId]
-                      }));
+                      };
+                      
+                      setPushedTabs(newPushedTabs);
+                      setZephyrTestCaseIds(newTestCaseIds);
+                      
+                      // Save pushed state to cache
+                      if (requirementsSource === 'jira' && jiraTicketInfo[activeTab]?.ticketKey) {
+                        // For Jira issues, save pushed state using the Jira ticket key with "jira-" prefix
+                        const issuePushedTabs = new Set([0]); // Map to index 0 for the issue
+                        const issueTestCaseIds = { 0: result.zephyrTestCaseIds || [result.zephyrTestCaseId] };
+                        const jiraDocumentName = `jira-${jiraTicketInfo[activeTab].ticketKey}`;
+                        savePushedStateToCache(issuePushedTabs, issueTestCaseIds, jiraDocumentName, jiraTicketInfo, API_BASE_URL);
+                      } else if (currentDocumentName) {
+                        // For uploaded documents, save normally
+                        savePushedStateToCache(newPushedTabs, newTestCaseIds, currentDocumentName, jiraTicketInfo, API_BASE_URL);
+                      }
+                      
                       setStatus({ 
                         type: 'success', 
                         message: `Successfully ${zephyrTestCaseIds[activeTab] ? 'updated' : 'pushed'} to Zephyr Scale! ${result.zephyrTestCaseIds ? `${result.zephyrTestCaseIds.length} test cases` : 'Test Case ID: ' + result.zephyrTestCaseId}${jiraTicketInfo[activeTab] ? ` | Jira ticket ${jiraTicketInfo[activeTab].ticketKey} automatically added to coverage` : ''}` 
@@ -3060,7 +2293,6 @@ SCENARIO NAMING GUIDELINES:
           className="modal-overlay" 
           data-modal="jira-import" 
           onClick={() => {
-            console.log('🔍 Modal overlay clicked, closing modal...');
             setShowJiraImport(false);
           }}
           style={{ zIndex: 1000 }}
@@ -3111,20 +2343,29 @@ SCENARIO NAMING GUIDELINES:
                   </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-primary"
-                      onClick={testJiraConnection}
-                      disabled={isLoadingJira}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Connecting...</span>
-                        </>
-                      ) : (
-                        'Jira Connect'
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={testJiraConnectionWrapper}
+                        disabled={isLoadingJira}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Connecting...</span>
+                          </>
+                        ) : (
+                          'Connect to Jira'
+                        )}
+                      </button>
+                    </div>
                     
                     {jiraConfig.baseUrl && (
                       <div style={{ 
@@ -3147,6 +2388,56 @@ SCENARIO NAMING GUIDELINES:
               {jiraStep === 'select' && (
                 <div>
                   <h4 style={{ marginBottom: '1rem', color: '#2d3748' }}>Step 2: Select Project and Issues</h4>
+                  
+                  {/* Connection Status */}
+                  {jiraConnectionActive && (
+                    <div style={{ 
+                      background: '#f0f9ff', 
+                      border: '1px solid #0ea5e9', 
+                      borderRadius: '6px', 
+                      padding: '12px', 
+                      marginBottom: '1rem',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <div style={{ 
+                          width: '8px', 
+                          height: '8px', 
+                          borderRadius: '50%', 
+                          backgroundColor: '#10b981' 
+                        }}></div>
+                        <span style={{ color: '#0c4a6e', fontSize: '0.9rem', fontWeight: '500' }}>
+                          Connected to {jiraConfig.baseUrl}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setJiraConnectionActive(false);
+                          setJiraStep('connect');
+                          setJiraConfig({
+                            projectKey: '',
+                            issueTypes: [],
+                            selectedIssues: [],
+                            baseUrl: ''
+                          });
+                        }}
+                        style={{
+                          background: 'none',
+                          border: '1px solid #0ea5e9',
+                          color: '#0ea5e9',
+                          padding: '4px 8px',
+                          borderRadius: '4px',
+                          fontSize: '0.8rem',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        Change Connection
+                      </button>
+                    </div>
+                  )}
                   
                   <div className="form-group">
                     <label htmlFor="jiraProject">Project *</label>
@@ -3255,10 +2546,17 @@ SCENARIO NAMING GUIDELINES:
                       <label>Issue Types</label>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '8px' }}>
                         {['Epic', 'Story', 'Task', 'Bug'].map((type) => (
-                          <label key={type} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <label key={type} style={{ 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px',
+                            opacity: !jiraConfig.projectKey ? 0.5 : 1,
+                            cursor: !jiraConfig.projectKey ? 'not-allowed' : 'pointer'
+                          }}>
                             <input
                               type="checkbox"
                               checked={jiraConfig.issueTypes.includes(type)}
+                              disabled={!jiraConfig.projectKey}
                               onChange={(e) => {
                                 if (e.target.checked) {
                                   setJiraConfig(prev => ({ 
@@ -3281,26 +2579,40 @@ SCENARIO NAMING GUIDELINES:
                     </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setJiraStep('connect')}
-                    >
-                      Back
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={fetchJiraIssues}
-                      disabled={isLoadingJira || !jiraConfig.projectKey || jiraConfig.issueTypes.length === 0}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Fetching Issues...</span>
-                        </>
-                      ) : (
-                        'Fetch Issues'
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={fetchJiraIssuesWrapper}
+                        disabled={isLoadingJira || !jiraConfig.projectKey || jiraConfig.issueTypes.length === 0}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Fetching...</span>
+                          </>
+                        ) : (
+                          jiraCacheInfo.isCached && !shouldRefetchWrapper() ? 'Refresh' : 'Fetch'
+                        )}
+                      </button>
+                      
+                      {jiraCacheInfo.isCached && !shouldRefetchWrapper() && (
+                        <button
+                          className="btn btn-sm btn-outline-secondary"
+                          onClick={clearJiraCacheWrapper}
+                          disabled={isLoadingJira}
+                          title="Clear cache and force fresh fetch"
+                        >
+                          Clear Cache
+                        </button>
                       )}
-                    </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3349,31 +2661,108 @@ SCENARIO NAMING GUIDELINES:
                     ))}
                   </div>
                   
+                  {/* Cache Status and Pagination Controls */}
+                  <div style={{ 
+                    marginTop: '12px', 
+                    padding: '12px', 
+                    backgroundColor: '#f8fafc', 
+                    borderRadius: '6px',
+                    border: '1px solid #e2e8f0'
+                  }}>
+                    {/* Cache Status */}
+                    {jiraCacheInfo.isCached && !shouldRefetchWrapper() && (
+                      <div style={{ 
+                        marginBottom: '8px', 
+                        padding: '8px', 
+                        backgroundColor: '#e6fffa', 
+                        borderRadius: '4px',
+                        border: '1px solid #81e6d9'
+                      }}>
+                        <div style={{ fontSize: '0.85rem', color: '#234e52', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <span>📦</span>
+                          <span>Cached data from {jiraCacheInfo.lastFetched ? new Date(jiraCacheInfo.lastFetched).toLocaleTimeString() : 'recently'}</span>
+                        </div>
+                      </div>
+                    )}
+                    
+                    {/* Pagination Controls */}
+                    {(() => {
+                      
+                      return jiraPagination.totalItems > jiraPagination.itemsPerPage;
+                    })() && (
+                      <>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '8px'
+                        }}>
+                          <div style={{ fontSize: '0.9rem', color: '#4a5568' }}>
+                            Showing {((jiraPagination.currentPage - 1) * jiraPagination.itemsPerPage) + 1}-{Math.min(jiraPagination.currentPage * jiraPagination.itemsPerPage, jiraPagination.totalItems)} of {jiraPagination.totalItems} issues
+                          </div>
+                          <div style={{ display: 'flex', gap: '8px' }}>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => goToPageWrapper(jiraPagination.currentPage - 1)}
+                              disabled={isLoadingJira || jiraPagination.currentPage <= 1}
+                            >
+                              Previous
+                            </button>
+                            <span style={{ 
+                              padding: '6px 12px', 
+                              fontSize: '0.9rem', 
+                              color: '#4a5568',
+                              alignSelf: 'center'
+                            }}>
+                              Page {jiraPagination.currentPage}
+                            </span>
+                            <button
+                              className="btn btn-sm btn-secondary"
+                              onClick={() => goToPageWrapper(jiraPagination.currentPage + 1)}
+                              disabled={isLoadingJira || jiraPagination.currentPage >= Math.ceil(jiraPagination.totalItems / jiraPagination.itemsPerPage)}
+                            >
+                              Next
+                            </button>
+                          </div>
+                        </div>
+                      </>
+                    )}
+                  </div>
+                  
                   <div style={{ marginTop: '12px', fontSize: '0.9rem', color: '#4a5568' }}>
                     Selected: {jiraConfig.selectedIssues.length} of {jiraIssues.length} issues
                   </div>
                   
                   <div className="modal-footer">
-                    <button
-                      className="btn btn-secondary"
-                      onClick={() => setJiraStep('select')}
-                    >
-                      Back
-                    </button>
-                    <button
-                      className="btn btn-primary"
-                      onClick={importJiraIssues}
-                      disabled={isLoadingJira || jiraConfig.selectedIssues.length === 0}
-                    >
-                      {isLoadingJira ? (
-                        <>
-                          <div className="spinner small"></div>
-                          <span>Importing...</span>
-                        </>
-                      ) : (
-                        `Import ${jiraConfig.selectedIssues.length} Issues`
-                      )}
-                    </button>
+                    <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setShowJiraImport(false)}
+                        style={{ marginRight: 'auto' }}
+                      >
+                        Close
+                      </button>
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => setJiraStep('select')}
+                      >
+                        Back
+                      </button>
+                      <button
+                        className="btn btn-primary"
+                        onClick={importJiraIssuesWrapper}
+                        disabled={isLoadingJira || jiraConfig.selectedIssues.length === 0}
+                      >
+                        {isLoadingJira ? (
+                          <>
+                            <div className="spinner small"></div>
+                            <span>Importing...</span>
+                          </>
+                        ) : (
+                          `Import ${jiraConfig.selectedIssues.length} Issues`
+                        )}
+                      </button>
+                    </div>
                   </div>
                 </div>
               )}
@@ -3384,6 +2773,416 @@ SCENARIO NAMING GUIDELINES:
 
       {/* Requirements Editor Modal */}
 
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '500px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🗑️ Delete Requirements
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to delete <strong>{selectedRequirements.size}</strong> selected requirement(s)?
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <strong>Requirements to be deleted:</strong>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                {Array.from(selectedRequirements).map(reqId => {
+                  const req = editableRequirements.find(r => r.id === reqId);
+                  return (
+                    <li key={reqId} style={{ marginBottom: '4px', fontSize: '14px' }}>
+                      <strong>{reqId}:</strong> {req?.requirement?.substring(0, 50)}{req?.requirement?.length > 50 ? '...' : ''}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              This action cannot be undone. The requirements will be permanently removed.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowDeleteConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmDeleteSelected(editableRequirements, selectedRequirements, setEditableRequirements, setSelectedRequirements, setIsSelectAllChecked, setShowDeleteConfirmation, setHasUnsavedChanges, setStatus)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete {selectedRequirements.size} Requirement(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cache Delete Confirmation Dialog */}
+      {showCacheDeleteConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '600px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🗑️ Delete Cached Documents
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to delete <strong>{selectedCaches.size}</strong> selected document(s) from cache?
+            </p>
+            <div style={{ marginBottom: '16px' }}>
+              <strong>Documents to be deleted:</strong>
+              <ul style={{ margin: '8px 0', paddingLeft: '20px', maxHeight: '150px', overflowY: 'auto' }}>
+                {Array.from(selectedCaches).map(docName => {
+                  const doc = cacheList.find(d => d.name === docName);
+                  return (
+                    <li key={docName} style={{ marginBottom: '4px', fontSize: '14px' }}>
+                      <strong>{docName}</strong>
+                      {doc && (
+                        <span style={{ color: '#666', marginLeft: '8px' }}>
+                          ({doc.requirementsCount} requirements, {doc.dateCached && doc.dateCached !== 'Unknown' ? new Date(doc.dateCached).toLocaleDateString() : 'Unknown date'})
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              This action cannot be undone. The documents and all their cached data will be permanently removed.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowCacheDeleteConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => confirmDeleteSelectedCaches(selectedCaches, currentDocumentName, API_BASE_URL, setStatus, clearAllWrapper, fetchCacheListWrapper, setSelectedCaches, setIsSelectAllCachesChecked, setShowCacheDeleteConfirmation)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Delete {selectedCaches.size} Document(s)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Clear All Confirmation Dialog */}
+      {showClearAllConfirmation && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1001
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '500px',
+            width: '90%'
+          }}>
+            <h3 style={{ margin: '0 0 16px 0', color: '#dc3545' }}>
+              🧹 Clear All Data
+            </h3>
+            <p style={{ margin: '0 0 20px 0', color: '#495057' }}>
+              Are you sure you want to clear all data? This will remove:
+            </p>
+            <ul style={{ margin: '0 0 20px 0', paddingLeft: '20px', color: '#495057' }}>
+              <li>All uploaded files and extracted requirements</li>
+              <li>Generated test cases and feature tabs</li>
+              <li>Jira imported data (connection will be preserved)</li>
+              <li>Zephyr configuration and pushed state</li>
+              <li>All form inputs and selections</li>
+            </ul>
+            <p style={{ margin: '0 0 20px 0', color: '#6c757d', fontSize: '14px' }}>
+              <strong>This action cannot be undone.</strong> You will need to start over from the beginning.
+            </p>
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'flex-end' }}>
+              <button
+                onClick={() => setShowClearAllConfirmation(false)}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#6c757d',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px'
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  clearAllWrapper();
+                  setShowClearAllConfirmation(false);
+                  setStatus({ type: 'info', message: 'All data has been cleared. You can now start fresh.' });
+                }}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '14px',
+                  fontWeight: 'bold'
+                }}
+              >
+                Clear All Data
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Cache Management Modal */}
+      {showCacheModal && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          backgroundColor: 'rgba(0, 0, 0, 0.5)',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          zIndex: 1000
+        }}>
+          <div style={{
+            backgroundColor: 'white',
+            padding: '24px',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0, 0, 0, 0.15)',
+            maxWidth: '800px',
+            width: '90%',
+            maxHeight: '80vh',
+            display: 'flex',
+            flexDirection: 'column'
+          }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <h3 style={{ margin: 0, color: '#dc3545' }}>
+                🗑️ Cache Management
+              </h3>
+              <button
+                onClick={() => setShowCacheModal(false)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '24px',
+                  cursor: 'pointer',
+                  color: '#666'
+                }}
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Cache List */}
+            <div style={{ 
+              flex: 1, 
+              overflowY: 'auto', 
+              border: '1px solid #dee2e6', 
+              borderRadius: '6px',
+              marginBottom: '20px'
+            }}>
+              {isLoadingCache ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                  Loading cache list...
+                </div>
+              ) : cacheList.length === 0 ? (
+                <div style={{ padding: '20px', textAlign: 'center', color: '#666' }}>
+                  No cached documents found
+                </div>
+              ) : (
+                <div>
+                  {/* Header with Select All */}
+                  <div style={{
+                    padding: '12px',
+                    backgroundColor: '#f8f9fa',
+                    borderBottom: '1px solid #dee2e6',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '12px'
+                  }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelectAllCachesChecked}
+                      onChange={() => handleSelectAllCaches(isSelectAllCachesChecked, cacheList, setSelectedCaches, setIsSelectAllCachesChecked)}
+                      style={{ transform: 'scale(1.2)' }}
+                    />
+                    <span style={{ fontWeight: 'bold' }}>Select All</span>
+                    <span style={{ marginLeft: 'auto', color: '#666' }}>
+                      {selectedCaches.size} of {cacheList.length} selected
+                    </span>
+                  </div>
+
+                  {/* Document List */}
+                  {cacheList.map((doc, index) => (
+                    <div
+                      key={doc.name}
+                      style={{
+                        padding: '12px',
+                        borderBottom: '1px solid #dee2e6',
+                        backgroundColor: selectedCaches.has(doc.name) ? '#e3f2fd' : 'white',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px'
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={selectedCaches.has(doc.name)}
+                        onChange={() => handleSelectCache(doc.name, selectedCaches, setSelectedCaches)}
+                        style={{ transform: 'scale(1.2)' }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 'bold', marginBottom: '4px' }}>
+                          {doc.name}
+                        </div>
+                        <div style={{ fontSize: '14px', color: '#666', display: 'flex', gap: '16px' }}>
+                          <span>📅 {doc.dateCached && doc.dateCached !== 'Unknown' ? new Date(doc.dateCached).toLocaleDateString() : 'Unknown date'}</span>
+                          <span>📋 {doc.requirementsCount} requirements</span>
+                          <span>
+                            {doc.hasAnalysis && '📄'} 
+                            {doc.hasRequirements && '📋'} 
+                            {doc.hasTests && '🧪'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Action Buttons */}
+            <div style={{ display: 'flex', gap: '12px', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', gap: '12px' }}>
+                <button
+                  onClick={() => setShowCacheModal(false)}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#6c757d',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={fetchCacheListWrapper}
+                  style={{
+                    padding: '8px 16px',
+                    backgroundColor: '#17a2b8',
+                    color: 'white',
+                    border: 'none',
+                    borderRadius: '4px',
+                    cursor: 'pointer'
+                  }}
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+              <button
+                onClick={() => handleDeleteSelectedCaches(selectedCaches, setShowCacheDeleteConfirmation)}
+                disabled={selectedCaches.size === 0}
+                style={{
+                  padding: '8px 16px',
+                  backgroundColor: selectedCaches.size === 0 ? '#6c757d' : '#dc3545',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '4px',
+                  cursor: selectedCaches.size === 0 ? 'not-allowed' : 'pointer',
+                  fontWeight: 'bold'
+                }}
+              >
+                🗑️ Delete Selected ({selectedCaches.size})
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       
     </div>
   );

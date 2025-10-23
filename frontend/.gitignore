@@ -1,0 +1,12 @@
+# Editor directories and files
+.vscode
+.idea
+
+.env
+.env.*
+
+node_modules
+.npmrc
+
+.DS_Store
+

@@ -9,3 +9,12 @@ node_modules
 .npmrc
 
 .DS_Store
+
+/frontend/.DS_Store
+
+/backend/.DS_Store
+/backend/cache/
+/backend/cache/metadata.json
+/backend/cache/**/*
+
+*.tgx
