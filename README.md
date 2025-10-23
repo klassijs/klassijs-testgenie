@@ -204,42 +204,6 @@ CC = Decision Points + 1
 - **Business Value**: Relevance to business objectives (High/Medium/Low)
 - **Implementation Complexity**: Development effort estimation
 
-## 📁 Project Structure
-
-```
-klassijs-testgenie/
-├── 📁 backend/                     # Backend services and APIs
-│   ├── 📁 services/               # Core business logic
-│   │   ├── openaiService.js       # AI processing with chunked extraction
-│   │   ├── jiraService.js          # Jira Cloud integration
-│   │   └── zephyrService.js        # Zephyr Scale integration
-│   ├── 📁 utils/                  # Utility functions
-│   │   ├── fileProcessor.js        # Universal document processing
-│   │   ├── workflowAnalyzer.js     # Complexity analysis engine
-│   │   └── docxGenerator.js        # Test case document generation
-│   ├── 📁 routes/                 # API endpoints
-│   │   └── api.js                  # Main API routes
-│   ├── index.js                   # Express server entry point
-│   └── package.json               # Backend dependencies
-├── 📁 frontend/                   # React frontend application
-│   ├── 📁 src/
-│   │   ├── 📁 components/         # React components
-│   │   │   ├── TestGenerator.js    # Main test generation interface
-│   │   │   ├── Header.js           # Application header with branding
-│   │   │   └── TestOutput.js       # Test case display and export
-│   │   ├── App.js                 # Main application component
-│   │   ├── App.css                # Modern styling with teal theme
-│   │   └── index.js               # React entry point
-│   ├── 📁 public/                 # Static assets
-│   │   ├── 📁 images/             # Branding and UI images
-│   │   └── index.html             # HTML template
-│   └── package.json               # Frontend dependencies
-├── 📄 env.example                 # Environment configuration template
-├── 📄 package.json                # Monorepo configuration
-├── 📄 pnpm-workspace.yaml         # pnpm workspace setup
-├── 📄 quick-start.sh              # Automated setup script
-└── 📄 README.md                   # This documentation
-```
 
 ## 🔍 API Documentation
 
@@ -415,8 +379,6 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 ## 📞 Support & Community
 
 - **GitHub Issues**: [Report bugs and request features](https://github.com/klassijs/klassijs-testgenie/issues)
-- **Discussions**: [Community discussions and Q&A](https://github.com/klassijs/klassijs-testgenie/discussions)
-- **Documentation**: [Comprehensive guides and tutorials](https://github.com/klassijs/klassijs-testgenie/wiki)
 - **YouTube Channel**: [Video tutorials and demos](https://youtube.com/@LarryG_01)
 
 ---

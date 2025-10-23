@@ -524,7 +524,7 @@ const TestGenerator = () => {
         cleanup();
       }
     };
-  }, [isGenerating, loadingImages, imagesLoaded]);
+  }, [isGenerating, loadingImages, imagesLoaded, currentImage]);
   
   useEffect(() => {
     // loadImages function moved to utils/renderUtils.js
