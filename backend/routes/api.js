@@ -1289,7 +1289,6 @@ router.get('/pushed-state/:documentName', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error getting pushed state:', error);
     res.status(500).json({
       error: 'Failed to get pushed state',
       details: error.message

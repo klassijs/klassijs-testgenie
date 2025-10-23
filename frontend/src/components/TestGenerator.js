@@ -138,6 +138,10 @@ const TestGenerator = () => {
   // Track which tabs have been pushed to Zephyr
   const [pushedTabs, setPushedTabs] = useState(new Set());
   
+  // Debug pushedTabs state changes
+  useEffect(() => {
+  }, [pushedTabs]);
+  
   // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
   const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
 

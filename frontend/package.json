@@ -1,5 +1,5 @@
 {
-  "name": "@klassijs-ai/frontend",
+  "name": "@klassijs-testgenie/frontend",
   "version": "1.0.0",
   "description": "Frontend React application for AI-powered test automation platform",
   "private": true,

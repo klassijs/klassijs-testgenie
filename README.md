@@ -71,8 +71,8 @@ Deterministic Count → AI Enhancement → Test Generation → Enterprise Integr
 
 1. **Clone and Setup**
    ```bash
-   git clone github.com/klassijs/klassijs-AI.git
-   cd klassijs-AI
+   git clone github.com/klassijs/klassijs-testgenie.git
+   cd klassijs-testgenie
    pnpm install
    ```
 
@@ -207,7 +207,7 @@ CC = Decision Points + 1
 ## 📁 Project Structure
 
 ```
-klassijs-AI/
+klassijs-testgenie/
 ├── 📁 backend/                     # Backend services and APIs
 │   ├── 📁 services/               # Core business logic
 │   │   ├── openaiService.js       # AI processing with chunked extraction
@@ -364,8 +364,8 @@ We welcome contributions! Please follow these guidelines:
 ### **Development Setup**
 ```bash
 # Fork and clone the repository
-git clone https://github.com/klassijs/klassijs-AI.git
-cd klassijs-AI
+git clone https://github.com/klassijs/klassijs-testgenie.git
+cd klassijs-testgenie
 
 # Install dependencies
 pnpm install
@@ -414,9 +414,9 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 
 ## 📞 Support & Community
 
-- **GitHub Issues**: [Report bugs and request features](https://github.com/klassijs/klassijs-AI/issues)
-- **Discussions**: [Community discussions and Q&A](https://github.com/klassijs/klassijs-AI/discussions)
-- **Documentation**: [Comprehensive guides and tutorials](https://github.com/klassijs/klassijs-AI/wiki)
+- **GitHub Issues**: [Report bugs and request features](https://github.com/klassijs/klassijs-testgenie/issues)
+- **Discussions**: [Community discussions and Q&A](https://github.com/klassijs/klassijs-testgenie/discussions)
+- **Documentation**: [Comprehensive guides and tutorials](https://github.com/klassijs/klassijs-testgenie/wiki)
 - **YouTube Channel**: [Video tutorials and demos](https://youtube.com/@LarryG_01)
 
 ---

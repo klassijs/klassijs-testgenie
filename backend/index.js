@@ -21,11 +21,6 @@ while (currentDir !== path.dirname(currentDir)) {
 }
 
 const result = require('dotenv').config({ path: envPath });
-console.log('🔍 DEBUG: .env path:', envPath);
-console.log('🔍 DEBUG: .env loaded:', !result.error);
-console.log('🔍 DEBUG: JIRA_BASE_URL:', process.env.JIRA_BASE_URL ? 'SET' : 'NOT SET');
-console.log('🔍 DEBUG: JIRA_EMAIL:', process.env.JIRA_EMAIL ? 'SET' : 'NOT SET');
-console.log('🔍 DEBUG: JIRA_API_TOKEN:', process.env.JIRA_API_TOKEN ? 'SET' : 'NOT SET');
 
 // Import routes
 const apiRoutes = require('./routes/api');
