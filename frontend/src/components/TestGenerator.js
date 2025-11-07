@@ -515,6 +515,8 @@ const TestGenerator = () => {
     
     let isMounted = true;
     // Start rotation immediately
+    // Note: currentImage is intentionally not in dependencies - rotateImages manages its own state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const cleanup = rotateImages(currentImage, isMounted, setCurrentImage, isGenerating, 5);
     
     // Cleanup function
@@ -524,7 +526,7 @@ const TestGenerator = () => {
         cleanup();
       }
     };
-  }, [isGenerating, loadingImages, imagesLoaded, currentImage]);
+  }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
     // loadImages function moved to utils/renderUtils.js
