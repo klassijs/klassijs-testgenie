@@ -812,7 +812,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
     }
 
     // CRITICAL: Check that every requirement has acceptance criteria
-    const requirementRows = validRows.filter(row => row.includes('BR-'));
+    const requirementRows = validRows.filter(row => row.includes('TG-'));
     let missingAcceptanceCriteria = 0;
 
     requirementRows.forEach(row => {
@@ -1824,7 +1824,7 @@ async function extractRemainingRequirements(requestId, content, businessElementC
 function combineRequirements(originalRequirements, remainingRequirements, expectedTotal) {
   try {
     // Remove the header row from remaining requirements if it exists
-    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('BR-'));
+    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('TG-'));
 
     // Create the combined table
     let combinedTable = originalRequirements;
@@ -1836,7 +1836,7 @@ function combineRequirements(originalRequirements, remainingRequirements, expect
     });
 
     // Add summary footer
-    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('BR-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
+    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('TG-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
 
     return combinedTable;
   } catch (error) {
@@ -1855,8 +1855,8 @@ function createFinalRequirementsTable(allRequirements, totalExpected) {
   try {
     // Sort requirements by BR number
     const sortedRequirements = allRequirements.sort((a, b) => {
-      const aNum = parseInt(a.id.replace('BR-', ''));
-      const bNum = parseInt(b.id.replace('BR-', ''));
+      const aNum = parseInt(a.id.replace('TG-', ''));
+      const bNum = parseInt(b.id.replace('TG-', ''));
       return aNum - bNum;
     });
 
@@ -1909,7 +1909,7 @@ function parseRequirementsFromResponse(response) {
     const lines = response.split('\n');
 
     for (const line of lines) {
-      if (line.includes('|') && line.includes('BR-')) {
+      if (line.includes('|') && line.includes('TG-')) {
         const parts = line.split('|').map(part => part.trim()).filter(part => part);
 
         if (parts.length >= 4) {
