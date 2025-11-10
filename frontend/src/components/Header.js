@@ -1,12 +1,12 @@
 import React from 'react';
-import logo from '../logo.png';
+// import logo from '../logo.png';
 
 const Header = () => {
   return (
     <header className="header">
       <div className="header-content">
         <div className="logo">
-          <img src={logo} alt="KlassiJS Logo" className="logo-icon" />
+          {/* <img src={logo} alt="KlassiJS Logo" className="logo-icon" /> */}
           <span>QA CHOMP!!!</span>
           <img src="/chompOnData.png" alt="Chomp Icon" className="chomp-icon chomp-icon-left" />
         </div>

@@ -223,7 +223,7 @@ context: "additional domain context"
   "success": true,
   "requirements": [
     {
-      "id": "BR-001",
+      "id": "TG-001",
       "text": "The system shall support user authentication",
       "complexity": 3,
       "confidence": 95,
@@ -247,7 +247,7 @@ Content-Type: application/json
 {
   "requirements": [
     {
-      "id": "BR-001", 
+      "id": "TG-001", 
       "text": "User authentication requirement",
       "complexity": 3
     }

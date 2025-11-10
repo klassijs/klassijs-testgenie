@@ -206,18 +206,18 @@ DUPLICATION PREVENTION:
 
 EXAMPLES OF WHAT NOT TO DO (DUPLICATE SCENARIOS):
 ❌ WRONG - Duplicate scenarios with same steps:
-Scenario: BR-001: User navigates to journal issue and no option for "Silverchair - Journals" is displayed
+Scenario: TG-001: User navigates to journal issue and no option for "Silverchair - Journals" is displayed
 Given I have navigated to a journal Issue package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
 
-Scenario: BR-001: User navigates to article package and no option for "Silverchair - Journals" is displayed
+Scenario: TG-001: User navigates to article package and no option for "Silverchair - Journals" is displayed
 Given I have navigated to an Article package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
 
 ✅ CORRECT - Single scenario with examples:
-Scenario Outline: BR-001: User navigates to different package types and no option for "Silverchair - Journals" is displayed
+Scenario Outline: TG-001: User navigates to different package types and no option for "Silverchair - Journals" is displayed
 Given I have navigated to a <package_type> package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
@@ -580,7 +580,7 @@ function detectNamingPattern(scenarios) {
     }
   }
 
-  // Check for requirement ID pattern (e.g., "BR-001: User Login")
+  // Check for requirement ID pattern (e.g., "TG-001: User Login")
   const requirementIdPattern = /^[A-Z]{2}-\d+:\s*.+/;
   if (scenarios.every(scenario => requirementIdPattern.test(scenario))) {
     return {
@@ -666,7 +666,7 @@ SCENARIO NAMING PRESERVATION:
 - PRESERVE the original scenario names exactly as they appear in the provided content
 - Do NOT change, modify, or rename existing scenarios
 - When adding new scenarios, follow the same naming convention used in the original content
-- If the original content uses requirement IDs (e.g., "BR-001: User Login"), maintain that format for new scenarios
+- If the original content uses requirement IDs (e.g., "TG-001: User Login"), maintain that format for new scenarios
 - If the original content uses Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description")
 - Do NOT increment tab numbers or change the prefix - keep the exact same identifier for all scenarios
 - Keep the exact same Feature name and structure`
@@ -759,12 +759,12 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
 
   try {
     // Count requirements (more flexible pattern matching)
-    const requirementMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
+    const requirementMatches = extractedRequirements.match(/\|\s*TG-\d+\s*\|/g);
     requirementCount = requirementMatches ? requirementMatches.length : 0;
 
     // If no requirements found with flexible pattern, try even more flexible matching
     if (requirementCount === 0) {
-      const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
+      const flexibleMatches = extractedRequirements.match(/TG-\d+/g);
       requirementCount = flexibleMatches ? flexibleMatches.length : 0;
       if (requirementCount > 0) {
         // Debug logging removed
@@ -791,7 +791,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
     const checkCount = deterministicCount || requirementCount;
     const requirementIds = [];
     for (let i = 1; i <= checkCount; i++) {
-      const expectedId = `BR-${String(i).padStart(3, '0')}`;
+      const expectedId = `TG-${String(i).padStart(3, '0')}`;
       if (!extractedRequirements.includes(expectedId)) {
         issues.push(`Missing sequential requirement ID: ${expectedId}`);
         consistencyScore -= 10;
@@ -812,7 +812,7 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
     }
 
     // CRITICAL: Check that every requirement has acceptance criteria
-    const requirementRows = validRows.filter(row => row.includes('BR-'));
+    const requirementRows = validRows.filter(row => row.includes('TG-'));
     let missingAcceptanceCriteria = 0;
 
     requirementRows.forEach(row => {
@@ -1198,19 +1198,19 @@ ${elementCount > 100 ? `
 ` : ''}
 
 🚨 **CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS**:
-• where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
-• where Submission type is "publish" then content appears in PUBLISHED state → BR-002 (generate new acceptance criteria)
-• verify folder exclusion logic works as expected → BR-003 (use existing acceptance criteria if available)
-• verify file exclusion logic works as expected → BR-004 (use existing acceptance criteria if available)
+• where Submission type is "preview" then content appears in UNPUBLISHED state → TG-001 (generate new acceptance criteria)
+• where Submission type is "publish" then content appears in PUBLISHED state → TG-002 (generate new acceptance criteria)
+• verify folder exclusion logic works as expected → TG-003 (use existing acceptance criteria if available)
+• verify file exclusion logic works as expected → TG-004 (use existing acceptance criteria if available)
 
 ${elementCount > 100 ? `
 🚨 **HIGH-DENSITY EXTRACTION EXAMPLES - EXTRACT EVERY SINGLE ONE**:
-• "The system must validate user input" → BR-005 (extract as separate requirement)
-• "Users can access their profiles" → BR-006 (extract as separate requirement)
-• "Administrators manage permissions" → BR-007 (extract as separate requirement)
-• "Data must be encrypted" → BR-008 (extract as separate requirement)
-• "Reports are generated monthly" → BR-009 (extract as separate requirement)
-• "Audit logs are maintained" → BR-010 (extract as separate requirement)
+• "The system must validate user input" → TG-005 (extract as separate requirement)
+• "Users can access their profiles" → TG-006 (extract as separate requirement)
+• "Administrators manage permissions" → TG-007 (extract as separate requirement)
+• "Data must be encrypted" → TG-008 (extract as separate requirement)
+• "Reports are generated monthly" → TG-009 (extract as separate requirement)
+• "Audit logs are maintained" → TG-010 (extract as separate requirement)
 
 🚨 **PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS - EXTRACT ALL**:
 - Look for repeated phrases: "must", "should", "will", "can", "need"
@@ -1239,13 +1239,13 @@ Create a markdown table with these EXACT columns and format:
 |----------------|----------------------|---------------------|------------|
 
 🚨 **CRITICAL**: You MUST use the EXACT format above with pipe symbols (|) and dashes (-) for the table structure.
-🚨 **CRITICAL**: Each requirement MUST be on a separate row starting with | BR-001 |, | BR-002 |, etc.
+🚨 **CRITICAL**: Each requirement MUST be on a separate row starting with | TG-001 |, | TG-002 |, etc.
 🚨 **CRITICAL**: Do NOT use any other table format - only the markdown table format shown above.
 
 🚨 **REQUIREMENT ID FORMAT**:
-- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Use sequential numbering: TG-001, TG-002, TG-003, etc.
 - Do NOT skip numbers or use random identifiers
-- Start with BR-001 and increment sequentially
+- Start with TG-001 and increment sequentially
 - 🚨 **MANDATORY**: You MUST have exactly ${elementCount} requirements
 
 🚨 **BUSINESS REQUIREMENT RULES**:
@@ -1393,15 +1393,15 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
     let requirementCount = 0;
 
     // Primary pattern: Standard markdown table format
-    const standardMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
+    const standardMatches = extractedRequirements.match(/\|\s*TG-\d+\s*\|/g);
     if (standardMatches) {
       requirementCount = standardMatches.length;
       // Debug logging removed
     }
 
-    // Fallback pattern: Just BR- numbers anywhere in the text
+    // Fallback pattern: Just TG- numbers anywhere in the text
     if (requirementCount === 0) {
-      const fallbackMatches = extractedRequirements.match(/BR-\d+/g);
+      const fallbackMatches = extractedRequirements.match(/TG-\d+/g);
       if (fallbackMatches) {
         requirementCount = fallbackMatches.length;
         // Debug logging removed
@@ -1410,7 +1410,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
 
     // Alternative pattern: Look for numbered requirements in any format
     if (requirementCount === 0) {
-      const numberedMatches = extractedRequirements.match(/(?:BR-|Requirement\s+)(\d+)/gi);
+      const numberedMatches = extractedRequirements.match(/(?:TG-|Requirement\s+)(\d+)/gi);
       if (numberedMatches) {
         requirementCount = numberedMatches.length;
         // Debug logging removed
@@ -1503,7 +1503,7 @@ ${processedContent}
         if (retryResponse.data && retryResponse.data.choices && retryResponse.data.choices[0] && retryResponse.data.choices[0].message) {
           const retryRequirements = retryResponse.data.choices[0].message.content.trim();
 
-          const retryCount = (retryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+          const retryCount = (retryRequirements.match(/\|\s*TG-\d+\s*\|/g) || []).length;
 
           if (retryCount > requirementCount) {
             extractedRequirements = retryRequirements;
@@ -1519,7 +1519,7 @@ ${processedContent}
               },
               {
                 role: 'user',
-                content: `Extract exactly ${elementCount} business requirements from this content. Start with BR-001 and go to BR-${elementCount}. Keep requirements simple and clear.
+                content: `Extract exactly ${elementCount} business requirements from this content. Start with TG-001 and go to TG-${elementCount}. Keep requirements simple and clear.
 
 Content: ${processedContent.substring(0, 20000)}`
               }
@@ -1542,7 +1542,7 @@ Content: ${processedContent.substring(0, 20000)}`
 
               if (simpleRetryResponse.data && simpleRetryResponse.data.choices && simpleRetryResponse.data.choices[0] && simpleRetryResponse.data.choices[0].message) {
                 const simpleRetryRequirements = simpleRetryResponse.data.choices[0].message.content.trim();
-                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
+                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*TG-\d+\s*\|/g) || []).length;
 
                 if (simpleRetryCount > requirementCount) {
                   extractedRequirements = simpleRetryRequirements;
@@ -1578,7 +1578,7 @@ Content: ${processedContent.substring(0, 20000)}`
 
             let allExtractedRequirements = [];
 
-            // Pass 1: Extract first 1/3 (BR-001 to BR-090 for 270 reqs)
+            // Pass 1: Extract first 1/3 (TG-001 to TG-090 for 270 reqs)
             const pass1Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1596,7 +1596,7 @@ Content: ${processedContent.substring(0, 20000)}`
               allExtractedRequirements = allExtractedRequirements.concat(pass1Requirements);
             }
 
-            // Pass 2: Extract second 1/3 (BR-091 to BR-180 for 270 reqs)
+            // Pass 2: Extract second 1/3 (TG-091 to TG-180 for 270 reqs)
             const pass2Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1614,7 +1614,7 @@ Content: ${processedContent.substring(0, 20000)}`
               allExtractedRequirements = allExtractedRequirements.concat(pass2Requirements);
             }
 
-            // Pass 3: Extract final 1/3 (BR-181 to BR-270 for 270 reqs)
+            // Pass 3: Extract final 1/3 (TG-181 to TG-270 for 270 reqs)
             const remainingForPass3 = totalRequirements - allExtractedRequirements.length;
             if (remainingForPass3 > 0) {
               const pass3Requirements = await extractRemainingRequirements(
@@ -1748,7 +1748,7 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     ${alreadyExtracted}
     
     🚨 MANDATORY: Extract exactly ${remainingCount} ADDITIONAL requirements that are NOT in the already extracted list.
-    🚨 MANDATORY: Start numbering from BR-${startBRNumber} and continue to BR-${endBRNumber}.
+    🚨 MANDATORY: Start numbering from TG-${startBRNumber} and continue to TG-${endBRNumber}.
     🚨 MANDATORY: Do NOT duplicate any requirements from the already extracted list.
     🚨 MANDATORY: Focus on business requirements that were missed in the first pass.
     🚨 MANDATORY: This is Chunk ${chunkNumber} of 3 - extract only your assigned portion.
@@ -1766,7 +1766,7 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
     |----------------|----------------------|---------------------|------------|
     
-    Extract exactly ${remainingCount} requirements starting from BR-${startBRNumber}.`;
+    Extract exactly ${remainingCount} requirements starting from TG-${startBRNumber}.`;
 
     // Create the proper request structure for makeOpenAIRequest
     const messages = [
@@ -1824,7 +1824,7 @@ async function extractRemainingRequirements(requestId, content, businessElementC
 function combineRequirements(originalRequirements, remainingRequirements, expectedTotal) {
   try {
     // Remove the header row from remaining requirements if it exists
-    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('BR-'));
+    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('TG-'));
 
     // Create the combined table
     let combinedTable = originalRequirements;
@@ -1836,7 +1836,7 @@ function combineRequirements(originalRequirements, remainingRequirements, expect
     });
 
     // Add summary footer
-    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('BR-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
+    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('TG-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
 
     return combinedTable;
   } catch (error) {
@@ -1855,8 +1855,8 @@ function createFinalRequirementsTable(allRequirements, totalExpected) {
   try {
     // Sort requirements by BR number
     const sortedRequirements = allRequirements.sort((a, b) => {
-      const aNum = parseInt(a.id.replace('BR-', ''));
-      const bNum = parseInt(b.id.replace('BR-', ''));
+      const aNum = parseInt(a.id.replace('TG-', ''));
+      const bNum = parseInt(b.id.replace('TG-', ''));
       return aNum - bNum;
     });
 
@@ -1890,7 +1890,7 @@ function createFinalRequirementsTable(allRequirements, totalExpected) {
  */
 function countRequirements(requirementsTable) {
   try {
-    const brMatches = requirementsTable.match(/BR-\d+/g);
+    const brMatches = requirementsTable.match(/TG-\d+/g);
     return brMatches ? brMatches.length : 0;
   } catch (error) {
     console.error('Error counting requirements:', error);
@@ -1909,7 +1909,7 @@ function parseRequirementsFromResponse(response) {
     const lines = response.split('\n');
 
     for (const line of lines) {
-      if (line.includes('|') && line.includes('BR-')) {
+      if (line.includes('|') && line.includes('TG-')) {
         const parts = line.split('|').map(part => part.trim()).filter(part => part);
 
         if (parts.length >= 4) {
