@@ -935,7 +935,17 @@ class CacheManager {
   async clearPushedState(documentName) {
     try {
       const pushedStatePath = this.getPushedStateFilePath(documentName);
-      await fs.unlink(pushedStatePath);
+      
+      // Check if file exists before trying to delete it
+      try {
+        await fs.access(pushedStatePath);
+        await fs.unlink(pushedStatePath);
+      } catch (fileError) {
+        // File doesn't exist, which is fine - just continue
+        if (fileError.code !== 'ENOENT') {
+          throw fileError; // Re-throw if it's a different error
+        }
+      }
       
       // Update document metadata
       const docMetadata = await this.loadDocumentMetadata(documentName);
