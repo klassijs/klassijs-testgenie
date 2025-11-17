@@ -249,6 +249,10 @@ export const pushToZephyr = async (
       });
     }, 800); // Update every 800ms
     
+    // Get Jira ticket info for traceability
+    const jiraTicketKey = jiraTicketInfo[activeTab]?.ticketKey || null;
+    const jiraBaseUrl = jiraTicketInfo[activeTab]?.jiraBaseUrl || null;
+    
     const response = await fetch(`${API_BASE_URL}/api/push-to-zephyr`, {
       method: 'POST',
       headers: {
@@ -263,8 +267,8 @@ export const pushToZephyr = async (
         status: status,
         isAutomatable: isAutomatable,
         testCaseId: testCaseId,
-        jiraTicketKey: jiraTicketInfo[activeTab]?.ticketKey || null,
-        jiraBaseUrl: jiraTicketInfo[activeTab]?.jiraBaseUrl || null
+        jiraTicketKey: jiraTicketKey,
+        jiraBaseUrl: jiraBaseUrl
       })
     });
 

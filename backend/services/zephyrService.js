@@ -861,11 +861,14 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`
             };
 
-            const webLinkResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`, webLinkData, {
+            const webLinkUrl = `${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`;
+
+            const webLinkResponse = await axios.post(webLinkUrl, webLinkData, {
               headers: {
                 'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
                 'Content-Type': 'application/json'
-              }
+              },
+              timeout: 10000
             });
 
             traceabilityResult = {
@@ -876,11 +879,57 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             };
             
           } catch (linkError) {
-            traceabilityResult = {
-              success: false,
-              error: linkError.message,
-              message: 'Error occurred while adding Jira ticket to coverage'
-            };
+            const errorDetails = linkError.response?.data || linkError.message;
+            const statusCode = linkError.response?.status || 'N/A';
+            const errorMessage = linkError.response?.data?.message || linkError.message;
+            
+            console.error('❌ Failed to add Jira ticket traceability link:', {
+              message: errorMessage,
+              status: statusCode,
+              error: errorDetails,
+              testCaseKey: zephyrResponse.data.key,
+              jiraTicketKey: jiraTicketKey,
+              jiraBaseUrl: jiraBaseUrl,
+              endpoint: `${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`
+            });
+            
+            // Try alternative method: add as comment with link
+            try {
+              const commentData = {
+                body: `🔗 JIRA TICKET FOR TRACEABILITY\n\n` +
+                      `Ticket: ${jiraTicketKey}\n` +
+                      `URL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\n` +
+                      `This test case was imported from Jira ticket ${jiraTicketKey}.`
+              };
+
+              const commentResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/comments`, commentData, {
+                headers: {
+                  'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 10000
+              });
+
+              traceabilityResult = {
+                success: true,
+                method: 'comment',
+                message: `Jira ticket ${jiraTicketKey} information added as comment (web link failed)`,
+                fallback: true,
+                originalError: errorMessage
+              };
+            } catch (commentError) {
+              console.error('❌ Failed to add Jira ticket as comment:', commentError.message);
+              traceabilityResult = {
+                success: false,
+                error: errorMessage,
+                message: 'Error occurred while adding Jira ticket to coverage',
+                details: {
+                  webLinkError: errorMessage,
+                  commentError: commentError.message,
+                  statusCode: statusCode
+                }
+              };
+            }
           }
         }
         

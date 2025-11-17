@@ -213,10 +213,33 @@ SCENARIO NAMING GUIDELINES:
         };
       });
       
-      // Set requirements source for generated tests
-      setRequirementsSource('upload');
-      setJiraTicketPrefix(''); // Clear any Jira ticket prefix
-      setJiraTicketInfo({}); // Clear any Jira ticket info
+      // Preserve Jira ticket info if source is Jira
+      // Since we only process a single ticket at a time, we can simply use the first entry
+      let preservedJiraTicketInfo = {};
+      if (requirementsSource === 'jira' && Object.keys(jiraTicketInfo).length > 0) {
+        // Get the first jiraTicketInfo entry (since we only process one ticket at a time)
+        const ticketInfo = Object.values(jiraTicketInfo)[0];
+        
+        if (ticketInfo && ticketInfo.ticketKey && ticketInfo.jiraBaseUrl) {
+          // Apply the same ticket info to all new test tabs
+          validationResults.forEach((feature, index) => {
+            preservedJiraTicketInfo[index] = ticketInfo;
+          });
+        } else {
+          console.warn('⚠️ jiraTicketInfo entry missing required fields:', ticketInfo);
+        }
+      } else {
+        // For non-Jira sources, clear the info
+        setJiraTicketPrefix('');
+      }
+      
+      // Set requirements source - preserve 'jira' if it was jira
+      if (requirementsSource !== 'jira') {
+        setRequirementsSource('upload');
+      }
+      
+      // Set the preserved jiraTicketInfo
+      setJiraTicketInfo(preservedJiraTicketInfo);
       
       // Set the feature tabs
       setFeatureTabs(validationResults);
