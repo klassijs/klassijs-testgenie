@@ -1,22 +1,11 @@
 {
   "name": "klassijs-testgenie",
   "version": "1.0.0",
-  "description": "AI-powered test automation platform for generating Cucumber test cases",
+  "description": "AI powered test automation platform for generating Cucumber test cases",
   "main": "index.js",
   "bin": {
     "klassijs-testgenie": "./bin/klassijs-testgenie"
   },
-  "files": [
-    "bin/",
-    "backend/",
-    "frontend/",
-    "package.json",
-    "pnpm-lock.yaml",
-    "pnpm-workspace.yaml",
-    "README.md",
-    "LICENSE",
-    "postinstall.js"
-  ],
   "creator": {
     "name": "Larry Goddard",
     "github": "https://github.com/klassijs",
@@ -34,16 +23,16 @@
     }
   ],
   "keywords": [
-    "test-automation",
-    "test-case-generation",
-    "ai-test-case-generation",
-    "ai-test-case-generation-cucumber",
-    "ai-test-case-generation-gherkin",
+    "test automation",
+    "test case generation",
+    "ai test case generation",
+    "ai test case generation cucumber",
+    "ai test case generation gherkin",
     "cucumber",
     "gherkin",
     "ai",
+    "testgenie",
     "openai",
-    "monorepo"
   ],
   "license": "MIT",
   "scripts": {

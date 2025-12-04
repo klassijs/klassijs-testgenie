@@ -1,6 +1,6 @@
 # 🚀 QA CHOMP!!! - AI-Powered Test Case Generator
 
-An AI-powered test automation platform designed for enterprise-scale quality assurance. It transforms business requirements into accurate, executable Cucumber test cases, reducing manual effort and errors. With advanced content analysis and support for a wide range of document formats, it ensures consistent, reliable results across diverse inputs—streamlining QA workflows and accelerating delivery at scale.
+Test Genie: An AI-powered test automation platform designed for enterprise-scale quality assurance. It transforms business requirements into accurate, executable Cucumber test cases, reducing manual effort and errors. With advanced content analysis and support for a wide range of document formats, it ensures consistent, reliable results across diverse inputs—streamlining QA workflows and accelerating delivery at scale.
 
 ## ✨ Key Features
 
@@ -38,19 +38,6 @@ An AI-powered test automation platform designed for enterprise-scale quality ass
 - **Real-time Feedback**: Live progress indicators and detailed analysis results
 - **Clean Architecture**: Organized component structure for optimal user experience
 
-## 🏗️ System Architecture
-
-```
-┌─────────────────────┐    ┌──────────────────────┐    ┌─────────────────────┐
-│   Frontend (React)  │◄──►│   Backend (Node.js)  │◄──►│  External Services  │
-└─────────────────────┘    └──────────────────────┘    └─────────────────────┘
-│                           │                           │
-├─ TestGenerator.js         ├─ Universal Extractor      ├─ Azure OpenAI GPT-4
-├─ Requirements Table       ├─ Deterministic Counter    ├─ Jira Cloud API
-├─ Zephyr Integration      ├─ Enhanced Visio Parser    ├─ Zephyr Scale API
-├─ Header Component        ├─ Quality Selector         ├─ Document Processing
-└─ Modern UI/UX           └─ Chunked AI Processing     └─ File Upload System
-```
 
 ### **Processing Pipeline**
 ```
@@ -204,158 +191,6 @@ CC = Decision Points + 1
 - **Business Value**: Relevance to business objectives (High/Medium/Low)
 - **Implementation Complexity**: Development effort estimation
 
-
-## 🔍 API Documentation
-
-### **Requirements Extraction**
-```http
-POST /api/extract-requirements
-Content-Type: multipart/form-data
-
-# Form data with file upload
-file: [document file]
-context: "additional domain context"
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "requirements": [
-    {
-      "id": "TG-001",
-      "text": "The system shall support user authentication",
-      "complexity": 3,
-      "confidence": 95,
-      "testability": 90,
-      "category": "authentication"
-    }
-  ],
-  "analysis": {
-    "totalElements": 25,
-    "qualityScore": 87,
-    "processingTime": "2.3s"
-  }
-}
-```
-
-### **Test Case Generation**
-```http
-POST /api/generate-tests
-Content-Type: application/json
-
-{
-  "requirements": [
-    {
-      "id": "TG-001", 
-      "text": "User authentication requirement",
-      "complexity": 3
-    }
-  ],
-  "context": "E-commerce platform",
-  "options": {
-    "includeNegativeTests": true,
-    "includeEdgeCases": true,
-    "testDepth": "comprehensive"
-  }
-}
-```
-
-### **Jira Integration Endpoints**
-```http
-POST /api/jira/test-connection    # Test Jira credentials
-GET  /api/jira/projects          # List available projects  
-POST /api/jira/search-issues     # Search for specific issues
-POST /api/jira/import-issues     # Import selected issues
-```
-
-### **Zephyr Scale Endpoints**
-```http
-POST /api/zephyr/test-connection # Test Zephyr credentials
-GET  /api/zephyr/projects        # List available projects
-GET  /api/zephyr/folders         # List project folders
-POST /api/zephyr/push-tests      # Push test cases to Zephyr
-```
-
-## 🚨 Troubleshooting Guide
-
-### **Common Issues & Solutions**
-
-**Common Solutions:**
-- Verify deployment name matches exactly (case-sensitive)
-- Ensure API key has proper permissions
-- Check if deployment is in the same region as resource
-- Verify API version is supported
-
-**Supported Formats:**
-- PDF: Version 1.4+ recommended
-- Word: .docx preferred over .doc
-- Excel: .xlsx with data in first sheet
-- Visio: .vsdx with flowchart content
-
-**Common Solutions:**
-- Regenerate API token if expired
-- Verify email matches Atlassian account exactly
-- Check project permissions for your account
-- Ensure Jira instance URL is correct
-
-#### **Memory and Performance Issues**
-```bash
-# Increase Node.js memory limit
-export NODE_OPTIONS="--max-old-space-size=4096"
-
-# Monitor memory usage
-node --inspect backend/index.js
-```
-
-**Optimization Tips:**
-- Process large documents in smaller chunks
-- Clear browser cache regularly
-- Use latest Node.js LTS version
-- Consider upgrading Azure OpenAI tier for better performance
-
-### **Debug Mode**
-Enable detailed logging by setting:
-```env
-NODE_ENV=development
-DEBUG=klassijs:*
-```
-
-## 🤝 Contributing
-
-We welcome contributions! Please follow these guidelines:
-
-### **Development Setup**
-```bash
-# Fork and clone the repository
-git clone https://github.com/klassijs/klassijs-testgenie.git
-cd klassijs-testgenie
-
-# Install dependencies
-pnpm install
-
-# Create feature branch
-git checkout -b feature/your-feature-name
-
-# Start development servers
-pnpm dev
-```
-
-### **Code Standards**
-- **JavaScript**: ES6+ with async/await patterns
-- **React**: Functional components with hooks
-- **Styling**: CSS modules with responsive design
-- **API**: RESTful endpoints with proper error handling
-- **Testing**: Jest for unit tests
-
-### **Pull Request Process**
-1. Create feature branch from `develop`
-2. Implement changes with proper documentation
-3. Add tests for new functionality
-4. Update README if needed
-5. Submit PR with detailed description
-6. Ensure all CI checks pass
-
 ## 📝 License
 
 This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) file for details.
@@ -369,18 +204,5 @@ This project is licensed under the **MIT License** - see the [LICENSE](LICENSE) 
 - **Carlos Bermejo** - [GitHub](https://github.com/carlosbermejop)
 - **Arthur East** - [GitHub](https://github.com/arthureast)
 
-### **Technology Stack**
-- **Frontend**: React, Modern CSS, Responsive Design
-- **Backend**: Node.js, Express, Multer for file uploads
-- **AI**: Azure OpenAI GPT-4 with advanced prompt engineering
-- **Integrations**: Jira Cloud API, Zephyr Scale API
-- **Document Processing**: pdf-parse, mammoth, jszip for multi-format support
-
-## 📞 Support & Community
-
-- **GitHub Issues**: [Report bugs and request features](https://github.com/klassijs/klassijs-testgenie/issues)
-- **YouTube Channel**: [Video tutorials and demos](https://youtube.com/@LarryG_01)
-
----
 
 **🎯 Transform your testing workflow with AI-powered automation, enterprise-grade integrations, and intelligent requirement analysis.**
