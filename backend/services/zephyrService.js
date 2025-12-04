@@ -789,19 +789,28 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             });
             
             // Update with all required fields plus the folder assignment
-            const moveResponse = await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, {
-              id: fullTestCaseData.data.id,
-              key: fullTestCaseData.data.key,
-              name: fullTestCaseData.data.name,
-              status: { id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : status === "Approved" ? 3233490 : 3233488 },
-              priority: fullTestCaseData.data.priority,
-              project: fullTestCaseData.data.project,
+            // Preserve all original fields and only update the folder and status
+            const updateData = {
+              ...fullTestCaseData.data,
               folder: { id: folderId },
-              customFields: {
-                'isAutomatable': isAutomatable, // Include the original value
-                'isAutomated': null // Include this field as required by Zephyr
-              }
-            }, {
+              // Explicitly set the status to ensure it's correct
+              status: { id: status === "Draft" ? 3233488 : status === "Deprecated" ? 3233489 : status === "Approved" ? 3233490 : 3233488 }
+            };
+            
+            // Ensure customFields are preserved and updated correctly
+            if (!updateData.customFields) {
+              updateData.customFields = {};
+            }
+            // Preserve existing customFields and update isAutomatable if provided
+            if (isAutomatable !== undefined) {
+              updateData.customFields.isAutomatable = isAutomatable;
+            }
+            // Ensure isAutomated is included if it was in the original
+            if (fullTestCaseData.data.customFields?.isAutomated !== undefined) {
+              updateData.customFields.isAutomated = fullTestCaseData.data.customFields.isAutomated;
+            }
+            
+            const moveResponse = await axios.put(`${zephyrBaseUrl}/testcases/${zephyrResponse.data.key}`, updateData, {
               headers: {
                 'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
                 'Content-Type': 'application/json'
@@ -810,7 +819,15 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             });          
             
           } catch (moveError) {
-            console.error('Post-creation folder assignment failed:', moveError.message);
+            const errorDetails = moveError.response?.data || moveError.message;
+            const statusCode = moveError.response?.status || 'N/A';
+            console.error('Post-creation folder assignment failed:', {
+              message: moveError.message,
+              status: statusCode,
+              error: errorDetails,
+              testCaseKey: zephyrResponse.data.key,
+              folderId: folderId
+            });
           }
         }
         
@@ -844,11 +861,14 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
               description: `Jira ticket ${jiraTicketKey} linked for test coverage and traceability`
             };
 
-            const webLinkResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`, webLinkData, {
+            const webLinkUrl = `${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`;
+
+            const webLinkResponse = await axios.post(webLinkUrl, webLinkData, {
               headers: {
                 'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
                 'Content-Type': 'application/json'
-              }
+              },
+              timeout: 10000
             });
 
             traceabilityResult = {
@@ -859,11 +879,57 @@ async function pushToZephyr(content, featureName = 'Test Feature', projectKey = 
             };
             
           } catch (linkError) {
-            traceabilityResult = {
-              success: false,
-              error: linkError.message,
-              message: 'Error occurred while adding Jira ticket to coverage'
-            };
+            const errorDetails = linkError.response?.data || linkError.message;
+            const statusCode = linkError.response?.status || 'N/A';
+            const errorMessage = linkError.response?.data?.message || linkError.message;
+            
+            console.error('❌ Failed to add Jira ticket traceability link:', {
+              message: errorMessage,
+              status: statusCode,
+              error: errorDetails,
+              testCaseKey: zephyrResponse.data.key,
+              jiraTicketKey: jiraTicketKey,
+              jiraBaseUrl: jiraBaseUrl,
+              endpoint: `${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/links/weblinks`
+            });
+            
+            // Try alternative method: add as comment with link
+            try {
+              const commentData = {
+                body: `🔗 JIRA TICKET FOR TRACEABILITY\n\n` +
+                      `Ticket: ${jiraTicketKey}\n` +
+                      `URL: ${jiraBaseUrl}/browse/${jiraTicketKey}\n\n` +
+                      `This test case was imported from Jira ticket ${jiraTicketKey}.`
+              };
+
+              const commentResponse = await axios.post(`${ZEPHYR_BASE_URL}/testcases/${zephyrResponse.data.key}/comments`, commentData, {
+                headers: {
+                  'Authorization': `Bearer ${ZEPHYR_API_TOKEN}`,
+                  'Content-Type': 'application/json'
+                },
+                timeout: 10000
+              });
+
+              traceabilityResult = {
+                success: true,
+                method: 'comment',
+                message: `Jira ticket ${jiraTicketKey} information added as comment (web link failed)`,
+                fallback: true,
+                originalError: errorMessage
+              };
+            } catch (commentError) {
+              console.error('❌ Failed to add Jira ticket as comment:', commentError.message);
+              traceabilityResult = {
+                success: false,
+                error: errorMessage,
+                message: 'Error occurred while adding Jira ticket to coverage',
+                details: {
+                  webLinkError: errorMessage,
+                  commentError: commentError.message,
+                  statusCode: statusCode
+                }
+              };
+            }
           }
         }
         

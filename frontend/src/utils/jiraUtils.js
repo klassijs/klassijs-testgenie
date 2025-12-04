@@ -347,8 +347,12 @@ export const importJiraIssues = async (
             });
             
             // Store Jira ticket info for traceability - set for ALL new feature tabs
-            const jiraTicketInfo = {};
-            const ticketKey = data.features[0]?.title?.split(':')[0]?.trim() || 'JIRA';
+            // Merge with existing jiraTicketInfo instead of overwriting
+            const newJiraTicketInfo = { ...jiraTicketInfo };
+            
+            // Get the actual ticket key from the feature data (preferred) or extract from title
+            const firstFeature = data.features[0];
+            const ticketKey = firstFeature?.ticketKey || firstFeature?.title?.split(':')[0]?.trim() || 'JIRA';
             
             // Get the current length of existing feature tabs
             const currentTabsLength = featureTabs.length;
@@ -356,12 +360,14 @@ export const importJiraIssues = async (
             // Set Jira ticket info for all the new feature tabs we just created
             newFeatures.forEach((feature, index) => {
               const globalIndex = currentTabsLength + index;
-              jiraTicketInfo[globalIndex] = {
-                ticketKey: ticketKey,
+              // Use the ticket key from the corresponding feature if available
+              const featureTicketKey = data.features[index]?.ticketKey || ticketKey;
+              newJiraTicketInfo[globalIndex] = {
+                ticketKey: featureTicketKey,
                 jiraBaseUrl: jiraConfig.baseUrl
               };
             });
-            setJiraTicketInfo(jiraTicketInfo);
+            setJiraTicketInfo(newJiraTicketInfo);
             
             // Set the Jira ticket prefix for consistency (use full ticket key)
             setJiraTicketPrefix(ticketKey);

@@ -21,11 +21,6 @@ while (currentDir !== path.dirname(currentDir)) {
 }
 
 const result = require('dotenv').config({ path: envPath });
-console.log('🔍 DEBUG: .env path:', envPath);
-console.log('🔍 DEBUG: .env loaded:', !result.error);
-console.log('🔍 DEBUG: JIRA_BASE_URL:', process.env.JIRA_BASE_URL ? 'SET' : 'NOT SET');
-console.log('🔍 DEBUG: JIRA_EMAIL:', process.env.JIRA_EMAIL ? 'SET' : 'NOT SET');
-console.log('🔍 DEBUG: JIRA_API_TOKEN:', process.env.JIRA_API_TOKEN ? 'SET' : 'NOT SET');
 
 // Import routes
 const apiRoutes = require('./routes/api');
@@ -42,7 +37,6 @@ app.use(cors({
 // Security middleware
 app.use(helmet());
 
-// Rate limiting - TEMPORARILY INCREASED FOR TESTING
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS) || 5 * 60 * 1000, // 5 minutes
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 1000, // 1000 requests per 5 minutes (very generous)

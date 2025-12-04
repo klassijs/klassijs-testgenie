@@ -10,9 +10,6 @@ const command = args[0] || 'dev';
 // Get the directory where this package is installed
 const packageDir = path.dirname(__dirname);
 
-console.log(`🚀 Starting Klassi-AI...`);
-console.log(`📁 Package directory: ${packageDir}`);
-
 // Change to the package directory and run the command
 process.chdir(packageDir);
 
@@ -24,14 +21,11 @@ const child = spawn('pnpm', [command], {
 });
 
 child.on('error', (error) => {
-  console.error(`❌ Error running klassi-ai:`, error);
   process.exit(1);
 });
 
 child.on('close', (code) => {
   if (code !== 0) {
-    console.error(`❌ klassi-ai exited with code ${code}`);
     process.exit(code);
   }
-  console.log(`✅ klassi-ai completed successfully`);
 });

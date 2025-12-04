@@ -21,7 +21,7 @@ const storage = multer.memoryStorage();
 const upload = multer({
   storage: storage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 20 * 1024 * 1024,
   },
   fileFilter: (req, file, cb) => {
     const mimeType = file.mimetype;
@@ -104,8 +104,6 @@ router.get('/loading-images', (req, res) => {
       };
     });
     
-
-    
     res.json({
       success: true,
       images: imageSteps,
@@ -113,7 +111,6 @@ router.get('/loading-images', (req, res) => {
     });
     
   } catch (error) {
-    console.error('Error scanning loading images:', error);
     res.status(500).json({
       success: false,
       error: 'Failed to scan loading images',
@@ -135,7 +132,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // First check for document-based cache (edited versions)
     const hasDocumentCache = await cacheManager.hasDocumentCachedResults(req.file.originalname, 'analysis');
-    
+
     if (hasDocumentCache) {
       const startTime = Date.now();
       const documentCachedResults = await cacheManager.getDocumentCachedResults(req.file.originalname, 'analysis');
@@ -157,7 +154,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
 
     // Check if we have cached results
     const hasCached = await cacheManager.hasCachedResults(fileHash, req.file.originalname);
-    
+
     const startTime = Date.now();
     const cachedResults = await cacheManager.getCachedResults(fileHash, req.file.originalname);
     if (cachedResults) {
@@ -173,7 +170,7 @@ router.post('/analyze-document', upload.single('file'), async (req, res) => {
     }
 
     const content = await extractFileContent(req.file);
-    
+
     if (!content || content.trim().length < 10) {
       return res.status(400).json({
         error: 'Unable to extract content',
@@ -251,11 +248,9 @@ router.post('/generate-tests', async (req, res) => {
     }
 
     // First check for document-based cache (edited versions)
-    // Only use document-based cache if this appears to be full document content, not individual requirements
-    // Individual requirements should use hash-based cache to ensure unique content per requirement
     if (documentName && !content.includes('REQUIREMENT TO TEST:')) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'tests');
-      
+
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'tests');
         if (documentCachedResults) {
@@ -293,7 +288,7 @@ router.post('/generate-tests', async (req, res) => {
         cacheInfo: cachedTestResults._cacheInfo
       });
     }
- 
+
     const generatedTests = await generateTestCases(content, context);
 
     // Prepare test results for caching
@@ -444,7 +439,7 @@ router.post('/extract-requirements', async (req, res) => {
     // First check for document-based cache (edited versions)
     if (documentName) {
       const hasDocumentCache = await cacheManager.hasDocumentCachedResults(documentName, 'requirements');
-      
+
       if (hasDocumentCache) {
         const documentCachedResults = await cacheManager.getDocumentCachedResults(documentName, 'requirements');
         if (documentCachedResults) {
@@ -525,11 +520,11 @@ router.post('/extract-requirements', async (req, res) => {
 
   } catch (error) {
     console.error('Error extracting requirements:', error);
-    
+
     let errorMessage = 'Failed to extract business requirements';
     let suggestion = 'Please try again with valid content';
     let statusCode = 503;
-    
+
     if (error.message.includes('Azure OpenAI is not configured')) {
       errorMessage = 'Requirements extraction service unavailable';
       suggestion = 'Please configure Azure OpenAI credentials to extract requirements';
@@ -549,7 +544,7 @@ router.post('/extract-requirements', async (req, res) => {
       suggestion = 'Too many requests to the AI service. Please wait a few minutes and try again. The system will automatically retry with delays.';
       statusCode = 429;
     }
-    
+
     res.status(statusCode).json({
       error: errorMessage,
       details: error.message,
@@ -583,8 +578,8 @@ router.post('/generate-word-doc', async (req, res) => {
 
   } catch (error) {
     console.error('Error generating Word document:', error);
-    
-    res.status(500).json({ 
+
+    res.status(500).json({
       error: 'Failed to generate Word document',
       details: error.message,
       suggestion: 'Please try again with valid content'
@@ -859,7 +854,7 @@ router.post('/jira/test-connection', async (req, res) => {
     if (result.success) {
       // Get projects after successful connection
       const projectsResult = await getJiraProjects();
-      
+
       res.json({
         success: true,
         message: result.message,
@@ -877,7 +872,7 @@ router.post('/jira/test-connection', async (req, res) => {
 
   } catch (error) {
     console.error('Error testing Jira connection:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to test Jira connection',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
@@ -917,7 +912,7 @@ router.post('/jira/fetch-issues', async (req, res) => {
 
   } catch (error) {
     console.error('Error fetching Jira issues:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to fetch Jira issues',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
@@ -929,7 +924,7 @@ router.post('/jira/fetch-issues', async (req, res) => {
 router.delete('/jira/clear-cache', async (req, res) => {
   try {
     const { projectKey, issueTypes } = req.body;
-    
+
     if (!projectKey || !issueTypes || issueTypes.length === 0) {
       return res.status(400).json({
         error: 'Missing required fields',
@@ -939,7 +934,7 @@ router.delete('/jira/clear-cache', async (req, res) => {
     }
 
     const documentName = `jira-${projectKey}-${issueTypes.sort().join('-')}`;
-    
+
     try {
       const results = await cacheManager.deleteMultipleDocuments([documentName]);
       if (results.deletedCount > 0) {
@@ -962,7 +957,7 @@ router.delete('/jira/clear-cache', async (req, res) => {
 
   } catch (error) {
     console.error('Error clearing Jira cache:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to clear Jira cache',
       details: error.message
     });
@@ -973,7 +968,7 @@ router.delete('/jira/clear-cache', async (req, res) => {
 router.post('/jira/import-issues', async (req, res) => {
   try {
     const { selectedIssues } = req.body;
-    
+
     if (!selectedIssues || selectedIssues.length === 0) {
       return res.status(400).json({
         error: 'Missing required fields',
@@ -1000,7 +995,7 @@ router.post('/jira/import-issues', async (req, res) => {
 
   } catch (error) {
     console.error('Error importing Jira issues:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to import Jira issues',
       details: error.message,
       suggestion: 'Please check your network connection and try again'
@@ -1013,7 +1008,7 @@ router.post('/jira/import-issues', async (req, res) => {
 router.post('/validate-requirements', async (req, res) => {
   try {
     const { requirements } = req.body;
-    
+
     if (!requirements || !Array.isArray(requirements) || requirements.length === 0) {
       return res.status(400).json({
         error: 'Missing or invalid requirements',
@@ -1033,7 +1028,7 @@ router.post('/validate-requirements', async (req, res) => {
 
   } catch (error) {
     console.error('Error validating requirements:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to validate requirements',
       details: error.message,
       suggestion: 'Please check your requirements format and try again'
@@ -1045,7 +1040,7 @@ router.post('/validate-requirements', async (req, res) => {
 router.post('/analyze-business-elements', async (req, res) => {
   try {
     const { content } = req.body;
-    
+
     if (!content || typeof content !== 'string') {
       return res.status(400).json({
         error: 'Missing or invalid content',
@@ -1072,7 +1067,7 @@ router.post('/analyze-business-elements', async (req, res) => {
 
   } catch (error) {
     console.error('Error analyzing business elements:', error);
-    res.status(500).json({ 
+    res.status(500).json({
       error: 'Failed to analyze business elements',
       details: error.message,
       suggestion: 'Please check your content format and try again'
@@ -1147,7 +1142,7 @@ router.get('/cache/list', async (req, res) => {
 router.delete('/cache/delete-multiple', async (req, res) => {
   try {
     const { documentNames } = req.body;
-    
+
     if (!documentNames || !Array.isArray(documentNames) || documentNames.length === 0) {
       return res.status(400).json({
         error: 'Missing or invalid document names',
@@ -1156,7 +1151,7 @@ router.delete('/cache/delete-multiple', async (req, res) => {
     }
 
     const results = await cacheManager.deleteMultipleDocuments(documentNames);
-    
+
     // Check if any deletions failed
     if (results.failedCount > 0) {
       return res.status(400).json({
@@ -1166,7 +1161,7 @@ router.delete('/cache/delete-multiple', async (req, res) => {
         results: results
       });
     }
-    
+
     res.json({
       success: true,
       message: `Successfully deleted ${results.deletedCount} document(s)`,
@@ -1258,9 +1253,7 @@ router.post('/save-edited-tests', async (req, res) => {
   }
 });
 
-// Pushed state cache endpoints
 
-// Get pushed state for a document
 router.get('/pushed-state/:documentName', async (req, res) => {
   try {
     const { documentName } = req.params;
@@ -1289,7 +1282,6 @@ router.get('/pushed-state/:documentName', async (req, res) => {
     }
 
   } catch (error) {
-    console.error('Error getting pushed state:', error);
     res.status(500).json({
       error: 'Failed to get pushed state',
       details: error.message
@@ -1395,4 +1387,4 @@ router.get('/pushed-states', async (req, res) => {
   }
 });
 
-module.exports = router; 
+module.exports = router;

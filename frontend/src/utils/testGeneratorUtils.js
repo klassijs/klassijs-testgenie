@@ -98,7 +98,7 @@ export const parseRequirementsTable = (requirementsContent, requirementsSource =
       } else {
         // For uploaded documents: use BR prefix
         requirementCounter++; // Increment counter for each valid requirement
-        generatedId = `BR-${String(requirementCounter).padStart(3, '0')}`;
+        generatedId = `TG-${String(requirementCounter).padStart(3, '0')}`;
       }
       
       requirements.push({

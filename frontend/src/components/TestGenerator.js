@@ -132,11 +132,15 @@ const TestGenerator = () => {
     current: 0,
     total: 0,
     message: '',
-    status: 'idle' // idle, pushing, success, error
+    status: 'idle'
   });
   
   // Track which tabs have been pushed to Zephyr
   const [pushedTabs, setPushedTabs] = useState(new Set());
+  
+  // Debug pushedTabs state changes
+  useEffect(() => {
+  }, [pushedTabs]);
   
   // Track Zephyr test case IDs for each tab (array of IDs since each scenario = 1 test case)
   const [zephyrTestCaseIds, setZephyrTestCaseIds] = useState({});
@@ -511,6 +515,8 @@ const TestGenerator = () => {
     
     let isMounted = true;
     // Start rotation immediately
+    // Note: currentImage is intentionally not in dependencies - rotateImages manages its own state
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     const cleanup = rotateImages(currentImage, isMounted, setCurrentImage, isGenerating, 5);
     
     // Cleanup function

@@ -45,7 +45,6 @@ export const clearAll = (setters, clearPushedStateCache) => {
     setRequirementsSource,
     setJiraTicketPrefix,
     setJiraTicketInfo,
-    setJiraIssueTypes,
     setShowJiraImport,
     setJiraConfig,
     setJiraProjects,
@@ -108,7 +107,6 @@ export const clearAll = (setters, clearPushedStateCache) => {
   setJiraTicketPrefix('');
   setJiraTicketInfo({});
   // Keep jiraConnectionActive as is - don't reset connection
-  setJiraIssueTypes([]);
   setShowJiraImport(false);
   setJiraConfig({
     baseUrl: '',

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Klassi-AI - AI-powered test automation platform
+ * klassijs-testgenie - AI-powered test automation platform
  * Main entry point for the NPM package
  */
 
@@ -17,7 +17,6 @@ class KlassiAI {
    * Start the development server
    */
   async startDev() {
-    console.log('🚀 Starting Klassi-AI development server...');
     return this.runCommand('dev');
   }
 
@@ -25,7 +24,6 @@ class KlassiAI {
    * Start the production server
    */
   async start() {
-    console.log('🚀 Starting Klassi-AI production server...');
     return this.runCommand('start');
   }
 
@@ -33,7 +31,6 @@ class KlassiAI {
    * Build the application
    */
   async build() {
-    console.log('🔨 Building Klassi-AI...');
     return this.runCommand('build:all');
   }
 
@@ -49,16 +46,13 @@ class KlassiAI {
       });
 
       child.on('error', (error) => {
-        console.error(`❌ Error running klassi-ai:`, error);
         reject(error);
       });
 
       child.on('close', (code) => {
         if (code !== 0) {
-          console.error(`❌ klassi-ai exited with code ${code}`);
           reject(new Error(`Process exited with code ${code}`));
         } else {
-          console.log(`✅ klassi-ai completed successfully`);
           resolve();
         }
       });
@@ -87,7 +81,6 @@ if (require.main === module) {
       klassiAI.build().catch(process.exit);
       break;
     default:
-      console.log('Available commands: dev, start, build');
       process.exit(1);
   }
 }

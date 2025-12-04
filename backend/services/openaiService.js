@@ -3,21 +3,21 @@ const { analyzeWorkflowContent, generateComplexityDescription, categorizeRequire
 
 // Retry helper function with exponential backoff for rate limiting
 async function makeOpenAIRequest(apiUrl, requestData, headers, maxRetries = 3) {
-  
+
   for (let attempt = 1; attempt <= maxRetries; attempt++) {
     try {
       const response = await axios.post(apiUrl, requestData, { headers });
       return response;
     } catch (error) {
       console.error(`❌ Attempt ${attempt} failed: ${error.message}`);
-      
+
       // If it's a 429 (rate limit) and we have retries left, wait and retry
       if (error.response?.status === 429 && attempt < maxRetries) {
         const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
         await new Promise(resolve => setTimeout(resolve, waitTime));
         continue;
       }
-      
+
       // If it's not a 429 or we're out of retries, throw the error
       throw error;
     }
@@ -109,10 +109,10 @@ const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 const isAzureOpenAIConfigured = OPENAI_URL && OPENAI_DEVELOPMENT_ID && OPENAI_API_VERSION && OPENAI_API_KEY;
 
 // Generate test cases using Azure OpenAI
-async function generateTestCases(content, context = '') {  
+async function generateTestCases(content, context = '') {
   // Log memory usage at start
   const used = process.memoryUsage();
-    
+
   if (!isAzureOpenAIConfigured) {
     throw new Error('Azure OpenAI is not configured');
   }
@@ -132,7 +132,7 @@ async function generateTestCases(content, context = '') {
   baseUrl = baseUrl.replace(/\/openai\/deployments\/?$/, '');
   
   const apiUrl = `${baseUrl}/openai/deployments/${OPENAI_DEVELOPMENT_ID}/chat/completions?api-version=${OPENAI_API_VERSION}`;
-  
+
   const messages = [
     {
       role: 'system',
@@ -206,18 +206,18 @@ DUPLICATION PREVENTION:
 
 EXAMPLES OF WHAT NOT TO DO (DUPLICATE SCENARIOS):
 ❌ WRONG - Duplicate scenarios with same steps:
-Scenario: BR-001: User navigates to journal issue and no option for "Silverchair - Journals" is displayed
+Scenario: TG-001: User navigates to journal issue and no option for "Silverchair - Journals" is displayed
 Given I have navigated to a journal Issue package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
 
-Scenario: BR-001: User navigates to article package and no option for "Silverchair - Journals" is displayed
+Scenario: TG-001: User navigates to article package and no option for "Silverchair - Journals" is displayed
 Given I have navigated to an Article package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
 
 ✅ CORRECT - Single scenario with examples:
-Scenario Outline: BR-001: User navigates to different package types and no option for "Silverchair - Journals" is displayed
+Scenario Outline: TG-001: User navigates to different package types and no option for "Silverchair - Journals" is displayed
 Given I have navigated to a <package_type> package in Atlas
 When I view the Workflow dropdown options
 Then I do not see an option for "Silverchair - Journals"
@@ -261,7 +261,7 @@ CRITICAL REQUIREMENTS:
     }
   ];
 
-  try {    
+  try {
     const startTime = Date.now();
     const response = await makeOpenAIRequest(
       apiUrl,
@@ -276,7 +276,7 @@ CRITICAL REQUIREMENTS:
         'Content-Type': 'application/json'
       }
     );
-    
+
     const requestTime = Date.now() - startTime;
     if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
       throw new Error(`Invalid response structure from Azure OpenAI: ${JSON.stringify(response.data)}`);
@@ -332,10 +332,10 @@ function removeDuplicateScenarios(gherkinContent) {
   let currentScenario = null;
   let currentSteps = [];
   let inScenario = false;
-  
+
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
-    
+
     // Check if this is a new scenario
     if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
       // Process previous scenario if exists
@@ -346,21 +346,21 @@ function removeDuplicateScenarios(gherkinContent) {
           uniqueScenarios.push(currentScenario, ...currentSteps);
         }
       }
-      
+
       // Start new scenario
       currentScenario = line;
       currentSteps = [];
       inScenario = true;
       continue;
     }
-    
+
     // Check if we're still in a scenario
     if (inScenario) {
-      if (line.startsWith('Feature:') || line.startsWith('Background:') || 
+      if (line.startsWith('Feature:') || line.startsWith('Background:') ||
           (line.startsWith('Scenario:') && i > 0) || line.startsWith('Scenario Outline:')) {
         // End of current scenario
         inScenario = false;
-        
+
         // Process the completed scenario
         if (currentScenario && currentSteps.length > 0) {
           const stepsKey = currentSteps.join('\n').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -369,23 +369,23 @@ function removeDuplicateScenarios(gherkinContent) {
             uniqueScenarios.push(currentScenario, ...currentSteps);
           }
         }
-        
+
         // Reset for next scenario
         currentScenario = null;
         currentSteps = [];
-      } else if (line && (line.startsWith('Given') || line.startsWith('When') || 
-                          line.startsWith('Then') || line.startsWith('And') || 
+      } else if (line && (line.startsWith('Given') || line.startsWith('When') ||
+                          line.startsWith('Then') || line.startsWith('And') ||
                           line.startsWith('But') || line.startsWith('Examples:'))) {
         currentSteps.push(line);
       }
     }
-    
+
     // Add non-scenario lines (Feature, Background, etc.)
     if (!inScenario) {
       uniqueScenarios.push(line);
     }
   }
-  
+
   // Process the last scenario if exists
   if (currentScenario && currentSteps.length > 0) {
     const stepsKey = currentSteps.join('\n').toLowerCase().replace(/\s+/g, ' ').trim();
@@ -394,13 +394,13 @@ function removeDuplicateScenarios(gherkinContent) {
       uniqueScenarios.push(currentScenario, ...currentSteps);
     }
   }
-  
+
   // Add spacing between scenarios for better readability
   const spacedScenarios = [];
-  
+
   for (let i = 0; i < uniqueScenarios.length; i++) {
     const line = uniqueScenarios[i];
-    
+
     // Check if this line starts a new scenario
     if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
       // Add a blank line before the scenario (except for the first one)
@@ -412,7 +412,7 @@ function removeDuplicateScenarios(gherkinContent) {
       spacedScenarios.push(line);
     }
   }
-  
+
   return spacedScenarios.join('\n');
 }
 
@@ -421,22 +421,22 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
   // Extract original feature name
   const originalFeatureMatch = originalContent.match(/^Feature:\s*(.+)$/m);
   const originalFeatureName = originalFeatureMatch ? originalFeatureMatch[1].trim() : '';
-  
+
   // Extract refined feature name
   const refinedFeatureMatch = refinedContent.match(/^Feature:\s*(.+)$/m);
   const refinedFeatureName = refinedFeatureMatch ? refinedFeatureMatch[1].trim() : '';
-  
+
   // Check if feature name was changed
   if (originalFeatureName && refinedFeatureName && originalFeatureName !== refinedFeatureName) {
     console.warn('⚠️  Feature name was changed during refinement. Restoring original feature name.');
     // Restore original feature name
     refinedContent = refinedContent.replace(/^Feature:\s*.+$/m, `Feature: ${originalFeatureName}`);
   }
-  
+
   // Extract original scenario names
   const originalScenarios = [];
   const originalLines = originalContent.split('\n');
-  
+
   for (const line of originalLines) {
     const trimmedLine = line.trim();
     if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
@@ -446,11 +446,11 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
       }
     }
   }
-  
+
   // Extract refined scenario names
   const refinedScenarios = [];
   const refinedLines = refinedContent.split('\n');
-  
+
   for (const line of refinedLines) {
     const trimmedLine = line.trim();
     if (trimmedLine.startsWith('Scenario:') || trimmedLine.startsWith('Scenario Outline:')) {
@@ -460,31 +460,31 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
       }
     }
   }
-  
+
   // Check if all original scenarios are preserved
-  const missingScenarios = originalScenarios.filter(original => 
+  const missingScenarios = originalScenarios.filter(original =>
     !refinedScenarios.some(refined => refined === original)
   );
-  
+
   if (missingScenarios.length > 0) {
     console.warn('⚠️  Some original scenarios were not preserved during refinement:', missingScenarios);
-    
+
     // Try to restore missing scenarios by finding them in the original content
     let restoredContent = refinedContent;
-    
+
     for (const missingScenario of missingScenarios) {
       // Find the original scenario content
       let inScenario = false;
       let scenarioContent = '';
-      
+
       for (let i = 0; i < originalLines.length; i++) {
         const line = originalLines[i].trim();
-        
+
         if (line.startsWith('Scenario:') || line.startsWith('Scenario Outline:')) {
           if (inScenario) {
             break; // End of previous scenario
           }
-          
+
           const scenarioName = line.replace('Scenario:', '').replace('Scenario Outline:', '').trim();
           if (scenarioName === missingScenario) {
             inScenario = true;
@@ -497,25 +497,25 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
           scenarioContent += line + '\n';
         }
       }
-      
+
       // Add the missing scenario to the refined content
       if (scenarioContent) {
         restoredContent += '\n' + scenarioContent.trim();
       }
     }
-    
+
     return restoredContent;
   } else {
-    
+
   }
-  
+
       // Check if new scenarios follow the same naming convention
-    const newScenarios = refinedScenarios.filter(refined => 
+    const newScenarios = refinedScenarios.filter(refined =>
       !originalScenarios.some(original => original === refined)
     );
-    
+
     if (newScenarios.length > 0) {
-      
+
       // Validate naming convention for new scenarios
       if (originalScenarios.length > 0) {
         const namingPattern = detectNamingPattern(originalScenarios);
@@ -525,15 +525,15 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
           const invalidNewScenarios = newScenarios.filter(scenario => {
             const match = scenario.match(namingPattern.pattern);
             if (!match) return true; // No pattern match
-            
+
             const newPrefix = match[1];
             return newPrefix !== namingPattern.prefix; // Different prefix
           });
-          
+
           if (invalidNewScenarios.length > 0) {
             console.warn('⚠️  Some new scenarios do not use the correct tab prefix. Expected:', namingPattern.prefix);
             console.warn('Invalid scenarios:', invalidNewScenarios);
-            
+
             // Auto-correct new scenarios to use the correct prefix
             let correctedContent = refinedContent;
             for (const invalidScenario of invalidNewScenarios) {
@@ -547,10 +547,10 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
           }
         } else {
           // For other patterns, just check if they match the pattern
-          const invalidNewScenarios = newScenarios.filter(scenario => 
+          const invalidNewScenarios = newScenarios.filter(scenario =>
             !scenario.match(namingPattern.pattern)
           );
-          
+
           if (invalidNewScenarios.length > 0) {
             console.warn('⚠️  Some new scenarios do not follow the original naming convention:', invalidNewScenarios);
           }
@@ -558,14 +558,14 @@ function validateScenarioNamePreservation(originalContent, refinedContent) {
       }
     }
   }
-  
+
   return refinedContent;
 }
 
 // Detect naming pattern from existing scenarios
 function detectNamingPattern(scenarios) {
   if (scenarios.length === 0) return null;
-  
+
   // Check for Jira ticket + tab pattern (e.g., "QAE-162-003: Display error message")
   const jiraTabPattern = /^([A-Z]+-\d+-\d+):\s*.+/;
   if (scenarios.every(scenario => jiraTabPattern.test(scenario))) {
@@ -579,8 +579,8 @@ function detectNamingPattern(scenarios) {
       };
     }
   }
-  
-  // Check for requirement ID pattern (e.g., "BR-001: User Login")
+
+  // Check for requirement ID pattern (e.g., "TG-001: User Login")
   const requirementIdPattern = /^[A-Z]{2}-\d+:\s*.+/;
   if (scenarios.every(scenario => requirementIdPattern.test(scenario))) {
     return {
@@ -588,7 +588,7 @@ function detectNamingPattern(scenarios) {
       type: 'requirement-id'
     };
   }
-  
+
   // Check for simple descriptive pattern
   const descriptivePattern = /^[A-Z][a-z\s]+$/;
   if (scenarios.every(scenario => descriptivePattern.test(scenario))) {
@@ -597,7 +597,7 @@ function detectNamingPattern(scenarios) {
       type: 'descriptive'
     };
   }
-  
+
   return null;
 }
 
@@ -608,7 +608,7 @@ function testNamingPatternDetection() {
     'QAE-162-003: Successfully display valid data',
     'QAE-162-003: Handle edge case scenarios'
   ];
-  
+
   const pattern = detectNamingPattern(testScenarios);
 }
 
@@ -666,7 +666,7 @@ SCENARIO NAMING PRESERVATION:
 - PRESERVE the original scenario names exactly as they appear in the provided content
 - Do NOT change, modify, or rename existing scenarios
 - When adding new scenarios, follow the same naming convention used in the original content
-- If the original content uses requirement IDs (e.g., "BR-001: User Login"), maintain that format for new scenarios
+- If the original content uses requirement IDs (e.g., "TG-001: User Login"), maintain that format for new scenarios
 - If the original content uses Jira ticket + tab format (e.g., "QAE-162-003: Display error message"), ALL new scenarios MUST use the EXACT same prefix (e.g., "QAE-162-003: New scenario description")
 - Do NOT increment tab numbers or change the prefix - keep the exact same identifier for all scenarios
 - Keep the exact same Feature name and structure`
@@ -702,8 +702,6 @@ Remember: Keep all existing scenario names unchanged and follow the same naming 
         'Content-Type': 'application/json'
       }
     );
-
-
 
     if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
       throw new Error(`Invalid response structure from Azure OpenAI: ${JSON.stringify(response.data)}`);
@@ -758,65 +756,65 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
   let requirementCount = 0;
   let consistencyScore = 100;
   let deterministicCount = 0; // Define at function scope
-  
+
   try {
     // Count requirements (more flexible pattern matching)
-    const requirementMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
+    const requirementMatches = extractedRequirements.match(/\|\s*TG-\d+\s*\|/g);
     requirementCount = requirementMatches ? requirementMatches.length : 0;
-    
+
     // If no requirements found with flexible pattern, try even more flexible matching
     if (requirementCount === 0) {
-      const flexibleMatches = extractedRequirements.match(/BR-\d+/g);
+      const flexibleMatches = extractedRequirements.match(/TG-\d+/g);
       requirementCount = flexibleMatches ? flexibleMatches.length : 0;
       if (requirementCount > 0) {
         // Debug logging removed
       }
     }
-    
+
     // Check for table structure consistency (more flexible)
     const tableRows = extractedRequirements.split('\n').filter(line => line.includes('|'));
     const validRows = tableRows.filter(row => row.split('|').length >= 4);
-    
+
     // Use the deterministic count for validation, not the AI-generated count
     deterministicCount = businessElementCount && businessElementCount.businessElements?.count ? businessElementCount.businessElements.count : requirementCount;
     const expectedRows = deterministicCount + 1; // +1 for header row
     const rowDifference = Math.abs(validRows.length - expectedRows);
-    
+
     if (rowDifference > 2) { // Allow up to 2 rows difference
       issues.push(`Table structure inconsistency: Expected ${expectedRows} rows, found ${validRows.length} (difference: ${rowDifference})`);
       consistencyScore -= 10; // Reduced penalty for table structure issues
     } else if (rowDifference > 0) {
       // Debug logging removed
     }
-    
+
     // Check for sequential numbering - use deterministic count if available
     const checkCount = deterministicCount || requirementCount;
     const requirementIds = [];
     for (let i = 1; i <= checkCount; i++) {
-      const expectedId = `BR-${String(i).padStart(3, '0')}`;
+      const expectedId = `TG-${String(i).padStart(3, '0')}`;
       if (!extractedRequirements.includes(expectedId)) {
         issues.push(`Missing sequential requirement ID: ${expectedId}`);
         consistencyScore -= 10;
       }
       requirementIds.push(expectedId);
     }
-    
+
     // Check for duplicate IDs
     const duplicateIds = requirementIds.filter(id => {
       const regex = new RegExp(`\\|\\s*${id}\\s*\\|`, 'g');
       const matches = extractedRequirements.match(regex);
       return matches && matches.length > 1;
     });
-    
+
     if (duplicateIds.length > 0) {
       issues.push(`Duplicate requirement IDs found: ${duplicateIds.join(', ')}`);
       consistencyScore -= 15;
     }
-    
+
     // CRITICAL: Check that every requirement has acceptance criteria
-    const requirementRows = validRows.filter(row => row.includes('BR-'));
+    const requirementRows = validRows.filter(row => row.includes('TG-'));
     let missingAcceptanceCriteria = 0;
-    
+
     requirementRows.forEach(row => {
       const columns = row.split('|').map(col => col.trim());
       if (columns.length >= 4) {
@@ -826,35 +824,35 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
         }
       }
     });
-    
+
     if (missingAcceptanceCriteria > 0) {
       issues.push(`CRITICAL: ${missingAcceptanceCriteria} requirements are missing proper acceptance criteria`);
       consistencyScore -= 25; // Heavy penalty for missing acceptance criteria
     }
-    
+
     // CRITICAL: Check that every requirement has complete complexity information
     let incompleteComplexity = 0;
-    
+
     requirementRows.forEach(row => {
       const columns = row.split('|').map(col => col.trim());
       if (columns.length >= 4) {
         const complexity = columns[3]; // 4th column (0-indexed)
         // Check if complexity has all required elements
-        if (!complexity || 
-            !complexity.includes('CC:') || 
-            !complexity.includes('Decision Points:') || 
-            !complexity.includes('Activities:') || 
+        if (!complexity ||
+            !complexity.includes('CC:') ||
+            !complexity.includes('Decision Points:') ||
+            !complexity.includes('Activities:') ||
             !complexity.includes('Paths:')) {
           incompleteComplexity++;
         }
       }
     });
-    
+
     if (incompleteComplexity > 0) {
       issues.push(`CRITICAL: ${incompleteComplexity} requirements have incomplete complexity information`);
       consistencyScore -= 20; // Heavy penalty for incomplete complexity
     }
-    
+
     // Check for reasonable requirement extraction based on content - use deterministic count if available
     const contentLength = originalContent.length;
     const validationCount = deterministicCount || requirementCount;
@@ -865,15 +863,15 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
       issues.push(`Very low requirement count (${validationCount}) for long content (${contentLength} chars) - may indicate under-extraction`);
       consistencyScore -= 15;
     }
-    
+
     // Ensure consistency score doesn't go below 0
     consistencyScore = Math.max(0, consistencyScore);
-    
+
   } catch (error) {
     issues.push(`Validation error: ${error.message}`);
     consistencyScore = 0;
   }
-  
+
   return {
     requirementCount,
     deterministicCount: deterministicCount || requirementCount,
@@ -883,8 +881,6 @@ function validateRequirementsConsistency(extractedRequirements, originalContent,
   };
 }
 
-
-
 // Extract business requirements and acceptance criteria from documents
 async function extractBusinessRequirements(content, context = '', enableLogging = true) {
   if (!isAzureOpenAIConfigured) {
@@ -893,7 +889,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 
   // Generate unique request ID for tracking
   const requestId = Math.random().toString(36).substring(2, 15);
-  
+
   if (enableLogging) {
     // Debug logging removed
   }
@@ -904,21 +900,21 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   }
 
   // Check if this content comes from enhanced Visio analysis
-  const isEnhancedVisioAnalysis = content.includes('# Enhanced Visio Flowchart Analysis') && 
+  const isEnhancedVisioAnalysis = content.includes('# Enhanced Visio Flowchart Analysis') &&
                                   content.includes('Flowchart Metadata') &&
                                   content.includes('Total Business Elements:');
-  
+
   let workflowAnalysis = null;
   let businessElementCount = null;
-  
+
   if (isEnhancedVisioAnalysis) {
     // COMPLETELY REPLACE old workflow analysis with enhanced Visio analysis
     // Enhanced Visio analysis - debug logging removed
-    
+
     // Extract business element count from enhanced analysis
     const businessElementMatch = content.match(/Total Business Elements: (\d+)/);
     const enhancedCount = businessElementMatch ? parseInt(businessElementMatch[1]) : 0;
-    
+
     if (enhancedCount > 0) {
       // Extract comprehensive metadata from enhanced analysis
       const pagesMatch = content.match(/Total Pages: (\d+)/);
@@ -930,7 +926,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
       const stepsMatch = content.match(/Process Steps: (\d+)/);
       const flowsMatch = content.match(/Business Flows: (\d+)/);
       const userActionsMatch = content.match(/User Actions: (\d+)/);
-      
+
       const enhancedMetadata = {
         totalPages: pagesMatch ? parseInt(pagesMatch[1]) : 0,
         totalShapes: shapesMatch ? parseInt(shapesMatch[1]) : 0,
@@ -944,7 +940,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         enhancedAnalysis: true,
         businessElementCount: enhancedCount
       };
-      
+
       // COMPLETELY REPLACE old workflow analysis with enhanced results
       workflowAnalysis = {
         workflowDetected: true,
@@ -960,7 +956,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         cyclomaticComplexity: enhancedMetadata.decisionPoints + 1,
         enhancedAnalysis: true
       };
-      
+
       businessElementCount = {
         count: enhancedCount,
         breakdown: {
@@ -979,21 +975,21 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   // Handle large documents with chunking
   let processedContent = content;
   let isChunked = false;
-  
+
   if (content.length > 100000) {
     // For very large documents, use the first 100K chars (about 25K tokens)
     // This leaves plenty of room for the prompt and response
     processedContent = content.substring(0, 100000);
-    
+
     // Try to end at a natural boundary
     const lastPeriod = processedContent.lastIndexOf('.');
     const lastNewline = processedContent.lastIndexOf('\n');
     const endPoint = Math.max(lastPeriod, lastNewline);
-    
+
     if (endPoint > 80000) {
       processedContent = processedContent.substring(0, endPoint + 1);
     }
-    
+
     processedContent += '\n\n[Document truncated for processing. Full analysis may require multiple uploads.]';
     isChunked = true;
   }
@@ -1009,7 +1005,7 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
 
   // Extract deterministic business element count from content
   const { extractBusinessRequirements: universalExtract, calculateQualityScore } = require('../utils/universalBusinessExtractor');
-  
+
   // Use balanced settings for all files to provide realistic counts
   const isVisioFile = processedContent.includes('Visio') || processedContent.includes('workflow') || processedContent.includes('flowchart');
   const extractionOptions = {
@@ -1018,43 +1014,43 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
     enableStrictMode: false, // Balanced mode for realistic counts
     includeLowPriority: true // Include low priority for comprehensive coverage
   };
-  
+
   businessElementCount = universalExtract(processedContent, extractionOptions);
-  
+
   // Extract the count for consistent use throughout the function
   let elementCount = businessElementCount.businessElements?.count || 0;
-  
+
   if (enableLogging) {
     // Debug logging removed
-    
+
     // CRITICAL: Check if the count seems reasonable
     const contentLength = processedContent.length;
     const requirementsPerChar = elementCount / contentLength;
     const requirementsPerK = requirementsPerChar * 1000;
-    
+
     // VSDX-specific safety: Apply quality selection FIRST (before capping)
     if (isVisioFile && elementCount > 100) { // Apply to any VSDX with significant count
       // VSDX quality selection - debug logging removed
-      
+
       // Calculate quality scores for all elements
       const elementsWithScores = businessElementCount.businessElements.elements.map(element => ({
         ...element,
         qualityScore: calculateQualityScore(element)
       }));
-      
+
       // ENHANCED QUALITY SELECTION: Use higher threshold for VSDX files
       const qualityThreshold = 50; // Only requirements with score >= 50
       const highQualityElements = elementsWithScores.filter(element => element.qualityScore >= qualityThreshold);
-      
+
       if (highQualityElements.length > 0) {
         // Sort by quality score (highest first) and take top requirements
         const topQualityElements = highQualityElements
           .sort((a, b) => b.qualityScore - a.qualityScore)
           .slice(0, elementCount); // Keep same count, just improve quality
-        
+
         // Update the elements with top quality requirements (keep same count)
         businessElementCount.businessElements.elements = topQualityElements;
-        
+
         // Update count if we have fewer high-quality requirements
         if (topQualityElements.length < elementCount) {
           businessElementCount.businessElements.count = topQualityElements.length;
@@ -1062,14 +1058,14 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
         }
       }
     }
-    
+
     // Handle high requirement density - debug logging removed
     if (requirementsPerK > 10) {
       // For extremely high densities, cap the count to a realistic number
       // BUT: If we have high-quality requirements, be more lenient
       if (requirementsPerK > 20) {
         let realisticCount;
-        
+
         // If this is a VSDX file and we've already filtered for quality, be more lenient
         if (isVisioFile && elementCount < 1000) {
           // For VSDX with quality-filtered requirements, allow higher density
@@ -1078,48 +1074,48 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
           // For other files or unfiltered requirements, use stricter cap
           realisticCount = Math.min(elementCount, Math.round(contentLength / 200)); // 1 requirement per 200 chars max
         }
-        
+
         // Update the count to be more realistic
         businessElementCount.businessElements.count = realisticCount;
         businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, realisticCount);
-        
+
         // Update the elementCount variable to reflect the adjusted count
         elementCount = businessElementCount.businessElements.count;
       }
     }
-    
+
     // Additional safety: Prevent massive inflation while maintaining improvements
     const maxReasonableImprovement = Math.round(contentLength / 150); // 1 requirement per 150 chars as absolute max (more conservative)
     if (elementCount > maxReasonableImprovement) {
       const cappedCount = maxReasonableImprovement;
-      
+
       // Update the count to be more realistic
       businessElementCount.businessElements.count = cappedCount;
       businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, cappedCount);
       elementCount = cappedCount;
     }
-    
+
     // Final safety: Ensure improvements are reasonable (not massive inflation)
     const oldSystemEstimate = Math.round(contentLength / 200); // Rough estimate of old system
     let maxReasonableImprovementLimit;
-    
+
     // If this is a VSDX file with quality-filtered requirements, be more lenient
     if (isVisioFile && elementCount < 1000) {
       maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.5); // Max 50% improvement for quality VSDX (more lenient)
     } else {
       maxReasonableImprovementLimit = Math.round(oldSystemEstimate * 1.3); // Max 30% improvement (more conservative)
     }
-    
+
     // Improvement safety check - debug logging removed
     if (elementCount > maxReasonableImprovementLimit) {
       const cappedCount = maxReasonableImprovementLimit;
-      
+
       // Update the count to be more realistic
       businessElementCount.businessElements.count = cappedCount;
       businessElementCount.businessElements.elements = businessElementCount.businessElements.elements.slice(0, cappedCount);
       elementCount = cappedCount;
     }
-    
+
     // Final quality validation: Ensure we're not sending poor requirements to the AI
     if (isVisioFile && elementCount > 0) {
       const finalElements = businessElementCount.businessElements.elements;
@@ -1134,10 +1130,10 @@ async function extractBusinessRequirements(content, context = '', enableLogging 
   if (baseUrl.endsWith('/')) {
     baseUrl = baseUrl.slice(0, -1);
   }
-  
+
   // Remove any existing /openai/deployments/ from the URL
   baseUrl = baseUrl.replace(/\/openai\/deployments\/?$/, '');
-  
+
   const apiUrl = `${baseUrl}/openai/deployments/${OPENAI_DEVELOPMENT_ID}/chat/completions?api-version=${OPENAI_API_VERSION}`;
 
   const messages = [
@@ -1202,19 +1198,19 @@ ${elementCount > 100 ? `
 ` : ''}
 
 🚨 **CRITICAL EXAMPLES - YOU MUST EXTRACT THESE AS SEPARATE REQUIREMENTS**:
-• where Submission type is "preview" then content appears in UNPUBLISHED state → BR-001 (generate new acceptance criteria)
-• where Submission type is "publish" then content appears in PUBLISHED state → BR-002 (generate new acceptance criteria)
-• verify folder exclusion logic works as expected → BR-003 (use existing acceptance criteria if available)
-• verify file exclusion logic works as expected → BR-004 (use existing acceptance criteria if available)
+• where Submission type is "preview" then content appears in UNPUBLISHED state → TG-001 (generate new acceptance criteria)
+• where Submission type is "publish" then content appears in PUBLISHED state → TG-002 (generate new acceptance criteria)
+• verify folder exclusion logic works as expected → TG-003 (use existing acceptance criteria if available)
+• verify file exclusion logic works as expected → TG-004 (use existing acceptance criteria if available)
 
 ${elementCount > 100 ? `
 🚨 **HIGH-DENSITY EXTRACTION EXAMPLES - EXTRACT EVERY SINGLE ONE**:
-• "The system must validate user input" → BR-005 (extract as separate requirement)
-• "Users can access their profiles" → BR-006 (extract as separate requirement)
-• "Administrators manage permissions" → BR-007 (extract as separate requirement)
-• "Data must be encrypted" → BR-008 (extract as separate requirement)
-• "Reports are generated monthly" → BR-009 (extract as separate requirement)
-• "Audit logs are maintained" → BR-010 (extract as separate requirement)
+• "The system must validate user input" → TG-005 (extract as separate requirement)
+• "Users can access their profiles" → TG-006 (extract as separate requirement)
+• "Administrators manage permissions" → TG-007 (extract as separate requirement)
+• "Data must be encrypted" → TG-008 (extract as separate requirement)
+• "Reports are generated monthly" → TG-009 (extract as separate requirement)
+• "Audit logs are maintained" → TG-010 (extract as separate requirement)
 
 🚨 **PATTERN RECOGNITION FOR HIGH-DENSITY DOCUMENTS - EXTRACT ALL**:
 - Look for repeated phrases: "must", "should", "will", "can", "need"
@@ -1243,13 +1239,13 @@ Create a markdown table with these EXACT columns and format:
 |----------------|----------------------|---------------------|------------|
 
 🚨 **CRITICAL**: You MUST use the EXACT format above with pipe symbols (|) and dashes (-) for the table structure.
-🚨 **CRITICAL**: Each requirement MUST be on a separate row starting with | BR-001 |, | BR-002 |, etc.
+🚨 **CRITICAL**: Each requirement MUST be on a separate row starting with | TG-001 |, | TG-002 |, etc.
 🚨 **CRITICAL**: Do NOT use any other table format - only the markdown table format shown above.
 
 🚨 **REQUIREMENT ID FORMAT**:
-- Use sequential numbering: BR-001, BR-002, BR-003, etc.
+- Use sequential numbering: TG-001, TG-002, TG-003, etc.
 - Do NOT skip numbers or use random identifiers
-- Start with BR-001 and increment sequentially
+- Start with TG-001 and increment sequentially
 - 🚨 **MANDATORY**: You MUST have exactly ${elementCount} requirements
 
 🚨 **BUSINESS REQUIREMENT RULES**:
@@ -1351,7 +1347,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
   try {
 
     // Making AI request to Azure OpenAI
-    
+
     const response = await makeOpenAIRequest(
         apiUrl,
         {
@@ -1365,10 +1361,6 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
           'Content-Type': 'application/json'
         }
       );
-      
-    // AI response received successfully
-
-
 
     if (!response.data || !response.data.choices || !response.data.choices[0] || !response.data.choices[0].message) {
       throw new Error(`Invalid response structure from Azure OpenAI: ${JSON.stringify(response.data)}`);
@@ -1381,7 +1373,7 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
         .filter(([_, result]) => result.filtered)
         .map(([category, result]) => `${category}: ${result.severity}`)
         .join(', ');
-      
+
       throw new Error(`Content was filtered by Azure OpenAI safety filters: ${filteredCategories}. Please try rephrasing your request or using different content.`);
     }
 
@@ -1392,61 +1384,55 @@ Please extract exactly ${elementCount} business requirements in a systematic, de
 
     let extractedRequirements = response.data.choices[0].message.content;
 
-    // AI response received
-
-    // Clean up the response
     extractedRequirements = extractedRequirements.trim();
-    
-    // Remove any markdown code blocks if present
+
     extractedRequirements = extractedRequirements.replace(/```markdown\n?/g, '').replace(/```markdown\n?/g, '').replace(/```\n?/g, '');
-    
-    // Response cleaned
 
     // Check if AI extracted the correct number of requirements
     // Try multiple patterns to handle different AI output formats
     let requirementCount = 0;
-    
+
     // Primary pattern: Standard markdown table format
-    const standardMatches = extractedRequirements.match(/\|\s*BR-\d+\s*\|/g);
+    const standardMatches = extractedRequirements.match(/\|\s*TG-\d+\s*\|/g);
     if (standardMatches) {
       requirementCount = standardMatches.length;
       // Debug logging removed
     }
-    
-    // Fallback pattern: Just BR- numbers anywhere in the text
+
+    // Fallback pattern: Just TG- numbers anywhere in the text
     if (requirementCount === 0) {
-      const fallbackMatches = extractedRequirements.match(/BR-\d+/g);
+      const fallbackMatches = extractedRequirements.match(/TG-\d+/g);
       if (fallbackMatches) {
         requirementCount = fallbackMatches.length;
         // Debug logging removed
       }
     }
-    
+
     // Alternative pattern: Look for numbered requirements in any format
     if (requirementCount === 0) {
-      const numberedMatches = extractedRequirements.match(/(?:BR-|Requirement\s+)(\d+)/gi);
+      const numberedMatches = extractedRequirements.match(/(?:TG-|Requirement\s+)(\d+)/gi);
       if (numberedMatches) {
         requirementCount = numberedMatches.length;
         // Debug logging removed
       }
     }
-    
+
     const expectedCount = elementCount;
-    
+
     // CRITICAL: If AI didn't extract enough requirements, force a retry with stronger instructions
     if (requirementCount < expectedCount * 0.8) { // If we got less than 80% of expected
       // Debug logging removed
-      
+
       // Add critical warning to user
       extractedRequirements += `\n\n🚨 CRITICAL: AI only extracted ${requirementCount} requirements out of ${expectedCount} expected.`;
       extractedRequirements += `\n\nThis indicates the AI is not analyzing the content thoroughly enough.`;
       extractedRequirements += `\n\nRecommendation: Regenerate requirements with the "Force Complete Analysis" option.`;
-      
+
       // Set a flag for potential retry
       extractedRequirements += `\n\n⚠️  RETRY REQUIRED: Content analysis incomplete.`;
-      
+
       // CRITICAL: Force a second attempt with even stronger instructions
-      
+
       try {
         const retryMessages = [
           {
@@ -1500,9 +1486,6 @@ ${processedContent}
 🚨 CRITICAL INSTRUCTION: Extract EXACTLY ${elementCount} requirements. Do NOT stop until you have ${elementCount} requirements. This is a MAXIMUM EFFORT extraction.`
           }
         ];
-
-        // Debug logging removed
-        
         const retryResponse = await makeOpenAIRequest(
           apiUrl,
           {
@@ -1519,26 +1502,16 @@ ${processedContent}
 
         if (retryResponse.data && retryResponse.data.choices && retryResponse.data.choices[0] && retryResponse.data.choices[0].message) {
           const retryRequirements = retryResponse.data.choices[0].message.content.trim();
-          
-                  // Debug logging removed
-          
-          // Check retry count
-          const retryCount = (retryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
-          // Debug logging removed
-          
+
+          const retryCount = (retryRequirements.match(/\|\s*TG-\d+\s*\|/g) || []).length;
+
           if (retryCount > requirementCount) {
-            // Debug logging removed
             extractedRequirements = retryRequirements;
             requirementCount = retryCount;
-            
+
             // Update the success message
             extractedRequirements += `\n\n✅ RETRY SUCCESSFUL: Extracted ${retryCount} requirements (previous: ${requirementCount})`;
           } else if (retryCount === 0) {
-            // Debug logging removed
-            
-            // Try a simpler retry approach
-            // Debug logging removed
-            
             const simpleRetryMessages = [
               {
                 role: 'system',
@@ -1546,12 +1519,12 @@ ${processedContent}
               },
               {
                 role: 'user',
-                content: `Extract exactly ${elementCount} business requirements from this content. Start with BR-001 and go to BR-${elementCount}. Keep requirements simple and clear.
+                content: `Extract exactly ${elementCount} business requirements from this content. Start with TG-001 and go to TG-${elementCount}. Keep requirements simple and clear.
 
 Content: ${processedContent.substring(0, 20000)}`
               }
             ];
-            
+
             try {
               const simpleRetryResponse = await makeOpenAIRequest(
                 apiUrl,
@@ -1566,65 +1539,46 @@ Content: ${processedContent.substring(0, 20000)}`
                   'Content-Type': 'application/json'
                 }
               );
-              
+
               if (simpleRetryResponse.data && simpleRetryResponse.data.choices && simpleRetryResponse.data.choices[0] && simpleRetryResponse.data.choices[0].message) {
                 const simpleRetryRequirements = simpleRetryResponse.data.choices[0].message.content.trim();
-                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*BR-\d+\s*\|/g) || []).length;
-                
-                // Debug logging removed
-                
+                const simpleRetryCount = (simpleRetryRequirements.match(/\|\s*TG-\d+\s*\|/g) || []).length;
+
                 if (simpleRetryCount > requirementCount) {
-                  // Debug logging removed
                   extractedRequirements = simpleRetryRequirements;
                   requirementCount = simpleRetryCount;
                   extractedRequirements += `\n\n✅ SIMPLE RETRY SUCCESSFUL: Extracted ${simpleRetryCount} requirements`;
                 } else {
-                  // Debug logging removed
                   extractedRequirements += `\n\n⚠️  SIMPLE RETRY FAILED: Still only ${simpleRetryCount} requirements extracted.`;
                 }
               }
             } catch (simpleRetryError) {
-              // Debug logging removed
               extractedRequirements += `\n\n❌ SIMPLE RETRY FAILED: ${simpleRetryError.message}`;
             }
           } else {
-            // Debug logging removed
             extractedRequirements += `\n\n⚠️  RETRY ATTEMPTED: Still only ${retryCount} requirements extracted.`;
           }
         } else {
-          // Debug logging removed
           extractedRequirements += `\n\n❌ RETRY FAILED: Invalid response structure from AI.`;
         }
       } catch (retryError) {
-        // Debug logging removed
         extractedRequirements += `\n\n❌ RETRY FAILED: ${retryError.message}`;
       }
     }
-    
-            // Debug logging removed
-    
-    // Requirement count check completed
-    
+
     if (requirementCount !== expectedCount) {
-      // Debug logging removed
-      
-      // CRITICAL: Always warn about mismatches and provide guidance
       if (Math.abs(requirementCount - expectedCount) > 2) {
-        // Debug logging removed
-        
+
         // 🚨 IMPLEMENT CHUNKED EXTRACTION SYSTEM
         const extractionRate = (requirementCount / expectedCount) * 100;
-        
-        // Always do 3 passes of 1/3 each for complete coverage
-        
         try {
             // Calculate chunk sizes - always 3 equal parts
             const totalRequirements = expectedCount;
             const chunkSize = Math.ceil(totalRequirements / 3);
-            
+
             let allExtractedRequirements = [];
-            
-            // Pass 1: Extract first 1/3 (BR-001 to BR-090 for 270 reqs)
+
+            // Pass 1: Extract first 1/3 (TG-001 to TG-090 for 270 reqs)
             const pass1Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1637,12 +1591,12 @@ Content: ${processedContent.substring(0, 20000)}`
               1, // pass number
               'first third'
             );
-            
+
             if (pass1Requirements && pass1Requirements.length > 0) {
               allExtractedRequirements = allExtractedRequirements.concat(pass1Requirements);
             }
-            
-            // Pass 2: Extract second 1/3 (BR-091 to BR-180 for 270 reqs)
+
+            // Pass 2: Extract second 1/3 (TG-091 to TG-180 for 270 reqs)
             const pass2Requirements = await extractRemainingRequirements(
               requestId,
               processedContent,
@@ -1655,12 +1609,12 @@ Content: ${processedContent.substring(0, 20000)}`
               2, // pass number
               'second third'
             );
-            
+
             if (pass2Requirements && pass2Requirements.length > 0) {
               allExtractedRequirements = allExtractedRequirements.concat(pass2Requirements);
             }
-            
-            // Pass 3: Extract final 1/3 (BR-181 to BR-270 for 270 reqs)
+
+            // Pass 3: Extract final 1/3 (TG-181 to TG-270 for 270 reqs)
             const remainingForPass3 = totalRequirements - allExtractedRequirements.length;
             if (remainingForPass3 > 0) {
               const pass3Requirements = await extractRemainingRequirements(
@@ -1675,22 +1629,18 @@ Content: ${processedContent.substring(0, 20000)}`
                 3, // pass number
                 'final third'
               );
-              
+
               if (pass3Requirements && pass3Requirements.length > 0) {
                 allExtractedRequirements = allExtractedRequirements.concat(pass3Requirements);
               }
             }
-            
-            // Combine all passes
+
             if (allExtractedRequirements.length > 0) {
-              // Create comprehensive final output
               const finalRequirements = createFinalRequirementsTable(allExtractedRequirements, totalRequirements);
               const finalCount = countRequirements(finalRequirements);
-              
-              // Update extractedRequirements with comprehensive result
+
               extractedRequirements = finalRequirements;
-              
-              // Update requirementCount for validation
+
               requirementCount = finalCount;
             } else {
               // All 3 passes failed - continuing with original requirements
@@ -1698,7 +1648,7 @@ Content: ${processedContent.substring(0, 20000)}`
           } catch (chunkError) {
             // Error during chunked extraction - continuing with original requirements
           }
-        
+
         // Add a critical warning to the user about the mismatch
         extractedRequirements += `\n\n🚨 CRITICAL WARNING: AI extracted ${requirementCount} requirements, but the deterministic analysis found ${expectedCount} business elements.`;
         extractedRequirements += `\n\nThis suggests the AI did not analyze the content thoroughly enough.`;
@@ -1707,7 +1657,7 @@ Content: ${processedContent.substring(0, 20000)}`
         extractedRequirements += `\n\nRecommendation: Regenerate requirements to get the full count.`;
       }
     } else {
-      // Debug logging removed
+
     }
 
     // Post-process to enhance complexity calculations if needed
@@ -1718,15 +1668,12 @@ Content: ${processedContent.substring(0, 20000)}`
     // Validate consistency of extracted requirements
     const validationResult = validateRequirementsConsistency(extractedRequirements, processedContent, businessElementCount);
     if (validationResult.issues.length > 0) {
-      // Debug logging removed
+      // do nothing
     }
-
-    // No caching - always process fresh for accuracy
-
     if (enableLogging) {
-      // Debug logging removed
+      // Debug
     }
-    
+
     return {
       success: true,
       content: extractedRequirements,
@@ -1747,10 +1694,10 @@ Content: ${processedContent.substring(0, 20000)}`
     } else {
       console.error('Error extracting business requirements:', error);
     }
-    
+
     let errorMessage = 'Failed to extract business requirements';
     let suggestion = 'Please try again';
-    
+
     if (error.response) {
       const errorData = error.response.data;
       console.error('Azure OpenAI Error Response:', JSON.stringify(errorData, null, 2));
@@ -1762,7 +1709,7 @@ Content: ${processedContent.substring(0, 20000)}`
     } else {
       errorMessage = error.message || errorMessage;
     }
-    
+
     throw new Error(`${errorMessage}. ${suggestion}`);
   }
 }
@@ -1784,11 +1731,11 @@ Content: ${processedContent.substring(0, 20000)}`
 async function extractRemainingRequirements(requestId, content, businessElementCount, remainingCount, alreadyExtracted, enableLogging, apiUrl, apiKey, chunkNumber, chunkPosition) {
   try {
     // Debug logging removed
-    
+
     // Calculate starting BR number for this chunk
     const startBRNumber = businessElementCount.businessElements.count - remainingCount + 1;
     const endBRNumber = businessElementCount.businessElements.count;
-    
+
     // Create a focused prompt for this specific chunk
     const remainingPrompt = `🚨 CRITICAL: You are extracting Chunk ${chunkNumber} (${chunkPosition}) of missing requirements. 
     
@@ -1801,7 +1748,7 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     ${alreadyExtracted}
     
     🚨 MANDATORY: Extract exactly ${remainingCount} ADDITIONAL requirements that are NOT in the already extracted list.
-    🚨 MANDATORY: Start numbering from BR-${startBRNumber} and continue to BR-${endBRNumber}.
+    🚨 MANDATORY: Start numbering from TG-${startBRNumber} and continue to TG-${endBRNumber}.
     🚨 MANDATORY: Do NOT duplicate any requirements from the already extracted list.
     🚨 MANDATORY: Focus on business requirements that were missed in the first pass.
     🚨 MANDATORY: This is Chunk ${chunkNumber} of 3 - extract only your assigned portion.
@@ -1819,8 +1766,8 @@ async function extractRemainingRequirements(requestId, content, businessElementC
     | Requirement ID | Business Requirement | Acceptance Criteria | Complexity |
     |----------------|----------------------|---------------------|------------|
     
-    Extract exactly ${remainingCount} requirements starting from BR-${startBRNumber}.`;
-    
+    Extract exactly ${remainingCount} requirements starting from TG-${startBRNumber}.`;
+
     // Create the proper request structure for makeOpenAIRequest
     const messages = [
       {
@@ -1832,12 +1779,12 @@ async function extractRemainingRequirements(requestId, content, businessElementC
         content: remainingPrompt
       }
     ];
-    
+
     // Validate configuration parameters
     if (!apiKey || !apiUrl) {
       throw new Error('OpenAI configuration parameters not provided to chunked extraction function.');
     }
-    
+
     // Make the request for remaining requirements using the same structure as main extraction
     const remainingResponse = await makeOpenAIRequest(
       apiUrl,
@@ -1852,14 +1799,14 @@ async function extractRemainingRequirements(requestId, content, businessElementC
         'Content-Type': 'application/json'
       }
     );
-    
+
     if (remainingResponse && remainingResponse.data && remainingResponse.data.choices && remainingResponse.data.choices[0] && remainingResponse.data.choices[0].message) {
       // Parse the remaining requirements
       const remainingRequirements = parseRequirementsFromResponse(remainingResponse.data.choices[0].message.content);
       // Debug logging removed
       return remainingRequirements;
     }
-    
+
     return [];
   } catch (error) {
     // Error logging removed
@@ -1877,20 +1824,20 @@ async function extractRemainingRequirements(requestId, content, businessElementC
 function combineRequirements(originalRequirements, remainingRequirements, expectedTotal) {
   try {
     // Remove the header row from remaining requirements if it exists
-    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('BR-'));
-    
+    const cleanRemaining = remainingRequirements.filter(req => req.id && req.id.startsWith('TG-'));
+
     // Create the combined table
     let combinedTable = originalRequirements;
-    
+
     // Add remaining requirements
     cleanRemaining.forEach(req => {
       const newRow = `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`;
       combinedTable += '\n' + newRow;
     });
-    
+
     // Add summary footer
-    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('BR-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
-    
+    combinedTable += `\n\n🎯 CHUNKED EXTRACTION COMPLETE: ${originalRequirements.split('TG-').length - 1 + cleanRemaining.length}/${expectedTotal} requirements extracted`;
+
     return combinedTable;
   } catch (error) {
     console.error('Error combining requirements:', error);
@@ -1908,27 +1855,27 @@ function createFinalRequirementsTable(allRequirements, totalExpected) {
   try {
     // Sort requirements by BR number
     const sortedRequirements = allRequirements.sort((a, b) => {
-      const aNum = parseInt(a.id.replace('BR-', ''));
-      const bNum = parseInt(b.id.replace('BR-', ''));
+      const aNum = parseInt(a.id.replace('TG-', ''));
+      const bNum = parseInt(b.id.replace('TG-', ''));
       return aNum - bNum;
     });
-    
+
     // Create the comprehensive table
     let finalTable = `| Requirement ID | Business Requirement | Acceptance Criteria | Complexity |\n`;
     finalTable += `|----------------|----------------------|---------------------|------------|\n`;
-    
+
     // Add all requirements in order
     sortedRequirements.forEach(req => {
       const newRow = `| ${req.id} | ${req.requirement} | ${req.acceptanceCriteria} | ${req.complexity} |`;
       finalTable += newRow + '\n';
     });
-    
+
     // Add summary footer
     finalTable += `\n\n🎯 3-PASS CHUNKED EXTRACTION COMPLETE: ${sortedRequirements.length}/${totalExpected} requirements extracted`;
     finalTable += `\n\n✅ Pass 1: First 1/3 of requirements`;
     finalTable += `\n✅ Pass 2: Second 1/3 of requirements`;
     finalTable += `\n✅ Pass 3: Final 1/3 of requirements`;
-    
+
     return finalTable;
   } catch (error) {
     console.error('Error creating final requirements table:', error);
@@ -1943,7 +1890,7 @@ function createFinalRequirementsTable(allRequirements, totalExpected) {
  */
 function countRequirements(requirementsTable) {
   try {
-    const brMatches = requirementsTable.match(/BR-\d+/g);
+    const brMatches = requirementsTable.match(/TG-\d+/g);
     return brMatches ? brMatches.length : 0;
   } catch (error) {
     console.error('Error counting requirements:', error);
@@ -1960,11 +1907,11 @@ function parseRequirementsFromResponse(response) {
   try {
     const requirements = [];
     const lines = response.split('\n');
-    
+
     for (const line of lines) {
-      if (line.includes('|') && line.includes('BR-')) {
+      if (line.includes('|') && line.includes('TG-')) {
         const parts = line.split('|').map(part => part.trim()).filter(part => part);
-        
+
         if (parts.length >= 4) {
           requirements.push({
             id: parts[0],
@@ -1975,7 +1922,7 @@ function parseRequirementsFromResponse(response) {
         }
       }
     }
-    
+
     return requirements;
   } catch (error) {
     console.error('Error parsing requirements from response:', error);

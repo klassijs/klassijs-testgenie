@@ -68,7 +68,6 @@ export const loadPushedStateFromCache = async (documentName, setPushedTabs, setZ
       return false;
     }
   } catch (error) {
-    console.error('Error loading pushed state from backend cache:', error);
     return false;
   }
 };
