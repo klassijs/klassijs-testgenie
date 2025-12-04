@@ -32,7 +32,7 @@
     "gherkin",
     "ai",
     "testgenie",
-    "openai",
+    "openai"
   ],
   "license": "MIT",
   "scripts": {
