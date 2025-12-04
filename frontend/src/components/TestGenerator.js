@@ -526,6 +526,7 @@ const TestGenerator = () => {
         cleanup();
       }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isGenerating, loadingImages, imagesLoaded]);
   
   useEffect(() => {
